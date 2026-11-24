@@ -7,6 +7,7 @@ import {once} from 'node:events';
 import {verifyHostEnvelope,readProtectedFile,HOST_RELEASE_PATHS,
  verifyReleaseBundleManifest,authorizeHostOperation} from './sabora-release-host-agent.mjs';
 import {RELEASE_WIRE_NAMES} from '../ci/sabora-release-transport.mjs';
+import {verifyHostRunEnvelopeV2} from './sabora-release-host-authorization-v2.mjs';
 const MAX=[768*1024*1024,768*1024*1024,262144,262144];
 function stop(code){throw Error('sabora_receive_stop:'+code);}
 class Cursor{
@@ -75,17 +76,21 @@ function decode(v){
  if(b.toString('base64')!==v)stop('invalid_header_base64');
  return b;
 }
-export async function receiveReleaseBundle(source,{command,publicKey,stageRoot,now=Date.now()}){
+export async function receiveReleaseBundle(source,{command,publicKey,stageRoot,now=Date.now(),protocolVersion=1}){
+ if(protocolVersion!==1&&protocolVersion!==2)stop('unknown_protocol');
  directorySafe(stageRoot);
  const cursor=new Cursor(source);
  const line=await cursor.line(49152);
  let h;
  try{h=JSON.parse(line)}catch{stop('invalid_header_json');}
- if(!h||typeof h!=='object'||Array.isArray(h)||
-   Object.keys(h).sort().join('|')!=='approvalB64|manifestB64|protocol|signatureB64'||
-   h.protocol!=='sabora-release-wire/v1')stop('invalid_protocol');
- const receipt=verifyHostEnvelope(command,JSON.stringify({approvalB64:h.approvalB64,
-  signatureB64:h.signatureB64}),publicKey,now);
+ if(!h||typeof h!=='object'||Array.isArray(h))stop('invalid_protocol');
+ const fields=protocolVersion===2?'approvalB64|manifestB64|protocol':'approvalB64|manifestB64|protocol|signatureB64';
+ if(Object.keys(h).sort().join('|')!==fields||
+  h.protocol!=='sabora-release-wire/v'+protocolVersion)stop('invalid_protocol');
+ const receipt=protocolVersion===2?
+  verifyHostRunEnvelopeV2(command,JSON.stringify({approvalB64:h.approvalB64}),now):
+  verifyHostEnvelope(command,JSON.stringify({approvalB64:h.approvalB64,
+   signatureB64:h.signatureB64}),publicKey,now);
  const manifestBytes=decode(h.manifestB64);
  let manifest;
  try{manifest=JSON.parse(manifestBytes.toString('utf8'));}catch{stop('invalid_manifest_json');}

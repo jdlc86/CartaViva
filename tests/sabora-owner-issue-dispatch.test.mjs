@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
   parseSaboraOwnerReleaseIssue,
-  dispatchSaboraOwnerReleaseIssue
+  dispatchSaboraOwnerReleaseIssue,
+  verifyLiveGovernedReleaseIssue
 } from '../scripts/ci/sabora-owner-issue-dispatch.mjs';
 import {assertSaboraReleaseSshBoundary} from '../scripts/ci/sabora-ssh-identity-boundary.mjs';
 
@@ -42,6 +43,21 @@ function fakeGithub({mainSha = MAIN_SHA, failAt = null, liveChange = null, liveI
   }};
 }
 
+test('Governed release rechecks the original Issue without requiring the dispatch acknowledgement to be open', async () => {
+  const request={source:'75',operation:'plan',sha:MAIN_SHA};
+  const github=fakeGithub({liveIssue:{...eventFor().issue,state:'closed'}});
+  await verifyLiveGovernedReleaseIssue({...request,github});
+  assert.deepEqual(github.calls,[{name:'get',data:{owner:'jdlc86',repo:'CartaViva',issue_number:75}}]);
+  for (const patch of [
+    {number:76},{user:{login:'someone-else'}},{title:eventFor('plan',OLD_SHA).issue.title},
+    {body:'changed after dispatch'},{pull_request:{}}
+  ]) {
+    await assert.rejects(verifyLiveGovernedReleaseIssue({
+      ...request,github:fakeGithub({liveIssue:{...eventFor().issue,...patch}})
+    }),/untrusted_source_issue/);
+  }
+});
+
 test('Owner Issue bridge: closed command, exact owner and exact Sabora repository', () => {
   const parsed = parseSaboraOwnerReleaseIssue(eventFor('plan'), OWNER_CONTEXT);
   assert.deepEqual(parsed, {
@@ -70,7 +86,7 @@ test('Sabora issue dispatch calls ONLY exact existing governed workflow, then ac
     assert.deepEqual(github.calls[2].data, {
       owner: 'jdlc86', repo: 'CartaViva',
       workflow_id: 'sabora-governed-deploy.yml', ref: 'main',
-      inputs: {operation, release_sha: sha}
+      inputs: {operation, release_sha: sha, source_issue_number: '75'}
     });
     const comment = github.calls[3].data.body;
     assert.match(comment, /dispatch acknowledgment only/);
@@ -176,6 +192,7 @@ test('Live GitHub Issue status is mandatory: owner closure, edit and reassignmen
 });
 
 function assertIssueBridgeWorkflowSafety(workflow) {
+  assert.match(workflow.split('\n  bootstrap_issue_check:')[0],/github\.triggering_actor == github\.repository_owner/);
   assert.match(workflow,/^on:\n  issues:\n    types: \[opened\]/m);
   assert.doesNotMatch(workflow,/^  (push|pull_request|schedule|workflow_dispatch|repository_dispatch):/m);
   assert.match(workflow,/^permissions:\n  contents: read\n  actions: write\n  issues: write/m);
@@ -213,13 +230,14 @@ function assertIssueBridgeWorkflowSafety(workflow) {
 }
 
 test('Workflow integration preserves authorization in existing release workflow, no new SSH path',()=>{
-  const bridge=readFileSync(new URL('../.github/workflows/sabora-owner-issue-deploy-request.yml',import.meta.url),'utf8');
+  const bridge=readFileSync(new URL('../.github/workflows/sabora-owner-issue-deploy-request.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
   assert.equal(assertIssueBridgeWorkflowSafety(bridge),true);
   const protectedRelease=readFileSync(new URL('../.github/workflows/sabora-governed-deploy.yml',import.meta.url),'utf8');
   assert.equal(assertSaboraReleaseSshBoundary(protectedRelease).staticContractPass,true);
   const mutations=[
     ['no owner',s=>s.replace('github.event.issue.user.login == github.repository_owner','true')],
     ['no actor',s=>s.replace('github.actor == github.repository_owner','true')],
+    ['no rerun actor',s=>s.replace('github.triggering_actor == github.repository_owner','true')],
     ['foreign scope',s=>s.replace("github.repository == 'jdlc86/CartaViva'","github.repository == 'another/repo'")],
     ['push trigger',s=>s.replace('  issues:','  push:\n  issues:')],
     ['broader token',s=>s.replace('  contents: read','  contents: write')],

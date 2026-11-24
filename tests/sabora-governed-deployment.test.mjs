@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {generateKeyPairSync,sign} from 'node:crypto';
 import {verifiedNtfsAclDigest} from '../scripts/ops/sabora-ntfs-acl-verifier.mjs';
-import {planRelease,stableStringify,verifyReleaseAuthorization,verifyGithubChecks,
+import {planRelease,stableStringify,verifyReleaseAuthorization,verifyGithubChecks,verifyProtectedMain,
  SABORA_RELEASE_SCOPE,EVIDENCE_KEYS} from '../scripts/ci/sabora-release-governor.mjs';
 
 const fullSha='a'.repeat(40);
@@ -61,7 +61,35 @@ test('complete governed Sabora release: plan scope, signed attestations, immutab
  await assert.rejects(()=>verifyGithubChecks(fullSha,'test-token-for-ci-check',async()=>({ok:true,json:async()=>({total_count:4,check_runs:good.map(x=>x.name==='validate'?{...x,app:{slug:'untrusted-external-app'}}:x)})})),/ci_not_success:validate/);
 });
 
-test('release workflow requires explicit dispatch, signed gate, forced host identity, no auto deployment',()=>{
+test('unsigned V2 release fails closed when main lacks branch protection or moves',async()=>{
+ const valid={name:'main',protected:true,commit:{sha:fullSha}};
+ const read=(response,ok=true)=>async(url,options)=>{
+  assert.equal(url,'https://api.github.com/repos/jdlc86/CartaViva/branches/main');
+  assert.match(options.headers.authorization,/^Bearer /);
+  return {ok,json:async()=>response};
+ };
+ assert.equal(await verifyProtectedMain('test-token-for-protection',fullSha,read(valid)),fullSha);
+ for(const [label,branch] of [
+  ['unprotected main',{...valid,protected:false}],
+  ['branch absent',{protected:true,commit:{sha:fullSha}}],
+  ['main replaced',{...valid,commit:{sha:'b'.repeat(40)}}],
+  ['missing commit',{...valid,commit:{}}]
+ ])await assert.rejects(()=>verifyProtectedMain(
+   'test-token-for-protection',fullSha,read(branch)),
+   /sabora_release_stop:main_branch_(not_protected|changed_after_authorization)/,label);
+ await assert.rejects(()=>verifyProtectedMain(
+  'test-token-for-protection',fullSha,read(valid,false)),
+  /sabora_release_stop:main_protection_lookup_failed/);
+ await assert.rejects(()=>verifyProtectedMain('short',fullSha,read(valid)),
+  /sabora_release_stop:main_protection_lookup_credentials_missing/);
+ const workflow=readFileSync(new URL('../.github/workflows/sabora-governed-deploy.yml',import.meta.url),'utf8');
+ const matches=[...workflow.matchAll(/sabora-release-governor\.mjs check-main "\$RELEASE_OPERATION" "\$RELEASE_SHA"/g)];
+ assert.equal(matches.length,2,'guard before Environment and again immediately before consent');
+ assert.match(workflow,/if \[\[ "\$RELEASE_OPERATION" != plan \]\]; then\s+node scripts\/ci\/sabora-release-governor\.mjs check-main/);
+ assert.match(workflow,/environment: sabora-live/);
+});
+
+test('release V2 requires owner Issue/manual authorization, exact SHA and forced SSH identity',()=>{
  const workflow=readFileSync(new URL('../.github/workflows/sabora-governed-deploy.yml',import.meta.url),'utf8');
  assert.match(workflow,/workflow_dispatch:/);
  assert.doesNotMatch(workflow,/^  push:|^  pull_request:|^  schedule:|pull_request_target:/m);
@@ -70,12 +98,12 @@ test('release workflow requires explicit dispatch, signed gate, forced host iden
  assert.match(workflow,/git rev-parse HEAD/);
  assert.match(workflow,/if \[\[ "\$RELEASE_OPERATION" == deploy \]\]; then/);
  assert.match(workflow,/test "\$RELEASE_SHA" = "\$GITHUB_SHA"/);
- assert.match(workflow,/host ledger independently proves prior deployment/);
+ assert.match(workflow,/sabora-release-v2/);
  assert.match(workflow,/git rev-parse origin\/main/);
  assert.match(workflow,/ref: \$\{\{ github\.sha \}\}/);
  assert.match(workflow,/cancel-in-progress: false/);
  assert.match(workflow,/environment: sabora-live/);
- assert.match(workflow,/sabora-release-governor\.mjs authorize/);
+ assert.match(workflow,/sabora-release-authorization-v2\.mjs create/);
  assert.match(workflow,/sabora-release-artifact\.mjs/);
  assert.match(workflow,/actions\/download-artifact@v4/);
  assert.match(workflow,/sabora-release-transport\.mjs/);
@@ -83,8 +111,8 @@ test('release workflow requires explicit dispatch, signed gate, forced host iden
  assert.match(workflow,/if: inputs.operation == 'deploy'/);
  assert.match(workflow,/SABORA_RELEASE_AGENT_READY/);
  assert.match(workflow,/StrictHostKeyChecking=yes/);
- assert.match(workflow,/SABORA_APPROVAL_JSON_B64/);
- assert.match(workflow,/SABORA_APPROVAL_SIG_B64/);
+ assert.doesNotMatch(workflow,/SABORA_APPROVAL_JSON_B64|SABORA_APPROVAL_SIG_B64/);
+ assert.match(workflow,/SABORA_OWNER_VERIFIED/);
  const transport=readFileSync(new URL('../scripts/ci/sabora-release-transport.mjs',import.meta.url),'utf8');
  assert.match(transport,/approvalB64/);
  assert.match(transport,/signatureB64/);
@@ -243,6 +271,15 @@ foreach ($path in $paths) {
  }finally{rmSync(root,{recursive:true,force:true});}
 });
 
+
+test('S50 deploy V2 has no mandatory Windows or offline signing CI job',()=>{
+ const ci=readFileSync(new URL('../.github/workflows/ci.yml',import.meta.url),'utf8');
+ const flow=readFileSync(new URL('../.github/workflows/sabora-governed-deploy.yml',import.meta.url),'utf8');
+ assert.doesNotMatch(ci,/^  windows-offline-signer:/m);
+ assert.doesNotMatch(ci,/Exercise offline signer end-to-end with disposable Windows test key/);
+ assert.doesNotMatch(flow,/SABORA_APPROVAL_SIG_B64|SABORA_APPROVAL_JSON_B64|SABORA_APPROVER_PUBLIC_KEY_B64/);
+ assert.match(flow,/sabora-release-authorization-v2\.mjs create/);
+});
 
 test('main SHA release evidence is GitHub-owned, cost-bounded and refuses PR evidence as main',()=>{
  const release=readFileSync(new URL('../.github/workflows/sabora-main-release-evidence.yml',import.meta.url),'utf8');

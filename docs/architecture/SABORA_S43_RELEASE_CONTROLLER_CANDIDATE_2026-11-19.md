@@ -1,5 +1,7 @@
 # S43 — controlador de release, diseño candidato implementado
 
+> **S50 — arquitectura candidata V1 sustituible (PR #85 Draft):** [decisión de simplificación V2](SABORA_SIMPLIFIED_DEPLOYMENT_V2.md). Se retiran como requisitos futuros los seis dossiers criptográficos, firma externa y nueve custodios/identidades firmantes. Hay **implementación candidata V2 en PR #85**, pendiente de validación Docker host V2, provisión autorizada y merge; ningún controlador V2 está instalado. Esto no permite arrancar V1 sin sus verificaciones. Siguen obligatorios el comando SSH forzado, archivos root-owned, SHA256, aislamiento y ledger con consumo único, controles reales de red/SQL/alertas y puesta en servicio autorizada.
+
 **Propuesta, no normativa ni permiso de instalación. NO-GO operativo.** Alcance: encargo S43 fijado en `96160d5b87642dfc6725138ef6689f9674ad0d57`, sobre main `861a11e4eb6bd5ad46c22bce65ff74dc11c44027`. Un restaurante; ninguna modificación de producto, SQL, backup, cobertura UI o aprobación visual. La revisión independiente final requiere una orden posterior. Este texto describe implementación y límites; la evidencia de ejecución del SHA final se publica en el informe del único PR Draft.
 
 ## Ruta y autoridad

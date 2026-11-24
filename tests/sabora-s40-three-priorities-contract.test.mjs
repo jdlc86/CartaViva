@@ -137,7 +137,7 @@ test('S40/S43 real controller remains disposable and performs only the exact thr
  assert.match(entry,/await import\('\.\/sabora-release-controller-lab\.mjs'\)/);
  assert.match(lab,/runReleaseController\(\{source:process\.stdin,installation\}\)/);
  assert.match(lab,/environment:'disposable-lab'/);
- assert.match(lab,/lab-authorities-rejected-by-production-entry/);
+ assert.match(lab,/v1-lab-installation-rejected-by-v2-production-entry/);
  assert.match(driver,/composeArgs=\['compose','--project-name','sabora'/);
  assert.match(driver,/validateClosedCompose/);
  assert.match(policy,/exactKeys\(config.services,\['api','sabora-egress','web'\]\)/);
@@ -145,6 +145,12 @@ test('S40/S43 real controller remains disposable and performs only the exact thr
  assert.match(lab,/deploy-A-through-real-ssh/);
  assert.match(lab,/deploy-B-through-real-ssh/);
  assert.match(lab,/rollback-A-through-real-ssh/);
+ // S50: existing disposable Docker/SSH fixture must exercise real V2
+ // complete deploy/rollback with no signature, rather than only V1 regressions.
+ assert.match(lab,/v2-real-ssh-unsigned-deploy-C-and-sentinel/);
+ assert.match(lab,/v2-real-ssh-unsigned-rollback-A-and-sentinel/);
+ assert.match(lab,/v2-one-use-replay-denied/);
+ assert.match(lab,/v2-disposable-transport-restores-v1-test-fixtures/);
  assert.match(lab,/sentinelUnchanged:true/);
  assert.match(lab,/operationalAcceptance:false,sqlExecuted:false/);
  assert.match(lab,/externalAuthorities:'synthetic-lab-only; never operational evidence'/);

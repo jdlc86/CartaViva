@@ -9,6 +9,20 @@ const REQUEST = /^\[sabora\] release (plan|deploy|rollback) ([0-9a-f]{40})$/;
 function stop(reason) { throw new Error('sabora_issue_dispatch_stop:' + reason); }
 function isRecord(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 
+// The bridge closes the request after dispatch. Both open and acknowledged
+// closed issues can be read while the governed run is waiting for its Environment.
+export async function verifyLiveGovernedReleaseIssue({github,source,operation,sha}) {
+  const title = `[sabora] release ${operation} ${sha}`;
+  if (typeof source !== 'string' || !/^[1-9][0-9]{0,11}$/.test(source) || !REQUEST.test(title))
+    stop('invalid_source_issue_scope');
+  const issueNumber = Number(source);
+  const {data} = await github.rest.issues.get({owner:'jdlc86',repo:'CartaViva',issue_number:issueNumber});
+  if (!isRecord(data) || data.number !== issueNumber || data.pull_request ||
+      data.user?.login !== 'jdlc86' || data.title !== title ||
+      (data.body != null && (typeof data.body !== 'string' || data.body.trim() !== '')))
+    stop('untrusted_source_issue');
+}
+
 export function parseSaboraOwnerReleaseIssue(event, context) {
   if (!isRecord(event) || !isRecord(context)) stop('invalid_event');
   if (event.action !== 'opened') stop('opened_only');
@@ -62,7 +76,7 @@ export async function dispatchSaboraOwnerReleaseIssue({event, context, github}) 
        (typeof live.body !== 'string' || live.body.trim() !== '')))
     stop('issue_changed_or_closed');
   // GH Actions may be queued while main changes. The target workflow rechecks
-  // the exact main SHA, ancestry, full integrated CI and signed authorization.
+  // the exact main SHA, ancestry, full integrated CI and owner-run authorization V2.
   const branch = await github.rest.repos.getBranch({owner, repo, branch: MAIN});
   const mainSha = branch?.data?.commit?.sha;
   if (typeof mainSha !== 'string' || !/^[0-9a-f]{40}$/.test(mainSha))
@@ -73,7 +87,8 @@ export async function dispatchSaboraOwnerReleaseIssue({event, context, github}) 
   // this is only a REQUEST; authorization occurs later in the protected workflow.
   await github.rest.actions.createWorkflowDispatch({
     owner, repo, workflow_id: WORKFLOW, ref: MAIN,
-    inputs: {operation: request.operation, release_sha: request.releaseSha}
+    inputs: {operation: request.operation, release_sha: request.releaseSha,
+      source_issue_number: String(request.issueNumber)}
   });
   await github.rest.issues.createComment({
     owner, repo, issue_number: request.issueNumber,
@@ -82,7 +97,7 @@ export async function dispatchSaboraOwnerReleaseIssue({event, context, github}) 
       'Operation: `' + request.operation + '`; SHA: `' + request.releaseSha + '`.',
       'Main SHA at preflight: `' + mainSha + '`.',
       'This is **dispatch acknowledgment only**, not deployment, installation,',
-      'signed consent, VPS contact, successful checks or acceptance.',
+      'owner authorization, VPS contact, successful checks or acceptance.',
       'The protected workflow MUST independently fail closed unless all gates pass.',
       'See Actions: `.github/workflows/' + WORKFLOW + '`.'
     ].join(' ')

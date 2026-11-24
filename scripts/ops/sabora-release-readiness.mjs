@@ -57,7 +57,9 @@ async function probe(url,{address,ca}={}){
  });
 }
 export async function checkReleaseReadiness({installation,run,releaseSha}){
- const {config,environment}=installation;verifyTlsMaterial(config.tls);
+ const {config,environment}=installation;
+ const v2=installation.installationSchema==='sabora-controller-installation/v2';
+ verifyTlsMaterial(config.tls);
  const ca=protectedBytes(ROOT+'origin-ca.pem');
  if(sha256(ca)!==config.tls.originCaSha256)stop('origin_ca_changed');
  let publicCa;
@@ -100,7 +102,8 @@ export async function checkReleaseReadiness({installation,run,releaseSha}){
    if(!approved||peer===SABORA_RELEASE_SCOPE.host||typeof publicResult.ray!=='string'||!/^[-A-Za-z0-9]{10,100}$/.test(publicResult.ray))stop('public_cloudflare_path_unproven');
   }
  }));
- if(!exactKeys(config.alert,['url','receiverIdentitySha256'])||config.alert.receiverIdentitySha256!==config.expected.alertReceiverIdentitySha256)
+ if(!exactKeys(config.alert,v2?['url']:['url','receiverIdentitySha256'])||
+   (!v2&&config.alert.receiverIdentitySha256!==config.expected.alertReceiverIdentitySha256))
   stop('alert_configuration');
  const url=new URL(config.alert.url);
  if(url.protocol!=='https:'||url.username||url.password||url.hash||url.search)stop('alert_endpoint_scope');
@@ -108,8 +111,8 @@ export async function checkReleaseReadiness({installation,run,releaseSha}){
   correlation:randomBytes(32).toString('hex'),at:new Date().toISOString()};
  const body=stableStringify(event);
  // This process runs inside the nominated gateway, hence its real allowlist.
- // A successful sender HTTP response is insufficient: ACK must be signed by
- // the separately provisioned receiver key and match these exact event bytes.
+ // An HTTP 200 alone is insufficient. V2 requires a fresh correlated ACK over
+ // authenticated TLS, matching exact bytes; V1 used a separate signer key.
  const sender="const https=require('node:https');const [url,body,ca]=process.argv.slice(1);"+
   "const q=https.request(url,{method:'POST',ca:ca||undefined,rejectUnauthorized:true,timeout:5000,"+
   "headers:{'content-type':'application/json','content-length':Buffer.byteLength(body)}},r=>{"+
@@ -118,7 +121,14 @@ export async function checkReleaseReadiness({installation,run,releaseSha}){
   "q.on('error',()=>process.exit(1));q.on('timeout',()=>q.destroy());q.end(body);";
  const received=run('docker',['exec','sabora-sabora-egress-1','node','-e',sender,
   config.alert.url,body,publicCa?.toString('utf8')??''],{timeout:10000}).stdout;
- const ack=verifySignedDocument(Buffer.from(received),config.alertKey,'sabora-alert-reception/v1');
+ let ack;
+ if(v2){
+  try{ack=JSON.parse(received);}catch{stop('alert_ack_not_json');}
+  if(!exactKeys(ack,['schema','project','releaseSha','correlation','receivedSha256','receivedAt'])||
+    ack.schema!=='sabora-alert-reception/v2')stop('alert_ack_v2_shape');
+ }else{
+  ack=verifySignedDocument(Buffer.from(received),config.alertKey,'sabora-alert-reception/v1');
+ }
  if(!exactKeys(ack,['schema','project','releaseSha','correlation','receivedSha256','receivedAt'])||
   ack.project!=='sabora'||ack.releaseSha!==releaseSha||ack.correlation!==event.correlation||
   ack.receivedSha256!==sha256(body)||!Number.isFinite(Date.parse(ack.receivedAt))||

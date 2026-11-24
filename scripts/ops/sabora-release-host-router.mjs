@@ -5,6 +5,14 @@ import {parseForcedReleaseCommand,readProtectedFile,HOST_RELEASE_PATHS,
  authorizeHostOperation} from './sabora-release-host-agent.mjs';
 import {receiveReleaseBundle} from './sabora-release-receiver.mjs';
 import {verifyRollbackEnvelope} from '../ci/sabora-release-rollback-request.mjs';
+// Privileged entry V2 only. V1 remains as a testable legacy library while
+// the migration is reviewed; the fixed root launcher no longer calls it.
+export async function executeInstalledHostRequestV2(source){
+ const {verifyControllerInstallationV2}=await import('./sabora-release-installation-v2.mjs');
+ const installation=verifyControllerInstallationV2({environment:'production'});
+ const {runReleaseController}=await import('./sabora-release-controller.mjs');
+ return runReleaseController({source,installation});
+}
 export async function executeInstalledHostRequest(source){
  const {verifyControllerInstallation}=await import('./sabora-release-installation.mjs');
  const installation=verifyControllerInstallation({environment:'production'});

@@ -1,0 +1,47 @@
+name: Sabora S46 preflight plan only (no DB credentials)
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact 40-character SHA of current main
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+  checks: read
+concurrency:
+  group: sabora-s46-dba-readonly
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: >-
+      github.repository == 'jdlc86/CartaViva' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == github.repository_owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prove exact main and inventory of reviewed migrations
+        env:
+          SABORA_S46_RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          node scripts/ci/sabora-s46-dba-readonly.mjs plan
+      - name: Verify the exact main SHA against the V2 CI controls
+        env:
+          SABORA_S46_RELEASE_SHA: ${{ inputs.release_sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$SABORA_S46_RELEASE_SHA" = "$GITHUB_SHA"
+          node scripts/ci/sabora-release-governor.mjs check-ci plan "$GITHUB_SHA"

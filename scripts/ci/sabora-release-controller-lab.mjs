@@ -9,12 +9,14 @@ import {once} from 'node:events';
 import {buildReleaseBundleManifest} from './sabora-release-bundle.mjs';
 import {buildControllerArtifact} from './sabora-release-controller-artifact.mjs';
 import {sendReleaseBundle} from './sabora-release-transport.mjs';
+import {createGitHubReleaseAuthorization} from './sabora-release-authorization-v2.mjs';
 import {renderRollbackEnvelope} from './sabora-release-rollback-request.mjs';
 import {EVIDENCE_KEYS,SABORA_RELEASE_SCOPE,stableStringify} from './sabora-release-governor.mjs';
 import {renderIngressFilter} from './sabora-ingress-network-policy.mjs';
 import {renderSaboraEgressGuard} from './sabora-egress-network-policy.mjs';
 import {canonicalNft,NETWORK_NAMES} from '../ops/sabora-release-local-inspector.mjs';
 import {CONTROLLER_PATHS as P,CONTROLLER_TOOLS,deriveInstallationSubject} from '../ops/sabora-release-installation.mjs';
+import {deriveControllerInstallationManifestV2} from '../ops/sabora-release-installation-v2.mjs';
 import {sha256} from '../ops/sabora-release-protected-store.mjs';
 import {releaseProcessFailureKind} from '../ops/sabora-release-process.mjs';
 import {inspectDockerSaveArchive} from '../ops/sabora-release-image-archive.mjs';
@@ -169,7 +171,7 @@ try{
  run('openssl',['req','-newkey','rsa:2048','-nodes','-keyout',sinkTls+'/origin.key','-out',work+'/sink.csr','-subj','/CN=Disposable Sabora receiver']);
  put(work+'/sink.ext','subjectAltName=IP:172.28.242.1\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n');
  run('openssl',['x509','-req','-in',work+'/sink.csr','-CA',work+'/ca.pem','-CAkey',work+'/ca.key','-CAserial',work+'/ca.srl','-days','1','-out',sinkTls+'/origin.crt','-extfile',work+'/sink.ext']);
- const sinkScript="const https=require('https'),fs=require('fs'),crypto=require('crypto');const stable=v=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);https.createServer({key:fs.readFileSync('/tls/origin.key'),cert:fs.readFileSync('/tls/origin.crt')},(req,res)=>{let body='';req.on('data',b=>body+=b);req.on('end',()=>{const event=JSON.parse(body);const payload={schema:'sabora-alert-reception/v1',project:'sabora',releaseSha:event.releaseSha,correlation:event.correlation,receivedSha256:crypto.createHash('sha256').update(body).digest('hex'),receivedAt:new Date().toISOString()};const signature=crypto.sign(null,Buffer.from(stable(payload)),fs.readFileSync('/authority/key.pem')).toString('base64');res.end(JSON.stringify({payload,signature}));});}).listen(9443,'0.0.0.0');";
+ const sinkScript="const https=require('https'),fs=require('fs'),crypto=require('crypto');const stable=v=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);https.createServer({key:fs.readFileSync('/tls/origin.key'),cert:fs.readFileSync('/tls/origin.crt')},(req,res)=>{let body='';req.on('data',b=>body+=b);req.on('end',()=>{const event=JSON.parse(body);const payload={schema:'sabora-alert-reception/v1',project:'sabora',releaseSha:event.releaseSha,correlation:event.correlation,receivedSha256:crypto.createHash('sha256').update(body).digest('hex'),receivedAt:new Date().toISOString()};if(req.url==='/ack-v2'){payload.schema='sabora-alert-reception/v2';res.end(JSON.stringify(payload));return;}const signature=crypto.sign(null,Buffer.from(stable(payload)),fs.readFileSync('/authority/key.pem')).toString('base64');res.end(JSON.stringify({payload,signature}));});}).listen(9443,'0.0.0.0');";
  docker(['run','-d','--name',sinkName,'--network',externalNet,'--ip','172.28.242.2','--publish','172.28.242.1:9443:9443','--read-only','--cap-drop','ALL','-v',sinkTls+':/tls:ro','-v',work+'/alert-private.pem:/authority/key.pem:ro','node:22-alpine','node','-e',sinkScript]);createdContainers.push(sinkName);
  docker(['run','-d','--name',sentinelName,'--label','io.sabora.lab=foreign-sentinel','--network',externalNet,'--ip','172.28.242.3','--read-only','--cap-drop','ALL','node:22-alpine','node','-e',"require('http').createServer((q,r)=>r.end('sentinel-alive')).listen(9999,'0.0.0.0')"]);createdContainers.push(sentinelName);
  for(let i=0;i<30;i++){try{baselineSentinel=sentinel();break;}catch(e){if(i===29)throw e;await pause(200);}}
@@ -211,9 +213,9 @@ try{
   mountHashes:{manifest:hashFile('/etc/sabora/runtime/activation.json'),egress:hashFile('/etc/sabora/runtime/egress-policy.json'),secrets:{'lab-access-probe':hashFile(fixtureSecret)}},tls:{certificateSha256:hashFile('/srv/sabora/tls/origin.crt'),keySha256:hashFile('/srv/sabora/tls/origin.key'),originCaSha256:hashFile(work+'/ca.pem'),publicCaSha256:hashFile(work+'/ca.pem')},alert:{url:'https://172.28.242.1:9443/ack',receiverIdentitySha256:keyIdentity(alert.pem)},quotaBytes:20*1024**3};
  configuration.expected.subjectSha256=deriveInstallationSubject(configuration);
  installPayload={schema:'sabora-controller-installation/v1',repository:SABORA_RELEASE_SCOPE.repository,sourceSha,environment:LAB_ENVIRONMENT,artifactSha256:hashFile(P.code+'/artifact.json'),configurationSha256:'',nodeSha256:hashFile(P.root+'/bin/node'),launcherHashes:Object.fromEntries(['root-entry','ssh-entry'].map(name=>[name,hashFile(P.root+'/bin/'+name)])),toolHashes:Object.fromEntries(Object.entries(CONTROLLER_TOOLS).map(([k,path])=>[k,hashFile(realpathSync(path))])),approvedAt:new Date().toISOString()};signedInstall();
- const production=run(P.root+'/bin/node',[P.code+'/scripts/ops/sabora-release-root-entry.mjs'],{allowFailure:true});assert.notEqual(production.status,0);assert.match(production.stderr,/installation_not_authorized/);ok('lab-authorities-rejected-by-production-entry');
+ const production=run(P.root+'/bin/node',[P.code+'/scripts/ops/sabora-release-root-entry.mjs'],{allowFailure:true});assert.notEqual(production.status,0);assert.match(production.stderr,/v2_installation_manifest_invalid/);ok('v1-lab-installation-rejected-by-v2-production-entry');
  const bundles=[];
- for(const [index,sha] of [sourceSha,sha256(sourceSha+':release-B').slice(0,40)].entries()){
+ for(const [index,sha] of [sourceSha,sha256(sourceSha+':release-B').slice(0,40),sha256(sourceSha+':release-C').slice(0,40)].entries()){
   const dir=work+'/bundle-'+index,context=work+'/context-'+index;mkdirSync(dir,{mode:0o700});mkdirSync(context,{mode:0o700});
   put(context+'/Dockerfile','FROM node:22-alpine\nWORKDIR /app\nRUN addgroup -S -g 10002 sabora && adduser -S -u 10002 -G sabora sabora && addgroup -S -g 10003 sabora-egress && adduser -S -u 10003 -G sabora-egress sabora-egress\nCOPY --chown=sabora:sabora src ./src\nRUN chmod -R a+rX /app/src\nUSER sabora\nEXPOSE 4100\nCMD ["node","src/server.mjs"]\nLABEL io.sabora.lab.release="'+sha+'"\n');
   // Exercise the real bind paths and effective identities at service startup.
@@ -240,7 +242,7 @@ try{
   const manifest=await buildReleaseBundleManifest({releaseSha:sha,apiArchive:paths[0],webArchive:paths[1],apiImageId:apiId,webImageId:webId,operationalCompose:paths[2],webCompose:paths[3]}),manifestBytes=Buffer.from(JSON.stringify(manifest)+'\n');put(dir+'/manifest.json',manifestBytes);bundles.push({sha,manifest,manifestBytes,paths});docker(['image','rm',apiTag,webTag]);
  }
  ok('api-gateway-fixture-ownership-readable-as-nonroot-in-both-images');
- const [a,b]=bundles;
+ const [a,b,c]=bundles;
  for(const bundle of bundles)for(const [i,type] of ['api','web'].entries())
   assert.equal(inspectDockerSaveArchive(bundle.paths[i],bundle.manifest.images[type]).imageId,bundle.manifest.images[type].imageId);
  ok('four-real-docker-archives-verified-before-transport');
@@ -320,6 +322,130 @@ try{
  await denied('unhealthy-rollback-target-denied',a,approval(a,'rollback','LAB-UNHEALTHY-TARGET'));put(P.ledger+'/history.json',originalHistory);
  docker(['network','disconnect',NETWORK_NAMES.ingress,'sabora-web-1']);await denied('disconnected-active-network-denied',a,approval(a,'rollback','LAB-DISCONNECTED-NET'));docker(['network','connect',NETWORK_NAMES.ingress,'sabora-web-1']);
  const rollbackA=approval(a,'rollback','LAB-ROLLBACK-A-0001');await success('rollback-A-through-real-ssh',a,rollbackA);await denied('rollback-replay-no-mutation',a,rollbackA);assert.equal(parse(P.ledger+'/history.json').versions.length,2);
+
+// S50 V2: reuse THE SAME real disposable SSH, nft, Docker, C sudo boundary,
+// origin TLS, three services, storage and unrelated sentinel. No parallel lab
+// or new deployment path. We keep V1 histories/keys only as *test fixtures*.
+const oldV1={
+ reservation:readFileSync(P.state+'/allocation.json'),
+ config:readFileSync(P.config),
+ installation:readFileSync(P.installation),
+ entry:readFileSync(P.root+'/lab-entry.mjs')
+};
+const v2Reservation=JSON.parse(oldV1.reservation.toString('utf8')).payload;
+assert.equal(v2Reservation.schema,'sabora-allocation-reservation/v1');
+put(P.state+'/allocation.json',JSON.stringify(v2Reservation)+'\n');
+const v2Expected=Object.fromEntries(['databaseIdentitySha256','migrationTreeSha256',
+ 'appliedLedgerSha256','databaseTlsIdentitySha256','networkPolicySha256',
+ 'allocationReservationSha256'].map(k=>[k,configuration.expected[k]]));
+v2Expected.allocationReservationSha256=hashFile(P.state+'/allocation.json');
+const v2Config={
+ schema:'sabora-controller-config/v2',environment:LAB_ENVIRONMENT,
+ expected:v2Expected,compose:configuration.compose,networkPolicy:configuration.networkPolicy,
+ reservationSha256:v2Expected.allocationReservationSha256,
+ runtimeEnvSha256:configuration.runtimeEnvSha256,
+ mountHashes:configuration.mountHashes,tls:configuration.tls,
+ alert:{url:'https://172.28.242.1:9443/ack-v2'},
+ quotaBytes:configuration.quotaBytes
+};
+put(P.config,JSON.stringify(v2Config)+'\n');
+const installationV2=deriveControllerInstallationManifestV2({environment:LAB_ENVIRONMENT});
+assert.equal(installationV2.sourceSha,sourceSha);
+assert.equal(installationV2.configurationSha256,hashFile(P.config));
+assert.equal(installationV2.artifactSha256,hashFile(P.code+'/artifact.json'));
+assert.equal(Object.keys(installationV2.toolHashes).sort().join('|'),
+ Object.keys(CONTROLLER_TOOLS).sort().join('|'));
+put(P.installation,JSON.stringify(installationV2)+'\n');
+put(P.root+'/lab-entry.mjs',
+ "import {verifyControllerInstallationV2} from './code/scripts/ops/sabora-release-installation-v2.mjs';\n"+
+ "import {runReleaseController,safeReleaseError} from './code/scripts/ops/sabora-release-controller.mjs';\n"+
+ "try{process.umask(0o077);const installation=verifyControllerInstallationV2({environment:'disposable-lab'});"+
+ "process.stdout.write(JSON.stringify(await runReleaseController({source:process.stdin,installation}))+'\\n')}"+
+ "catch(e){process.stderr.write(safeReleaseError(e)+'\\n');process.exitCode=1}\n");
+// A prepared manifest must match real installed bytes. No detached approval
+// signature, no V1 signed installation accepted as a substitution.
+const v2Entry=()=>run(P.root+'/bin/node',[P.root+'/lab-entry.mjs'],
+ {allowFailure:true,input:'',timeout:10000});
+const prepared=v2Entry();
+assert.notEqual(prepared.status,0);
+assert.match(prepared.stderr,/sabora_controller_stop:transport_eof/);
+ok('v2-root-owned-generated-installation-accepted-without-signature');
+const srcV2=P.code+'/scripts/ops/sabora-release-installation-v2.mjs';
+const oldSourceV2=readFileSync(srcV2);
+try{
+ put(srcV2,Buffer.concat([oldSourceV2,Buffer.from('\n// altered installed source\n')]));
+ const forged=v2Entry();
+ assert.notEqual(forged.status,0);
+ assert.match(forged.stderr,/sabora_controller_stop:v2_artifact_changed/);
+}finally{put(srcV2,oldSourceV2);}
+ok('v2-modified-source-denied-before-ssh-or-docker');
+const originalV2Config=readFileSync(P.config);
+try{
+ put(P.config,JSON.stringify({...v2Config,quotaBytes:v2Config.quotaBytes+1})+'\n');
+ const changed=v2Entry();
+ assert.notEqual(changed.status,0);
+ assert.match(changed.stderr,/sabora_controller_stop:v2_install_hash_mismatch/);
+}finally{put(P.config,originalV2Config);}
+ok('v2-modified-installation-config-denied-before-ssh-or-docker');
+const v2Authorize=(bundle,operation,attempt)=>createGitHubReleaseAuthorization({
+ actor:'jdlc86',runId,attempt,operation,sha:bundle.sha,
+ bundleManifestSha256:operation==='deploy'?sha256(bundle.manifestBytes):null,
+ now:Date.now()-5000
+});
+const v2Command=(auth,bundle,operation)=>[
+ 'sabora-release-v2',operation,bundle.sha,auth.authorizationId,auth.authorizationSha256,runId].join(' ');
+const v2Transmit=(bundle,auth)=>stream=>sendReleaseBundle(stream,{
+ approvalB64:auth.approvalB64,manifestBytes:bundle.manifestBytes,paths:bundle.paths
+});
+// A V1 signed authorization MUST NOT be accepted by the newly provisioned
+// V2 root entry, even when the old keys still happen to exist on this lab host.
+await denied('v2-rejects-old-signed-v1-wire',a,approval(a,'deploy','LAB-V1-NOT-A-ROUTE'));
+const v2Deploy=v2Authorize(c,'deploy',1),v2DeployCommand=v2Command(v2Deploy,c,'deploy');
+const v2Before=snapshot();sentinel();
+let v2MonitorFailure=null;
+const v2SentinelMonitor=setInterval(()=>{
+ try{sentinel();}catch(error){v2MonitorFailure=error;}
+},350);
+let v2Delivery;
+try{
+v2Delivery=await session(v2DeployCommand,v2Transmit(c,v2Deploy),{expectSuccess:true});
+assert.equal(JSON.parse(v2Delivery.stdout).state,'healthy');
+assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,c.sha);
+assert.deepEqual(parse(join(P.ledger,v2Deploy.authorizationId+'.result.json')).github,
+ {actor:'jdlc86',runId,runAttempt:1,sourceIssueNumber:null});
+assert.notEqual(snapshot(),v2Before);sentinel();
+ok('v2-real-ssh-unsigned-deploy-C-and-sentinel');
+await denied('v2-one-use-replay-denied',c,
+ {command:v2DeployCommand,body:{operation:'deploy'}},v2Transmit(c,v2Deploy));
+const v2Rollback=v2Authorize(a,'rollback',2),v2RollbackCommand=v2Command(v2Rollback,a,'rollback');
+const v2RollbackFeed=stream=>stream.end(renderRollbackEnvelope({approvalB64:v2Rollback.approvalB64}));
+const v2Restored=await session(v2RollbackCommand,v2RollbackFeed,{expectSuccess:true});
+assert.equal(JSON.parse(v2Restored.stdout).state,'healthy');
+assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,a.sha);sentinel();
+ok('v2-real-ssh-unsigned-rollback-A-and-sentinel');
+await denied('v2-rollback-replay-denied',a,
+ {command:v2RollbackCommand,body:{operation:'rollback'}},v2RollbackFeed);
+const orphan=v2Authorize(c,'rollback',3),orphanPath=join(P.ledger,orphan.authorizationId+'.json');
+put(orphanPath,JSON.stringify({authorizationId:orphan.authorizationId,state:'consumed'})+'\n');
+try{
+ const next=v2Authorize(c,'rollback',4);
+ const deniedResult=await denied('v2-orphan-consumption-blocks-new-operation',c,
+  {command:v2Command(next,c,'rollback'),body:{operation:'rollback'}},
+  stream=>stream.end(renderRollbackEnvelope({approvalB64:next.approvalB64})));
+ assert.match(deniedResult.stderr,/sabora_controller_stop:ledger_orphan_consumption/);
+ assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,a.sha);
+}finally{unlinkSync(orphanPath);}
+}finally{clearInterval(v2SentinelMonitor);}
+if(v2MonitorFailure)throw v2MonitorFailure;
+ok('v2-foreign-sentinel-never-interrupted');
+// Restore V1 test fixtures solely in this disposable runner for the remaining
+// historic negatives. No installation, migrations or VPS changes are implied.
+put(P.state+'/allocation.json',oldV1.reservation);
+put(P.config,oldV1.config);
+put(P.installation,oldV1.installation);
+put(P.root+'/lab-entry.mjs',oldV1.entry);
+ok('v2-disposable-transport-restores-v1-test-fixtures');
+
  run('nft',['add','rule','inet','sabora_egress_guard','sabora_egress_forward','counter']);await denied('live-nft-tamper-no-mutation',b,approval(b,'deploy','LAB-NFT-TAMPER'));run('nft',['delete','table','inet','sabora_egress_guard']);run('nft',['--check','--file',labEgressPolicy]);run('nft',['--file',labEgressPolicy]);
  put(P.state+'/controller.lock','{"crashFixture":true}\n');await denied('crashed-lock-no-mutation',b,approval(b,'deploy','LAB-CRASH-LOCK'));unlinkSync(P.state+'/controller.lock');
  const journal=readFileSync(P.ledger+'/transaction.json');put(P.ledger+'/transaction.json',JSON.stringify({...JSON.parse(journal),state:'unknown'})+'\n');await denied('unknown-ledger-no-mutation',b,approval(b,'deploy','LAB-UNKNOWN-LEDGER'));put(P.ledger+'/transaction.json',journal);

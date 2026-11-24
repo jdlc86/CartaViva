@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {assertSaboraReleaseSshBoundary} from '../scripts/ci/sabora-ssh-identity-boundary.mjs';
 
-const workflow=readFileSync(new URL('../.github/workflows/sabora-governed-deploy.yml',import.meta.url),'utf8');
+const workflow=readFileSync(new URL('../.github/workflows/sabora-governed-deploy.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
 
 test('Sabora SSH workflow is manually authorized, pinned and isolated from Fleetia',()=>{
  const result=assertSaboraReleaseSshBoundary(workflow);
@@ -24,10 +24,17 @@ test('Sabora SSH boundary rejects cross-project credentials, administrative SSH 
   ['not main',s=>s.replace("github.ref == 'refs/heads/main'","github.ref == 'refs/heads/dev'")],
   ['wrong environment',s=>s.replace('environment: sabora-live','environment: other')],
   ['missing installation gate',s=>s.replace(/SABORA_RELEASE_AGENT_READY:.*\n/,'SABORA_RELEASE_AGENT_READY: ready\n')],
-  ['missing owner approval gate',s=>s.replace('sabora-release-governor.mjs authorize','sabora-release-governor.mjs skip-authorize')],
-  ['missing CI gate',s=>s.replace('sabora-release-governor.mjs check-ci','sabora-release-governor.mjs skip-ci')],
+  ['missing owner approval gate',s=>s.replace('sabora-release-authorization-v2.mjs create','sabora-release-authorization-v2.mjs skip-create')],
+  ['missing CI gate',s=>s.replaceAll('sabora-release-governor.mjs check-ci','sabora-release-governor.mjs skip-ci')],
   ['bootstrap operation injected',s=>s.replace('options: [plan, deploy, rollback]','options: [plan, deploy, rollback, bootstrap]')],
-  ['arbitrary SSH protocol',s=>s.replace('sabora-release-v1 $RELEASE_OPERATION','bash $RELEASE_OPERATION')],
+  ['arbitrary SSH protocol',s=>s.replace('sabora-release-v2 $RELEASE_OPERATION','bash $RELEASE_OPERATION')],
+  ['wrong Issue proof',s=>s.replace('await verifyLiveGovernedReleaseIssue(', 'await skipIssueCheck(')],
+  ['no Issue check after Environment',s=>s.replace(/(\n  execute:[\s\S]*?)await verifyLiveGovernedReleaseIssue\(/,'$1await skipIssueCheck(')],
+  ['no owner GitHub check',s=>s.replace("github.actor == 'jdlc86'","github.actor == 'anyone'")],
+  ['foreign verify rerun',s=>s.replace("github.triggering_actor == 'jdlc86'","true")],
+  ['foreign execute-only rerun',s=>s.replace(/(\n  execute:[\s\S]*?)github\.triggering_actor == 'jdlc86'/,'$1true')],
+  ['bot can rerun execution',s=>s.replace(/(\n  execute:[\s\S]*?)github\.run_attempt == '1'/,'$1true')],
+  ['legacy signing secret',s=>s.replace('secrets.SABORA_SSH_KEY_B64','secrets.SABORA_APPROVAL_SIG_B64')],
   ['self-hosted runner',s=>s.replace('runs-on: ubuntu-24.04','runs-on: self-hosted')],
   ['SSH used in plan',s=>s.replace('node scripts/ci/sabora-release-governor.mjs plan','ssh -F /dev/null arbitrary && node scripts/ci/sabora-release-governor.mjs plan')],
   ['unreviewed workflow trigger',s=>s.replace('  workflow_dispatch:\n','  push:\n  workflow_dispatch:\n')]

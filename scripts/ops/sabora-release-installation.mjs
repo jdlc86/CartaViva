@@ -74,7 +74,7 @@ export function verifyControllerInstallation({environment='production'}={}){
  }};visit(CONTROLLER_PATHS.code);
  if(installed.sort().join('|')!==['artifact.json',...Object.keys(artifact.files)].sort().join('|'))stop('artifact_extra_or_missing_file');
  for(const [relative,digest] of Object.entries(artifact.files)){
-  if(!/^(scripts\/(ops|ci)\/sabora-release-[a-z-]+\.mjs|deploy\/sabora-release-[a-z-]+\.(c|conf|json))$/.test(relative)||
+  if(!/^(scripts\/(ops|ci)\/sabora-release-[a-z0-9-]+\.mjs|deploy\/sabora-release-[a-z-]+\.(c|conf|json))$/.test(relative)||
    !hashValid(digest)||sha256(read(join(CONTROLLER_PATHS.code,relative)))!==digest)stop('artifact_content_changed');
  }
  const configBytes=read(CONTROLLER_PATHS.config);
