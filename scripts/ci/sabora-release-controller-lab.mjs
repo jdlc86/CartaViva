@@ -182,6 +182,18 @@ try{
  assert.ok(composePlugin,'system Compose plugin required');mkdirSync(P.root+'/docker-config/cli-plugins',{recursive:true,mode:0o700});copyFileSync(composePlugin,CONTROLLER_TOOLS.compose);chmodSync(CONTROLLER_TOOLS.compose,0o700);
  buildControllerArtifact(output+'/controller-artifact',sourceSha);
  const readable=dir=>{chmodSync(dir,0o755);for(const name of readdirSync(dir)){const file=dir+'/'+name;if(lstatSync(file).isDirectory())readable(file);else chmodSync(file,0o644);}};readable(output+'/controller-artifact');
+ // Export the unmodified production launchers. The lab root binary below
+ // targets a different entry point and must never leave the fixture.
+ const launchers=join(output,'controller-launchers');
+ mkdirSync(launchers,{mode:0o755});
+ const launcherHashes=[];
+ for(const [name,source] of [['root-entry','sabora-release-root.c'],['ssh-entry','sabora-release-shell.c']]){
+  const binary=join(launchers,name);
+  run('cc',['-O2','-Wall','-Wextra','-Werror','-o',binary,join(output,'controller-artifact','deploy',source)]);
+  chmodSync(binary,0o755);
+  launcherHashes.push(hashFile(binary)+'  '+name);
+ }
+ put(join(launchers,'SHA256SUMS'),launcherHashes.join('\n')+'\n',0o644);
  run(process.execPath,['--test',repo+'/tests/sabora-release-root-storage.test.mjs']);ok('root-storage-tar-replay-crash-tests');
  run('cc',['-O2','-Wall','-Wextra','-Werror','-o',P.root+'/bin/ssh-entry',repo+'/deploy/sabora-release-shell.c']);chmodSync(P.root+'/bin/ssh-entry',0o755);
  // Same C boundary, with a test-only fixed entry OUTSIDE shipped artifact.
@@ -203,7 +215,8 @@ try{
  // Synthetic values never enter the operational environment or artifact.
  const fixtureSecret='/etc/sabora/runtime/secrets/lab-access-probe';
  put('/etc/sabora/runtime/activation.json',JSON.stringify({explicitLabFixture:true,
-  activationScope:{"mode":"deferred-first-test-activation","testDataOnly":true,"realUsersAllowed":false,"backupPerformed":false,"restorePerformed":false},activationEvidence:{backupRestoreVerified:false,rollbackVerified:false}})+'\n',0o640);
+  activationScope:{"mode":"deferred-first-test-activation","testDataOnly":true,"realUsersAllowed":false,"backupPerformed":false,"restorePerformed":false},
+  activationEvidence:{backupRestoreVerified:false,rollbackVerified:false,twoPwasValidated:false,operationalBootstrapVerified:false}})+'\n',0o640);
  put('/etc/sabora/runtime/egress-policy.json','{"explicitLabFixture":true}\n',0o444);
  put(fixtureSecret,'disposable mount access proof\n',0o640);
  chmodSync('/etc/sabora/runtime',0o700);
@@ -442,7 +455,8 @@ try{
  for(const [attempt,bad] of [
   [17,{...validActivation,activationScope:{...validActivation.activationScope,realUsersAllowed:true}}],
   [18,{...validActivation,activationEvidence:{...validActivation.activationEvidence,backupRestoreVerified:true}}],
-  [19,{explicitLabFixture:true}]
+  [19,{...validActivation,activationEvidence:{...validActivation.activationEvidence,operationalBootstrapVerified:true}}],
+  [20,{explicitLabFixture:true}]
  ]){
   put(activationPath,JSON.stringify(bad)+'\n',0o640);
   put(P.config,JSON.stringify({...v2Config,mountHashes:{...v2Config.mountHashes,

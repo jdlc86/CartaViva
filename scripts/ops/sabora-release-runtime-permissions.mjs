@@ -63,7 +63,8 @@ export function verifyRuntimeMounts(config,run,{requireGenesis=false}={}){
   const required={"mode":"deferred-first-test-activation","testDataOnly":true,"realUsersAllowed":false,"backupPerformed":false,"restorePerformed":false};
   if(!exactKeys(scope,Object.keys(required))||
      !Object.entries(required).every(([key,value])=>scope[key]===value)||
-     evidence?.backupRestoreVerified!==false||evidence?.rollbackVerified!==false)
+     evidence?.backupRestoreVerified!==false||evidence?.rollbackVerified!==false||
+     evidence?.twoPwasValidated!==false||evidence?.operationalBootstrapVerified!==false)
    stop('runtime_genesis_scope_invalid');
  }
  for(const name of names)if(sha256(file(join(RELEASE_MOUNTS.secrets,name),{gid:apiGid,mode:0o640},run,16384))!==h.secrets[name])stop('secret_changed');

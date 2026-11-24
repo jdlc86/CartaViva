@@ -12,7 +12,7 @@ import {createWaiterCallStaffIssuer} from './waiter-call-candidate.mjs';
 import {hashCustomerSessionToken} from './customer-session.mjs';
 import {createGatewayJwksFetch} from './gateway-jwks-fetch.mjs';
 import {validateSaboraEgressPolicy} from './sabora-egress-gateway.mjs';
-import {PILOT_ACTIVATION_REQUIREMENTS,isFirstTestActivationScope} from './pilot-activation-gate.mjs';
+import {PILOT_ACTIVATION_REQUIREMENTS,assertFirstTestActivation} from './pilot-activation-gate.mjs';
 
 const LOGIN=/^[a-z][a-z0-9_]{2,62}$/;
 const REF=/^[a-z][a-z0-9_-]{2,63}$/;
@@ -119,9 +119,11 @@ export function validateOperationalActivationManifest(manifest){
     Object.values(manifest.features).some(value=>typeof value!=='boolean'))throw invalid();
  if(!exactKeys(manifest.activationEvidence,PILOT_ACTIVATION_REQUIREMENTS)||
     Object.values(manifest.activationEvidence).some(value=>typeof value!=='boolean'))throw invalid();
- if(Object.hasOwn(manifest,'activationScope')&&
-    (manifest.stage!=='production'||!isFirstTestActivationScope(manifest.activationScope)||
-     manifest.activationEvidence.backupRestoreVerified!==false||manifest.activationEvidence.rollbackVerified!==false))throw invalid();
+ if(Object.hasOwn(manifest,'activationScope')){
+  if(manifest.stage!=='production')throw invalid();
+  try{assertFirstTestActivation(manifest.activationEvidence,manifest.activationScope);}
+  catch{throw invalid();}
+ }
  if(!exactKeys(manifest.origins,['client','management']))throw invalid();
  const clientOrigin=assertHttpsOrigin(manifest.origins.client);
  const managementOrigin=assertHttpsOrigin(manifest.origins.management);

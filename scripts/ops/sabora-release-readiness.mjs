@@ -56,6 +56,19 @@ async function probe(url,{address,ca}={}){
   req.on('close',()=>clearTimeout(deadline));req.on('timeout',()=>req.destroy(Error('https_timeout')));req.on('error',reject);req.end();
  });
 }
+const ACK_FIELDS=['schema','project','releaseSha','correlation','receivedSha256','receivedAt'];
+function verifyAlertReception(ack,event,body,now){
+ if(!exactKeys(ack,ACK_FIELDS)||ack.project!=='sabora'||ack.releaseSha!==event.releaseSha||
+  ack.correlation!==event.correlation||ack.receivedSha256!==sha256(body)||
+  !Number.isFinite(Date.parse(ack.receivedAt))||Math.abs(now-Date.parse(ack.receivedAt))>30000)
+  stop('alert_reception_unproven');
+}
+export function verifyAlertReceptionV2(received,event,body,now=Date.now()){
+ let ack;
+ try{ack=JSON.parse(received);}catch{stop('alert_ack_not_json');}
+ if(!exactKeys(ack,ACK_FIELDS)||ack.schema!=='sabora-alert-reception/v2')stop('alert_ack_v2_shape');
+ verifyAlertReception(ack,event,body,now);
+}
 export async function checkReleaseReadiness({installation,run,releaseSha}){
  const {config,environment}=installation;
  const v2=installation.installationSchema==='sabora-controller-installation/v2';
@@ -121,18 +134,12 @@ export async function checkReleaseReadiness({installation,run,releaseSha}){
   "q.on('error',()=>process.exit(1));q.on('timeout',()=>q.destroy());q.end(body);";
  const received=run('docker',['exec','sabora-sabora-egress-1','node','-e',sender,
   config.alert.url,body,publicCa?.toString('utf8')??''],{timeout:10000}).stdout;
- let ack;
  if(v2){
-  try{ack=JSON.parse(received);}catch{stop('alert_ack_not_json');}
-  if(!exactKeys(ack,['schema','project','releaseSha','correlation','receivedSha256','receivedAt'])||
-    ack.schema!=='sabora-alert-reception/v2')stop('alert_ack_v2_shape');
+  verifyAlertReceptionV2(received,event,body);
  }else{
-  ack=verifySignedDocument(Buffer.from(received),config.alertKey,'sabora-alert-reception/v1');
+  const ack=verifySignedDocument(Buffer.from(received),config.alertKey,'sabora-alert-reception/v1');
+  verifyAlertReception(ack,event,body,Date.now());
  }
- if(!exactKeys(ack,['schema','project','releaseSha','correlation','receivedSha256','receivedAt'])||
-  ack.project!=='sabora'||ack.releaseSha!==releaseSha||ack.correlation!==event.correlation||
-  ack.receivedSha256!==sha256(body)||!Number.isFinite(Date.parse(ack.receivedAt))||
-  Math.abs(Date.now()-Date.parse(ack.receivedAt))>30000)stop('alert_reception_unproven');
  return {apiReady:true,clientHttps:true,managementHttps:true,alertReception:true,
   originTlsVerified:true,publicTlsVerified:true,pwaIdentityAndBytesVerified:true,alertCorrelation:event.correlation,ackSha256:sha256(received)};
 }

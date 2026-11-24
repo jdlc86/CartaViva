@@ -42,10 +42,12 @@ test('pilot activation does not expose supplied secret-like evidence', () => {
 test('S46/V2 admits only an explicit first fictitious scope without certifying recovery',()=>{
  const scope={"mode":"deferred-first-test-activation","testDataOnly":true,"realUsersAllowed":false,"backupPerformed":false,"restorePerformed":false};
  const evidence={...Object.fromEntries(PILOT_ACTIVATION_REQUIREMENTS.map(key=>[key,true])),
-  backupRestoreVerified:false,rollbackVerified:false};
+  backupRestoreVerified:false,rollbackVerified:false,
+  twoPwasValidated:false,operationalBootstrapVerified:false};
  const admission=assertFirstTestActivation(evidence,scope);
  assert.equal(admission.mode,'first_test_activation_admission_unverified');
  assert.deepEqual(admission.deferred,['backupRestoreVerified','rollbackVerified']);
+ assert.deepEqual(admission.pendingAfterStart,['twoPwasValidated','operationalBootstrapVerified']);
  assert.throws(()=>assertPilotActivation(evidence),/pilot_activation_blocked/);
  for(const key of PILOT_ACTIVATION_REQUIREMENTS){
   assert.throws(()=>assertFirstTestActivation({...evidence,[key]:!evidence[key]},scope),

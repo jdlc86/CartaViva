@@ -1,0 +1,13 @@
+name = "sabora-alert-receiver"
+main = "worker.mjs"
+compatibility_date = "2026-11-24"
+workers_dev = true
+preview_urls = false
+
+[[durable_objects.bindings]]
+name = "SABORA_RECEIPTS"
+class_name = "SaboraReceipts"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SaboraReceipts"]

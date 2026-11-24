@@ -200,7 +200,8 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
     // They do not provide operational authorization or external validation.
     activationScope:{"mode":"deferred-first-test-activation","testDataOnly":true,"realUsersAllowed":false,"backupPerformed":false,"restorePerformed":false},
     activationEvidence:{...Object.fromEntries(PILOT_ACTIVATION_REQUIREMENTS.map(k=>[k,true])),
-     backupRestoreVerified:false,rollbackVerified:false},
+     backupRestoreVerified:false,rollbackVerified:false,
+     twoPwasValidated:false,operationalBootstrapVerified:false},
    };
    const manifestFile=join(fixtureDir,'activation.json');
    const policyFile=join(fixtureDir,'egress-policy.json');
