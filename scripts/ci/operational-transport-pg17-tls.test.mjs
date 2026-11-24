@@ -183,7 +183,7 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
    const manifest={
     schemaVersion:1,stage:'production',restaurantCode:'SABORA_CI',
     listener:{host:'0.0.0.0',port:4100,exposure:'container_private'},
-    origins:{client:'https://menu.sabora.es',management:'https://gestion.sabora.es'},
+    origins:{client:'https://sabora.allaiso.com:8443',management:'https://gestion-sabora.allaiso.com:8443'},
     auth:{issuer,connectHost:'sabora-egress',connectPort:authGatewayPort},
     features:{ownership:false,communications:false,waiterCalls:false},
     network:{allowedTlsHosts:[actorCertificate,'project.supabase.co'],

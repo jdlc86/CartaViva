@@ -1,6 +1,23 @@
 // Explicit opt-in startup gate. Never provisions users, grants or connections.
 const ROLE_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 
+// CV-005: only the automatic admin-only bootstrap grant to the identified
+// genesis DBA is admissible. The protected ledger's owner identifies the
+// installer; read catalog metadata, not the ledger contents or its ACLs.
+// Without a genesis ledger (older disposable fixtures) no exception applies.
+const CV005_BOOTSTRAP_GRANT = `membership.admin_option
+  AND NOT membership.set_option AND NOT membership.inherit_option
+  AND EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles dba
+    JOIN pg_catalog.pg_roles grantor ON grantor.oid=membership.grantor
+    JOIN pg_catalog.pg_class ledger ON ledger.relowner=dba.oid
+    JOIN pg_catalog.pg_namespace ns ON ns.oid=ledger.relnamespace
+    WHERE dba.oid=membership.member AND dba.rolcanlogin
+      AND dba.rolcreaterole AND NOT dba.rolsuper AND dba.rolbypassrls
+      AND grantor.rolsuper AND ns.nspname='sabora_migration_meta'
+      AND ledger.relname='applied_migrations' AND ledger.relkind='r'
+  )`;
+
 function validateRole(role) {
   if (typeof role !== 'string' || !ROLE_NAME.test(role) ||
       role === 'postgres' || role === 'anon' || role === 'authenticated' ||
@@ -224,10 +241,12 @@ async function inspect(pool, expectedRole, {
                    ON owner.oid = membership.roleid
                     OR owner.oid = membership.member
                 WHERE owner.rolname = 'sabora_order_operations_fn_owner'
+                  AND NOT (membership.roleid=owner.oid AND (${CV005_BOOTSTRAP_GRANT}))
               ) AS authorized_owner_memberships,
               EXISTS (
                 SELECT 1 FROM pg_catalog.pg_auth_members membership
                  WHERE membership.roleid = role.oid
+                  AND NOT (${CV005_BOOTSTRAP_GRANT})
               ) AS has_role_grantees,
               EXISTS (
                 SELECT 1 FROM pg_catalog.pg_auth_members membership

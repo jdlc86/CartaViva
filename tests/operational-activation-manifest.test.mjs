@@ -206,3 +206,21 @@ test('production placeholder secrets and invalid CA fail closed and release open
   assert.ok(FakePool.instances.every(pool=>pool.closed===1));
  }
 });
+
+
+test('S51 approved 8443 PWA origins are accepted without permitting other port or issuer drift',()=>{
+ const origins={client:'https://sabora.allaiso.com:8443',management:'https://gestion-sabora.allaiso.com:8443'};
+ const value=fixtureManifest({stage:'production',mutate:v=>{v.origins=origins;}});
+ assert.deepEqual(validateOperationalActivationManifest(value).manifest.origins,origins);
+ for(const mutate of [
+  v=>{v.origins.client='https://sabora.allaiso.com:8444';},
+  v=>{v.origins.client='https://unapproved.sabora.es:8443';},
+  v=>{v.origins.management='https://gestion-sabora.allaiso.com';},
+  v=>{v.origins={client:origins.management,management:origins.client};},
+  v=>{v.auth.issuer='https://project.supabase.co:8443/auth/v1';},
+  v=>{v.origins.client+='/?x=1';}
+ ]){
+  const bad=structuredClone(value);mutate(bad);
+  assert.throws(()=>validateOperationalActivationManifest(bad),/operational_activation_manifest_invalid/);
+ }
+});
