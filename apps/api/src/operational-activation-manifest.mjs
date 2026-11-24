@@ -77,7 +77,11 @@ export function describeOperationalSqlContract(features={}){
 function assertHttpsOrigin(value,{auth=false}={}){
  let url;
  try{url=new URL(value);}catch{throw invalid();}
- if(url.protocol!=='https:'||url.username||url.password||url.port||url.search||url.hash||
+ // Only the two approved Sabora PWA origins may use the dedicated 8443
+ // port. Auth issuer remains HTTPS on its standard port.
+ const dedicatedPort=!auth&&url.port==='8443'&&
+  ['sabora.allaiso.com','gestion-sabora.allaiso.com'].includes(url.hostname);
+ if(url.protocol!=='https:'||url.username||url.password||(url.port&&!dedicatedPort)||url.search||url.hash||
     (auth?url.pathname!=='/auth/v1':url.pathname!=='/')||!HOST.test(url.hostname)||
     /(?:^|\.)(?:example|invalid|localhost|local)$/.test(url.hostname)||isIP(url.hostname))throw invalid();
  return url;
@@ -118,7 +122,12 @@ export function validateOperationalActivationManifest(manifest){
  if(!exactKeys(manifest.origins,['client','management']))throw invalid();
  const clientOrigin=assertHttpsOrigin(manifest.origins.client);
  const managementOrigin=assertHttpsOrigin(manifest.origins.management);
- if(clientOrigin.origin===managementOrigin.origin)throw invalid();
+ if(clientOrigin.origin===managementOrigin.origin||
+    ((clientOrigin.port||managementOrigin.port||
+      [clientOrigin.hostname,managementOrigin.hostname].some(host=>
+       ['sabora.allaiso.com','gestion-sabora.allaiso.com'].includes(host)))&&
+     (clientOrigin.origin!=='https://sabora.allaiso.com:8443'||
+      managementOrigin.origin!=='https://gestion-sabora.allaiso.com:8443')))throw invalid();
  if(!exactKeys(manifest.auth,['issuer','connectHost','connectPort'])||!exactKeys(manifest.network,
   ['allowedTlsHosts','egressGatewayHost'])||!Array.isArray(manifest.network.allowedTlsHosts)||
   manifest.network.allowedTlsHosts.length===0||new Set(manifest.network.allowedTlsHosts).size!==

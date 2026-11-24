@@ -439,6 +439,28 @@ try{
 }finally{unlinkSync(orphanPath);}
 assert.equal(existsSync(genesisMarker),false);
 
+// S51: the original SQL was committed for a different SHA. Keep its
+// original bytes and admit only the explicitly configured corrected SHA.
+const originalSql={...sqlFixture,sourceSha:a.sha,migration:{...sqlFixture.migration,sourceSha:a.sha}};
+const originalBytes=resultBytes(originalSql);
+const binding={schema:'sabora-genesis-release-binding/v1',sourceSha:a.sha,releaseSha:c.sha,
+ migrationManifestSha256:v2Expected.migrationTreeSha256,appliedLedgerSha256:v2Expected.appliedLedgerSha256,
+ sqlResultSha256:sha256(originalBytes)};
+const reboundConfig={...v2Config,sqlGenesisSha256:binding.sqlResultSha256,sqlGenesisBinding:binding};
+put(join(P.evidence,'sql-genesis-'+a.sha+'.json'),originalBytes);
+unlinkSync(sqlResultPath);
+for(const [attempt,patch] of [
+ [13,{releaseSha:b.sha}],[14,{migrationManifestSha256:labHash('changed-migrations')}],
+ [15,{appliedLedgerSha256:labHash('changed-ledger')}],[16,{sqlResultSha256:labHash('changed-result')}]
+]){
+ put(P.config,JSON.stringify({...reboundConfig,sqlGenesisBinding:{...binding,...patch}})+'\n');
+ put(P.installation,JSON.stringify(deriveControllerInstallationManifestV2({environment:LAB_ENVIRONMENT}))+'\n');
+ await deniedV2('v2-binding-rejects-drift-'+attempt,c,'deploy',attempt,/v2_sql_binding_scope/);
+}
+put(P.config,JSON.stringify(reboundConfig)+'\n');
+put(P.installation,JSON.stringify(deriveControllerInstallationManifestV2({environment:LAB_ENVIRONMENT}))+'\n');
+assert.equal(existsSync(genesisMarker),false);
+
 const v2Deploy=v2Authorize(c,'deploy',1),v2DeployCommand=v2Command(v2Deploy,c,'deploy');
 const v2Before=snapshot();sentinel();
 let v2MonitorFailure=null;
@@ -451,7 +473,9 @@ try{
  assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,c.sha);
  const result=parse(join(P.ledger,v2Deploy.authorizationId+'.result.json'));
  assert.deepEqual(result.github,{actor:'jdlc86',runId,runAttempt:1,sourceIssueNumber:null});
- assert.equal(result.details.genesis.sqlResultSha256,v2Config.sqlGenesisSha256);
+ assert.equal(result.details.genesis.sqlResultSha256,binding.sqlResultSha256);
+ assert.equal(result.details.genesis.sqlSourceSha,a.sha);
+ assert.equal(hashFile(join(P.evidence,'sql-genesis-'+a.sha+'.json')),binding.sqlResultSha256);
  assert.equal(result.details.genesis.realUsersAllowed,false);
  assert.equal(parse(genesisMarker).authorizationId,v2Deploy.authorizationId);
  assert.notEqual(snapshot(),v2Before);sentinel();

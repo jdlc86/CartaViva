@@ -6,6 +6,7 @@ import {join,dirname} from 'node:path';
 import {CONTROLLER_PATHS as P,CONTROLLER_TOOLS} from './sabora-release-installation.mjs';
 import {protectedBytes,trustedDirectory,sha256,exactKeys,releaseStop as stop} from './sabora-release-protected-store.mjs';
 import {SABORA_RELEASE_SCOPE,stableStringify} from '../ci/sabora-release-governor.mjs';
+import {genesisSourceSha} from './sabora-release-sql-genesis.mjs';
 
 const HASH=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v)&&!/^0+$/.test(v);
 const read=path=>protectedBytes(path,{maxBytes:4*1024*1024});
@@ -128,6 +129,7 @@ export function verifyControllerInstallationV2({environment='production'}={}){
  const config=JSON.parse(checkManifest(P.config,installation.configurationSha256));
  const required=['schema','environment','expected','compose','networkPolicy',
   'reservationSha256','runtimeEnvSha256','mountHashes','tls','alert','quotaBytes','sqlGenesisSha256'];
+ if(Object.hasOwn(config,'sqlGenesisBinding'))required.push('sqlGenesisBinding');
  if(!exactKeys(config,required)||config.schema!=='sabora-controller-config/v2'||
   config.environment!==environment||
   !exactKeys(config.compose,['operational','web'])||
@@ -141,6 +143,9 @@ export function verifyControllerInstallationV2({environment='production'}={}){
   config.expected.networkPolicySha256!==sha256(stableStringify(config.networkPolicy))||
   config.expected.allocationReservationSha256!==config.reservationSha256)
   stop('v2_expected_invalid');
+ if(Object.hasOwn(config,'sqlGenesisBinding'))genesisSourceSha({
+  releaseSha:config.sqlGenesisBinding?.releaseSha,expected:config.expected,
+  resultSha256:config.sqlGenesisSha256,binding:config.sqlGenesisBinding});
  if(sha256(read(P.runtimeEnv))!==config.runtimeEnvSha256)stop('v2_runtime_env_changed');
  const reservation=JSON.parse(checkManifest(join(P.state,'allocation.json'),config.reservationSha256));
  if(reservation.schema!=='sabora-allocation-reservation/v1'||reservation.project!=='sabora'||

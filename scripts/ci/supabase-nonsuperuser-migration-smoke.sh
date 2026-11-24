@@ -330,5 +330,44 @@ grep -F 'sabora_s51_residual_schema_create' "$log" >/dev/null
  "SELECT NOT has_schema_privilege('sabora_h6_fn_owner','sabora','CREATE') AND NOT EXISTS (SELECT 1 FROM sabora_migration_meta.applied_migrations WHERE version='00000000000002')")" == t ]] || exit 1
 rm -f "$probe" "$log"
 echo 'sabora_s51_residual_create_rolled_back'
+# Exercise the actual active staff preflight on the SAME PG17 database
+# just installed by the non-superuser DBA, not a separate superuser fixture.
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" <<'SQL'
+CREATE ROLE sabora_ci_s51_staff_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB NOREPLICATION;
+GRANT USAGE ON SCHEMA sabora TO sabora_ci_s51_staff_login;
+GRANT SELECT(user_id,role,state) ON sabora.staff_members TO sabora_ci_s51_staff_login;
+CREATE POLICY ci_s51_staff_reader ON sabora.staff_members FOR SELECT TO sabora_ci_s51_staff_login USING (true);
+INSERT INTO sabora.staff_members(user_id,role,state) VALUES ('a51a0000-0000-4000-8000-000000000001','kitchen','active');
+SQL
+SABORA_CI_S51_CONTAINER="$container" SABORA_CI_S51_DB="$database" node --input-type=module - <<'JS'
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {preflightOrderTransitionStaffIdentity} from './apps/api/src/order-operations-identity-preflight.mjs';
+const {SABORA_CI_S51_CONTAINER:c,SABORA_CI_S51_DB:d}=process.env;
+const login='sabora_ci_s51_staff_login';
+const sql=(user,q)=>execFileSync('docker',['exec',c,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U',user,'-d',d,'-c',q],{encoding:'utf8'}).trim();
+const pool={async connect(){return {async query(q){
+ return {rows:[JSON.parse(sql(login,'SELECT row_to_json(result) FROM ('+q+') result'))]};
+},release(){}}}};
+const run=()=>preflightOrderTransitionStaffIdentity({pool,role:login});
+assert.deepEqual(await run(),{role:login});
+// Extra inbound grant, role inheritance and ability to assume an owner must
+// never be legitimized by the CV005 automatic membership exception.
+for(const [grant,revoke] of [
+ ['GRANT '+login+' TO cv005_ci_restricted_probe WITH SET TRUE, INHERIT FALSE',
+  'REVOKE '+login+' FROM cv005_ci_restricted_probe'],
+ ['GRANT sabora_order_operations_fn_owner TO cv005_ci_restricted_probe WITH SET TRUE, INHERIT FALSE',
+  'REVOKE sabora_order_operations_fn_owner FROM cv005_ci_restricted_probe'],
+ ['GRANT sabora_catalog_reader TO '+login+' WITH SET TRUE, INHERIT FALSE',
+  'REVOKE sabora_catalog_reader FROM '+login]
+]){
+ sql('postgres',grant);
+ try{await assert.rejects(run(),/order_operations_sql_identity_rejected/);}
+ finally{sql('postgres',revoke);}
+ assert.deepEqual(await run(),{role:login});
+}
+assert.equal(sql(login,"SELECT count(*) FROM sabora.staff_members WHERE user_id='a51a0000-0000-4000-8000-000000000001' AND role='kitchen' AND state='active'"),'1');
+console.log('sabora_s51_real_nonsuperuser_staff_runtime_preflight_verified');
+JS
 echo 'sabora_s51_nonsuperuser_atomic_ledger_verified'
 echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"
