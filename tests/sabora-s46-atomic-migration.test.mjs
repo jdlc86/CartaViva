@@ -27,5 +27,15 @@ test('full reviewed migration tree is transformed without changing source bytes'
  assert.equal((sql.match(/^INSERT INTO sabora_migration_meta\.applied_migrations\(version,name,sha256\)/gm)||[]).length,entries.length);
  for(const e of entries)assert.ok(sql.includes("'"+e.version+"','"+e.name+"','"+e.sha256+"'"),e.name);
  assert.equal((sql.match(/^CREATE SCHEMA sabora_migration_meta;$/gm)||[]).length,1);
+ assert.equal((sql.match(/^DO \$s51_cv005\$/gm)||[]).length,entries.length*2,'CV005 before and after each COMMIT');
+ const parts=sql.split(/^COMMIT;[ \t]*\r?$/gim);
+ assert.equal(parts.length,entries.length+1);
+ for(const part of parts.slice(1))assert.ok(part.indexOf('DO $s51_cv005
+ assert.throws(()=>buildReviewedMigrationSql(root,'not-reviewed.sql'));
+});
+)>=0 && (part.indexOf('BEGIN;')<0 || part.indexOf('DO $s51_cv005
+ assert.throws(()=>buildReviewedMigrationSql(root,'not-reviewed.sql'));
+});
+)<part.indexOf('BEGIN;')),'postcommit guard before next migration');
  assert.throws(()=>buildReviewedMigrationSql(root,'not-reviewed.sql'));
 });

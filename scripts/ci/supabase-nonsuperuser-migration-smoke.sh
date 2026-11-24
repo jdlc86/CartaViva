@@ -269,5 +269,22 @@ grep -F 'sabora_s51_unsafe_membership' "$log" >/dev/null
  "SELECT NOT EXISTS (SELECT 1 FROM pg_auth_members WHERE roleid=(SELECT oid FROM pg_roles WHERE rolname='sabora_h6_fn_owner') AND member=(SELECT oid FROM pg_roles WHERE rolname='cv005_ci_restricted_probe')) AND NOT EXISTS (SELECT 1 FROM sabora_migration_meta.applied_migrations WHERE version='00000000000001')")" == t ]] || exit 1
 rm -f "$probe" "$log"
 echo 'sabora_s51_membership_failure_rolled_back'
+# Residual CREATE for a NOLOGIN owner is forbidden even when its memberships
+# are clean. The same shared guard must abort it with its ledger row.
+probe="$RUNNER_TEMP/s51-create-probe-$GITHUB_RUN_ID-$.sql"
+node --input-type=module -e '
+ import {renderAtomicMigration} from "./scripts/ci/sabora-s46-atomic-migration.mjs";
+ import {createHash} from "node:crypto";
+ const b=Buffer.from("BEGIN;\nGRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;\nCOMMIT;\n");
+ process.stdout.write(renderAtomicMigration({name:"00000000000002_s51_create_probe.sql",version:"00000000000002",bytes:b.length,sha256:createHash("sha256").update(b).digest("hex")},b));
+ ' > "$probe"
+if docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" < "$probe" > "$log" 2>&1; then
+ echo 'sabora_s51_residual_create_not_rejected' >&2; exit 1
+fi
+grep -F 'sabora_s51_residual_schema_create' "$log" >/dev/null
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
+ "SELECT NOT has_schema_privilege('sabora_h6_fn_owner','sabora','CREATE') AND NOT EXISTS (SELECT 1 FROM sabora_migration_meta.applied_migrations WHERE version='00000000000002')")" == t ]] || exit 1
+rm -f "$probe" "$log"
+echo 'sabora_s51_residual_create_rolled_back'
 echo 'sabora_s51_nonsuperuser_atomic_ledger_verified'
 echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"

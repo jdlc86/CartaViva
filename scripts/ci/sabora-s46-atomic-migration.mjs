@@ -39,6 +39,12 @@ BEGIN
     AND grantor.rolsuper AND m.admin_option AND NOT m.set_option AND NOT m.inherit_option)
  ) THEN RAISE EXCEPTION 'sabora_s51_unsafe_membership'; END IF;
  IF current_user<>session_user THEN RAISE EXCEPTION 'sabora_s51_role_changed'; END IF;
+ IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE left(rolname,7)='sabora_' AND
+  (rolcanlogin OR rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb OR rolreplication OR
+   (right(rolname,9)='_fn_owner' AND rolinherit))) THEN RAISE EXCEPTION 'sabora_s51_unsafe_role_attributes'; END IF;
+ IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles r JOIN pg_catalog.pg_namespace n ON n.nspname='sabora'
+  WHERE left(r.rolname,7)='sabora_' AND pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
+ THEN RAISE EXCEPTION 'sabora_s51_residual_schema_create'; END IF;
 END;
 $s51_cv005$;
 `;
@@ -67,7 +73,10 @@ export function buildReviewedMigrationSql(root,only,{firstGuard=''}={}){
  validateMigrationAudit(manifest);
  if(only!==undefined&&!manifest.some(e=>e.name===only))stop();
  return manifest.map((entry,index)=>({entry,index})).filter(x=>only===undefined||x.entry.name===only)
-  .map(({entry,index})=>renderAtomicMigration(entry,readFileSync(join(root,'supabase','migrations',entry.name)),{first:index===0,firstGuard})).join('\n');
+  .map(({entry,index})=>renderAtomicMigration(entry,readFileSync(join(root,'supabase','migrations',entry.name)),{first:index===0,firstGuard})+
+   // CV005 requires inspecting committed state after EVERY version. Keep the
+   // pre-COMMIT guard as well, so a violation inside a migration rolls back.
+   CV005_CHECK_SQL).join('\n');
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{
