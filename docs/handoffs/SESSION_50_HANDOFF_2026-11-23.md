@@ -4,6 +4,31 @@
 
 **Tablero vivo de proyecto:** [seguimiento consolidado](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Las pruebas y decisiones de este hito deben reflejarse en el tablero tras su verificación.
 
+## S50-11 — cierre de revisión Codex del PR #85 y corte de continuidad (24-11-2026)
+
+**Estado comprobado con GitHub, no inferido del mensaje:** [PR #85](https://github.com/jdlc86/CartaViva/pull/85) **OPEN/DRAFT**, base `main@a5f0d90179515c8a2e539c584705654231e0e357` y HEAD documental previo a esta actualización `8f67d7800e8a2c299d57c6c8b8482df320f77b06`. **No fusionado, no despliegue, no SQL ni aprovisionamiento real**. El ruleset `sabora-rule` [#27933106](https://github.com/jdlc86/CartaViva/rules/27933106) está activo para `refs/heads/main`, sin bypass, exige PR y cuatro checks y prohíbe borrado/force push. No volver a pedir al propietario crear esa regla. La protección de `sabora-live` y sus credenciales de uso real son **validación aparte**.
+
+**Informe y dictamen recibidos:** Codex publicó [informe de revisión técnica final](../reviews/SABORA_S50_CODEX_PR85_V2_FINAL_TECHNICAL_REVIEW_2026-11-23.md) y [comentario de cierre](https://github.com/jdlc86/CartaViva/pull/85#issuecomment-7126506135): **GO MERGE CON CONDICIONES** (requiere **autorización expresa** del propietario) y **NO-GO OPERATIVO**. La revisión inicial de `b74002e95b24434253f0d818a7033645a6849657` encontró P1 de reejecuciones por otro actor y de ledger con consumo huérfano / finalización durable ambigua. Se analizaron, corrigieron y verificaron mediante pruebas dirigidas y regresiones integradas, no por mero diagnóstico. También se corrigieron P2 de revalidación del Issue tras espera de Environment, trazabilidad del run/actor y el `windows-offline-signer` obsoleto exigido por el preflight de solo lectura S46; la metodología V2 solo requiere los cuatro checks vigentes.
+
+**Cambios de código acreditados** en `0c6eecab6ca4e4833105421e56b6f1f9fdc4f0bd`:
+- Revalidación de `github.triggering_actor` en el flujo de release para rechazar un re-run de actor no autorizado; confirmación de autor, título, cuerpo y SHA del Issue otra vez tras el Environment.
+- Ledger: detección/rechazo de consumos sin resultado durable incluso con journal anterior healthy, asociación de estados `unknown` y retención del bloqueo si falla su persistencia; identidad GitHub run/intento/Issue incorporada a la traza durable. Los negativos cubren consumo huérfano y último rename, **no equivalen a fallo físico de fsync probado**.
+- Preflight S46: uso del comprobador vigente `sabora-release-governor.mjs check-ci plan` de **cuatro** checks, sin firma externa ni credenciales DBA en Actions.
+
+**Pruebas realmente verificadas para el SHA de código `0c6eecab`:**
+- [Sabora CI #45355817474](https://github.com/jdlc86/CartaViva/actions/runs/45355817474): `validate` y `web-publication` **SUCCESS**, con laboratorio Docker/SSH V2, bloqueo de consumo huérfano, testigo ajeno indemne y pruebas integradas PG17/H6/Chromium.
+- [Bootstrap/PG17 #45355817322](https://github.com/jdlc86/CartaViva/actions/runs/45355817322): `generate-lockfile` **SUCCESS**. [UI #45355817454](https://github.com/jdlc86/CartaViva/actions/runs/45355817454): `functional-ui-gate` **SUCCESS**.
+- `visual-final-acceptance-gate` y `CV005+B2` opt-in **SKIPPED**; no aprobación estética/operativa ni PASS implícito.
+- Comparación GitHub [`0c6eecab...8f67d780`](https://github.com/jdlc86/CartaViva/compare/0c6eecab6ca4e4833105421e56b6f1f9fdc4f0bd...8f67d7800e8a2c299d57c6c8b8482df320f77b06): **un commit, solo tres archivos documentales** (informe, tablero y continuidad). Los workflows del HEAD `8f67d780` estaban **IN_PROGRESS** para CI y lockfile a la hora de consulta, `functional-ui` SUCCESS y `CV005+B2` SKIPPED. Esta nueva actualización también generará HEAD nuevo; **no hereda formalmente el resultado exact-SHA**.
+
+**Límite de independencia:** Codex informa que `codex-security:security-diff-scan` **no pudo abrir el checkout**; su dictamen proviene de revisión directa y pruebas dirigidas, y el cierre de sus propios parches no es una segunda auditoría independiente. No confundir evidencia técnica de runner desechable con instalación física del controlador.
+
+**Puertas restantes antes del primer despliegue de prueba:** (1) autorizar explícitamente fusión del PR y verificar los checks/resultados de `main` después del merge; (2) acreditar configuración y claves Sabora-only de `sabora-live` y aprovisionamiento root-owned/SSH **V2 real**, sin reutilizar ZIP histórico; (3) receptor **durable** de alertas y ACK real; (4) comprobar reserva/aislamiento real de red, puerto, nft/Compose y cero impacto sobre Fleetia u otros proyectos; (5) preflight de Supabase PG17 con CA/hostname `verify-full`, autorización SQL separada, ejecución y verificación de las **103 migraciones**; (6) publicación HTTPS y aceptación de flujos de **ambas** PWA con datos ficticios. No hacer merge, SQL, provisión o deploy por deducción. La excepción del primer ensayo sigue siendo `backupPerformed=false`, `restorePerformed=false`, `realUsersAllowed=false`; no admitir datos reales ni sustituir recuperación pendiente por promesas. **No añadir firma externa, expedientes, identidades, PC ni VPS adicional.**
+
+**Conclusión de continuidad:** candidata técnicamente revisada para decisión de integración; **despliegue no autorizado y no validado**. Fuente de verdad normativa sigue siendo `main` hasta un merge expresamente aprobado. Respetar el contrato visual y los flujos ya aprobados; no intervenir en Fleetia.
+
+
+
 
 ## S50-7 — cierre actualizado de continuidad, 23-11-2026 (15:45, Europa/Madrid)
 
