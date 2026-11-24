@@ -7,6 +7,7 @@ import {inspectDockerSaveArchive} from './sabora-release-image-archive.mjs';
 import {immutableComposeOverride,validateClosedCompose,RELEASE_USERS} from './sabora-release-compose-policy.mjs';
 import {verifyRuntimeMounts} from './sabora-release-runtime-permissions.mjs';
 import {verifyMaterialDossiers} from './sabora-release-evidence.mjs';
+import {createV2GenesisGate} from './sabora-release-sql-genesis.mjs';
 import {inspectLocalIsolation} from './sabora-release-local-inspector.mjs';
 import {assertLiveSaboraIsolation} from './sabora-release-isolation-gate.mjs';
 import {checkReleaseReadiness,verifyTlsMaterial} from './sabora-release-readiness.mjs';
@@ -24,13 +25,11 @@ export function createRealReleaseDriver({installation,ledger,receipt,revalidate,
  const {config,reservation,environment}=installation;
  const v2=installation.installationSchema==='sabora-controller-installation/v2';
  if(v2&&receipt.schema!=='sabora-release-authorization-receipt/v2')stop('v2_authorization_required');
+ const genesis=v2?createV2GenesisGate({config,receipt,ledger,paths:P}):null;
  let current,composeArgs,composeView;
  const readEvidence=()=>Object.fromEntries(EVIDENCE_KEYS.map(key=>[key,protectedBytes(join(P.evidence,receipt.evidence[key]+'.json'),{privateFile:true})]));
  const evidence=()=>{if(v2){
-   // Material preflight is not a collection of six signed dossiers. The
-   // release host verifies concrete filesystem/TLS/network state, while
-   // the separately owner-authorized DBA job applies/verifies SQL first.
-   checkMounts();return [];
+   genesis.verify();checkMounts();return [];
   }
   const documents=readEvidence(),history=ledger.readHistory();
   const firstActivation=history.activeReleaseSha===null&&Array.isArray(history.versions)&&history.versions.length===0;
@@ -113,7 +112,8 @@ export function createRealReleaseDriver({installation,ledger,receipt,revalidate,
   })),
   registerAuthorization:async(value,details)=>{
    revalidate();evidence();checkMounts();checkNamedContainers();isolation();validateArchives(current);
-   ledger.consume(value,details);
+   const admission=genesis?{...details,genesis:genesis.claim()}:details;
+   ledger.consume(value,admission);
    // Revalidate the original owner-run scope and freshness after consumption.
    // On failure the ID stays consumed; never start a stale release.
    revalidate();isolation();

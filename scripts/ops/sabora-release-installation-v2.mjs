@@ -76,7 +76,7 @@ export function deriveControllerInstallationManifestV2({
 export function verifyControllerInstallationV2({environment='production'}={}){
  if(process.platform!=='linux'||process.geteuid?.()!==0||process.argv.length!==2)
   stop('v2_root_entry_required');
- for(const path of [P.root,P.code,P.ledger,P.staging,P.bundles,P.state])
+ for(const path of [P.root,P.code,P.evidence,P.ledger,P.staging,P.bundles,P.state])
   trustedDirectory(path,{privateDirectory:![P.code,P.root].includes(path)});
  // The installed root-owned manifest is NOT a signature. It is a pinned
  // inventory for subsequent drift detection, written by authorized bootstrap.
@@ -127,15 +127,15 @@ export function verifyControllerInstallationV2({environment='production'}={}){
  }
  const config=JSON.parse(checkManifest(P.config,installation.configurationSha256));
  const required=['schema','environment','expected','compose','networkPolicy',
-  'reservationSha256','runtimeEnvSha256','mountHashes','tls','alert','quotaBytes'];
+  'reservationSha256','runtimeEnvSha256','mountHashes','tls','alert','quotaBytes','sqlGenesisSha256'];
  if(!exactKeys(config,required)||config.schema!=='sabora-controller-config/v2'||
   config.environment!==environment||
   !exactKeys(config.compose,['operational','web'])||
   !Object.values(config.compose).every(HASH)||
-  !HASH(config.reservationSha256)||!HASH(config.runtimeEnvSha256)||
+  !HASH(config.reservationSha256)||!HASH(config.runtimeEnvSha256)||!HASH(config.sqlGenesisSha256)||
   !Number.isSafeInteger(config.quotaBytes)||config.quotaBytes<1611000000||
   config.quotaBytes>100*1024**3)stop('v2_config_invalid');
- const expected=['databaseIdentitySha256','migrationTreeSha256','appliedLedgerSha256',
+ const expected=['databaseIdentitySha256','migrationTreeSha256','appliedLedgerSha256','initialCatalogSha256',
   'databaseTlsIdentitySha256','networkPolicySha256','allocationReservationSha256'];
  if(!exactKeys(config.expected,expected)||!Object.values(config.expected).every(HASH)||
   config.expected.networkPolicySha256!==sha256(stableStringify(config.networkPolicy))||

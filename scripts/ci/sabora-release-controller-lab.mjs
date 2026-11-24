@@ -17,6 +17,7 @@ import {renderSaboraEgressGuard} from './sabora-egress-network-policy.mjs';
 import {canonicalNft,NETWORK_NAMES} from '../ops/sabora-release-local-inspector.mjs';
 import {CONTROLLER_PATHS as P,CONTROLLER_TOOLS,deriveInstallationSubject} from '../ops/sabora-release-installation.mjs';
 import {deriveControllerInstallationManifestV2} from '../ops/sabora-release-installation-v2.mjs';
+import {GENESIS_PROJECT_ID} from '../ops/sabora-release-sql-genesis.mjs';
 import {sha256} from '../ops/sabora-release-protected-store.mjs';
 import {releaseProcessFailureKind} from '../ops/sabora-release-process.mjs';
 import {inspectDockerSaveArchive} from '../ops/sabora-release-image-archive.mjs';
@@ -315,17 +316,8 @@ try{
  try{await custodyDenied('authority-key-reuse-denied','LAB-AUTHORITY-REUSE',/custodian_independence_unproven/);}finally{configuration.alertKey=originalAlertKey;signedInstall();}
  configuration.runtimeEnvSha256=labHash('different-runtime');signedInstall();
  try{await custodyDenied('installation-subject-drift-denied','LAB-SUBJECT-DRIFT',/configuration_subject_invalid/);}finally{configuration.runtimeEnvSha256=originalRuntimeHash;signedInstall();}
- const deployA=approval(a,'deploy','LAB-DEPLOY-A-0001');await success('deploy-A-through-real-ssh',a,deployA);await denied('replay-A-no-mutation',a,deployA);
- await success('deploy-B-through-real-ssh',b,approval(b,'deploy','LAB-DEPLOY-B-0001'));
- const history=parse(P.ledger+'/history.json');assert.equal(history.versions.length,2);assert.ok(history.versions.every(v=>v.status==='healthy'));ok('two-healthy-retained-versions');
- const originalHistory=readFileSync(P.ledger+'/history.json'),unhealthy=structuredClone(history);unhealthy.versions.find(v=>v.releaseSha===a.sha).status='unhealthy';put(P.ledger+'/history.json',JSON.stringify(unhealthy)+'\n');
- await denied('unhealthy-rollback-target-denied',a,approval(a,'rollback','LAB-UNHEALTHY-TARGET'));put(P.ledger+'/history.json',originalHistory);
- docker(['network','disconnect',NETWORK_NAMES.ingress,'sabora-web-1']);await denied('disconnected-active-network-denied',a,approval(a,'rollback','LAB-DISCONNECTED-NET'));docker(['network','connect',NETWORK_NAMES.ingress,'sabora-web-1']);
- const rollbackA=approval(a,'rollback','LAB-ROLLBACK-A-0001');await success('rollback-A-through-real-ssh',a,rollbackA);await denied('rollback-replay-no-mutation',a,rollbackA);assert.equal(parse(P.ledger+'/history.json').versions.length,2);
-
-// S50 V2: reuse THE SAME real disposable SSH, nft, Docker, C sudo boundary,
-// origin TLS, three services, storage and unrelated sentinel. No parallel lab
-// or new deployment path. We keep V1 histories/keys only as *test fixtures*.
+// V2 genesis uses the same disposable SSH, Docker, TLS, nft and sentinel.
+// Run against empty deployment state before the historical V1 transitions.
 const oldV1={
  reservation:readFileSync(P.state+'/allocation.json'),
  config:readFileSync(P.config),
@@ -339,6 +331,18 @@ const v2Expected=Object.fromEntries(['databaseIdentitySha256','migrationTreeSha2
  'appliedLedgerSha256','databaseTlsIdentitySha256','networkPolicySha256',
  'allocationReservationSha256'].map(k=>[k,configuration.expected[k]]));
 v2Expected.allocationReservationSha256=hashFile(P.state+'/allocation.json');
+v2Expected.initialCatalogSha256=labHash('s51-initial-catalog');
+const observedAt=new Date(Date.now()-2000).toISOString();
+const sqlFixture={schema:'sabora-genesis-result/v2',repository:SABORA_RELEASE_SCOPE.repository,
+ projectId:GENESIS_PROJECT_ID,database:'postgres',postgresMajor:17,sourceSha:c.sha,
+ sourceSystemIdSha256:v2Expected.databaseIdentitySha256,databaseTlsIdentitySha256:v2Expected.databaseTlsIdentitySha256,
+ migration:{schema:'sabora-s46-migration-inventory/v1',sourceSha:c.sha,count:103,manifestSha256:v2Expected.migrationTreeSha256},
+ catalogSha256:v2Expected.initialCatalogSha256,originalCatalogCustodied:true,observedAt,
+ startedAt:observedAt,completedAt:new Date().toISOString(),status:'catalog-ledger-verified',
+ ledgerValidated:true,appliedLedgerSha256:v2Expected.appliedLedgerSha256,backupPerformed:false,
+ restorePerformed:false,realUsersAllowed:false,operationalGo:false,runtimeHmacValidated:false};
+const resultBytes=value=>Buffer.from(JSON.stringify(value)+'\n');
+const sqlResultPath=join(P.evidence,'sql-genesis-'+c.sha+'.json');
 const v2Config={
  schema:'sabora-controller-config/v2',environment:LAB_ENVIRONMENT,
  expected:v2Expected,compose:configuration.compose,networkPolicy:configuration.networkPolicy,
@@ -346,7 +350,7 @@ const v2Config={
  runtimeEnvSha256:configuration.runtimeEnvSha256,
  mountHashes:configuration.mountHashes,tls:configuration.tls,
  alert:{url:'https://172.28.242.1:9443/ack-v2'},
- quotaBytes:configuration.quotaBytes
+ quotaBytes:configuration.quotaBytes,sqlGenesisSha256:sha256(resultBytes(sqlFixture))
 };
 put(P.config,JSON.stringify(v2Config)+'\n');
 const installationV2=deriveControllerInstallationManifestV2({environment:LAB_ENVIRONMENT});
@@ -400,51 +404,102 @@ const v2Transmit=(bundle,auth)=>stream=>sendReleaseBundle(stream,{
 // A V1 signed authorization MUST NOT be accepted by the newly provisioned
 // V2 root entry, even when the old keys still happen to exist on this lab host.
 await denied('v2-rejects-old-signed-v1-wire',a,approval(a,'deploy','LAB-V1-NOT-A-ROUTE'));
+const genesisMarker=join(P.state,'genesis-exception-consumed.json');
+async function deniedV2(label,bundle,operation,attempt,expectedError){
+ const auth=v2Authorize(bundle,operation,attempt);
+ const send=operation==='rollback'?stream=>stream.end(renderRollbackEnvelope({approvalB64:auth.approvalB64})):
+  stream=>stream.end(JSON.stringify({protocol:'sabora-release-wire/v2',approvalB64:auth.approvalB64,
+   manifestB64:bundle.manifestBytes.toString('base64')})+'\n');
+ const result=await denied(label,bundle,{command:v2Command(auth,bundle,operation),body:{operation}},send);
+ assert.match(result.stderr,expectedError);
+ assert.equal(existsSync(join(P.ledger,auth.authorizationId+'.json')),false);
+}
+await deniedV2('v2-sql-result-absent-no-mutation',c,'deploy',2,/v2_sql_result_missing/);
+put(sqlResultPath,resultBytes({...sqlFixture,catalogSha256:labHash('tampered-catalog')}));
+await deniedV2('v2-sql-result-tampered-no-mutation',c,'deploy',3,/v2_sql_result_digest/);
+for(const [attempt,label,patch,error] of [
+ [4,'partial',{status:'unknown-stop-reconcile',ledgerValidated:false},/v2_sql_result_scope/],
+ [5,'cross-release',{sourceSha:a.sha},/v2_sql_result_scope/],
+ [6,'wrong-ledger',{appliedLedgerSha256:labHash('different-ledger')},/v2_sql_result_identity/],
+ [7,'wrong-catalog',{catalogSha256:labHash('different-catalog')},/v2_sql_result_identity/]
+]){
+ const bytes=resultBytes({...sqlFixture,...patch});
+ put(sqlResultPath,bytes);
+ put(P.config,JSON.stringify({...v2Config,sqlGenesisSha256:sha256(bytes)})+'\n');
+ put(P.installation,JSON.stringify(deriveControllerInstallationManifestV2({environment:LAB_ENVIRONMENT}))+'\n');
+ await deniedV2('v2-sql-result-'+label+'-no-mutation',c,'deploy',attempt,error);
+}
+put(P.config,originalV2Config);
+put(P.installation,JSON.stringify(installationV2)+'\n');
+put(sqlResultPath,resultBytes(sqlFixture));
+const orphan=v2Authorize(c,'deploy',8),orphanPath=join(P.ledger,orphan.authorizationId+'.json');
+put(orphanPath,JSON.stringify({authorizationId:orphan.authorizationId,state:'consumed'})+'\n');
+try{
+ await deniedV2('v2-orphan-consumption-blocks-genesis',c,'deploy',9,/ledger_orphan_consumption/);
+}finally{unlinkSync(orphanPath);}
+assert.equal(existsSync(genesisMarker),false);
+
 const v2Deploy=v2Authorize(c,'deploy',1),v2DeployCommand=v2Command(v2Deploy,c,'deploy');
 const v2Before=snapshot();sentinel();
 let v2MonitorFailure=null;
 const v2SentinelMonitor=setInterval(()=>{
  try{sentinel();}catch(error){v2MonitorFailure=error;}
 },350);
-let v2Delivery;
 try{
-v2Delivery=await session(v2DeployCommand,v2Transmit(c,v2Deploy),{expectSuccess:true});
-assert.equal(JSON.parse(v2Delivery.stdout).state,'healthy');
-assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,c.sha);
-assert.deepEqual(parse(join(P.ledger,v2Deploy.authorizationId+'.result.json')).github,
- {actor:'jdlc86',runId,runAttempt:1,sourceIssueNumber:null});
-assert.notEqual(snapshot(),v2Before);sentinel();
-ok('v2-real-ssh-unsigned-deploy-C-and-sentinel');
-await denied('v2-one-use-replay-denied',c,
- {command:v2DeployCommand,body:{operation:'deploy'}},v2Transmit(c,v2Deploy));
-const v2Rollback=v2Authorize(a,'rollback',2),v2RollbackCommand=v2Command(v2Rollback,a,'rollback');
-const v2RollbackFeed=stream=>stream.end(renderRollbackEnvelope({approvalB64:v2Rollback.approvalB64}));
-const v2Restored=await session(v2RollbackCommand,v2RollbackFeed,{expectSuccess:true});
-assert.equal(JSON.parse(v2Restored.stdout).state,'healthy');
-assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,a.sha);sentinel();
-ok('v2-real-ssh-unsigned-rollback-A-and-sentinel');
-await denied('v2-rollback-replay-denied',a,
- {command:v2RollbackCommand,body:{operation:'rollback'}},v2RollbackFeed);
-const orphan=v2Authorize(c,'rollback',3),orphanPath=join(P.ledger,orphan.authorizationId+'.json');
-put(orphanPath,JSON.stringify({authorizationId:orphan.authorizationId,state:'consumed'})+'\n');
-try{
- const next=v2Authorize(c,'rollback',4);
- const deniedResult=await denied('v2-orphan-consumption-blocks-new-operation',c,
-  {command:v2Command(next,c,'rollback'),body:{operation:'rollback'}},
-  stream=>stream.end(renderRollbackEnvelope({approvalB64:next.approvalB64})));
- assert.match(deniedResult.stderr,/sabora_controller_stop:ledger_orphan_consumption/);
- assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,a.sha);
-}finally{unlinkSync(orphanPath);}
+ const v2Delivery=await session(v2DeployCommand,v2Transmit(c,v2Deploy),{expectSuccess:true});
+ assert.equal(JSON.parse(v2Delivery.stdout).state,'healthy');
+ assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,c.sha);
+ const result=parse(join(P.ledger,v2Deploy.authorizationId+'.result.json'));
+ assert.deepEqual(result.github,{actor:'jdlc86',runId,runAttempt:1,sourceIssueNumber:null});
+ assert.equal(result.details.genesis.sqlResultSha256,v2Config.sqlGenesisSha256);
+ assert.equal(result.details.genesis.realUsersAllowed,false);
+ assert.equal(parse(genesisMarker).authorizationId,v2Deploy.authorizationId);
+ assert.notEqual(snapshot(),v2Before);sentinel();
+ ok('v2-real-ssh-sql-bound-fictitious-genesis-and-sentinel');
+ await denied('v2-one-use-replay-denied',c,
+  {command:v2DeployCommand,body:{operation:'deploy'}},v2Transmit(c,v2Deploy));
+ await deniedV2('v2-second-deploy-requires-ordinary-recovery',c,'deploy',10,/v2_ordinary_recovery_required/);
+ await deniedV2('v2-rollback-requires-ordinary-recovery',c,'rollback',11,/v2_ordinary_recovery_required/);
+ const savedLedger=join(work,'v2-verified-ledger');
+ renameSync(P.ledger,savedLedger);
+ mkdirSync(P.ledger,{mode:0o700});
+ try{
+  await deniedV2('v2-lost-history-cannot-reopen-genesis',c,'deploy',12,/v2_ordinary_recovery_required/);
+ }finally{
+  renameSync(P.ledger,join(work,'v2-empty-ledger'));
+  renameSync(savedLedger,P.ledger);
+ }
 }finally{clearInterval(v2SentinelMonitor);}
 if(v2MonitorFailure)throw v2MonitorFailure;
 ok('v2-foreign-sentinel-never-interrupted');
-// Restore V1 test fixtures solely in this disposable runner for the remaining
-// historic negatives. No installation, migrations or VPS changes are implied.
+
+// Reset only fixtures generated above in this disposable runner before the
+// V1 compatibility path. Production never erases or resets release state.
+for(const service of SABORA_RELEASE_SCOPE.services){
+ const name='sabora-'+service+'-1',info=json(['container','inspect',name])[0];
+ assert.equal(info.Config.Labels['io.sabora.release-sha'],c.sha);
+ assert.equal(info.Config.Labels['io.sabora.managed-by'],'release-controller-v1');
+ docker(['rm','-f',name]);
+}
+for(const path of [P.ledger,P.bundles]){
+ renameSync(path,join(work,'v2-snapshot-'+path.split('/').at(-1)));
+ mkdirSync(path,{mode:0o700});
+}
+for(const name of ['genesis-exception-consumed.json','retained-'+c.sha+'.json'])
+ renameSync(join(P.state,name),join(work,'v2-snapshot-'+name));
 put(P.state+'/allocation.json',oldV1.reservation);
 put(P.config,oldV1.config);
 put(P.installation,oldV1.installation);
 put(P.root+'/lab-entry.mjs',oldV1.entry);
 ok('v2-disposable-transport-restores-v1-test-fixtures');
+
+ const deployA=approval(a,'deploy','LAB-DEPLOY-A-0001');await success('deploy-A-through-real-ssh',a,deployA);await denied('replay-A-no-mutation',a,deployA);
+ await success('deploy-B-through-real-ssh',b,approval(b,'deploy','LAB-DEPLOY-B-0001'));
+ const history=parse(P.ledger+'/history.json');assert.equal(history.versions.length,2);assert.ok(history.versions.every(v=>v.status==='healthy'));ok('two-healthy-retained-versions');
+ const originalHistory=readFileSync(P.ledger+'/history.json'),unhealthy=structuredClone(history);unhealthy.versions.find(v=>v.releaseSha===a.sha).status='unhealthy';put(P.ledger+'/history.json',JSON.stringify(unhealthy)+'\n');
+ await denied('unhealthy-rollback-target-denied',a,approval(a,'rollback','LAB-UNHEALTHY-TARGET'));put(P.ledger+'/history.json',originalHistory);
+ docker(['network','disconnect',NETWORK_NAMES.ingress,'sabora-web-1']);await denied('disconnected-active-network-denied',a,approval(a,'rollback','LAB-DISCONNECTED-NET'));docker(['network','connect',NETWORK_NAMES.ingress,'sabora-web-1']);
+ const rollbackA=approval(a,'rollback','LAB-ROLLBACK-A-0001');await success('rollback-A-through-real-ssh',a,rollbackA);await denied('rollback-replay-no-mutation',a,rollbackA);assert.equal(parse(P.ledger+'/history.json').versions.length,2);
 
  run('nft',['add','rule','inet','sabora_egress_guard','sabora_egress_forward','counter']);await denied('live-nft-tamper-no-mutation',b,approval(b,'deploy','LAB-NFT-TAMPER'));run('nft',['delete','table','inet','sabora_egress_guard']);run('nft',['--check','--file',labEgressPolicy]);run('nft',['--file',labEgressPolicy]);
  put(P.state+'/controller.lock','{"crashFixture":true}\n');await denied('crashed-lock-no-mutation',b,approval(b,'deploy','LAB-CRASH-LOCK'));unlinkSync(P.state+'/controller.lock');

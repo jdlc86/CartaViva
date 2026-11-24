@@ -38,6 +38,7 @@ done
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL' >/dev/null
 CREATE ROLE anon NOLOGIN;
 CREATE ROLE authenticated NOLOGIN;
+CREATE ROLE service_role NOLOGIN;
 CREATE ROLE cv005_ci_migration_operator LOGIN CREATEROLE INHERIT
   NOSUPERUSER BYPASSRLS NOREPLICATION;
 CREATE ROLE cv005_ci_restricted_probe LOGIN NOINHERIT NOSUPERUSER
@@ -120,38 +121,86 @@ docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database
   'DROP ROLE sabora_ci_membership_probe' >/dev/null
 echo 'sabora_nonsuperuser_bootstrap_membership_confirmed'
 
+# Exercise the shared ledger definition with provider-style default grants.
+# Keep the probe in one rolled-back transaction on the same disposable DB.
+{
+ printf '%s\n' 'BEGIN;' 'ALTER DEFAULT PRIVILEGES GRANT ALL ON TABLES TO service_role;' \
+   'ALTER DEFAULT PRIVILEGES GRANT ALL ON SCHEMAS TO service_role;' \
+   'ALTER DEFAULT PRIVILEGES GRANT ALL ON FUNCTIONS TO service_role;'
+ node --input-type=module -e 'import {LEDGER_SQL} from "./scripts/ci/sabora-s46-atomic-migration.mjs"; process.stdout.write(LEDGER_SQL);'
+ printf '%s\n' "SELECT has_schema_privilege('service_role','sabora_migration_meta','USAGE'), has_table_privilege('service_role','sabora_migration_meta.applied_migrations','SELECT,INSERT,UPDATE,DELETE,TRUNCATE'), has_function_privilege('service_role','sabora_migration_meta.reject_ledger_mutation()','EXECUTE');" 'ROLLBACK;'
+} | docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ | grep -Fxq 'f|f|f'
+echo 'sabora_s51_ledger_provider_default_acl_denied'
+
 log="$RUNNER_TEMP/sabora-nonsuperuser-$GITHUB_RUN_ID-$.log"
 count=0
 expected_count="$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | wc -l | tr -d '[:space:]')"
 [[ "$expected_count" =~ ^[1-9][0-9]*$ ]] || {
   echo 'sabora_nonsuperuser_invalid_expected_chain' >&2; exit 1;
 }
-while IFS= read -r name; do
-  [[ "$name" =~ ^[0-9]{14}_[A-Za-z0-9_-]+\.sql$ ]] || {
-    echo 'sabora_nonsuperuser_invalid_migration_name' >&2; exit 1;
-  }
-  if ! docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 \
-      -U "$operator" -d "$database" < "supabase/migrations/$name" > "$log" 2>&1; then
-    echo "sabora_nonsuperuser_migration_blocked:$name" >&2
-    # The fixture contains no operational identities or credentials.
-    grep -E 'ERROR:|FATAL:|permission denied' "$log" | tail -n 4 >&2 || true
-    exit 1
-  fi
-  # Runtime/owner membership must be clean after EACH committed version.
-  committed_unsafe="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
-    -U "$operator" -d "$database" -Atqc \
-    "SELECT count(*) FROM pg_catalog.pg_auth_members m
-     JOIN pg_catalog.pg_roles g ON g.oid=m.roleid
-     JOIN pg_catalog.pg_roles member ON member.oid=m.member
-     JOIN pg_catalog.pg_roles grantor ON grantor.oid=m.grantor
-     WHERE (left(g.rolname,7)='sabora_' OR left(member.rolname,7)='sabora_')
-       AND NOT (left(g.rolname,7)='sabora_' AND member.rolname=current_user::text
-        AND grantor.rolsuper AND m.admin_option AND NOT m.set_option AND NOT m.inherit_option)")"
-  if [[ "$committed_unsafe" != 0 ]]; then
-    echo "sabora_nonsuperuser_postcommit_membership_leak:$name" >&2; exit 1
-  fi
-  ((count+=1))
-done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
+# Same single-session SQL generator as the candidate VPS executor, but the
+# lab connects only to its own network-disabled Docker container.
+docker exec "$container" psql -X -U postgres -d "$database" -v ON_ERROR_STOP=1 -c \
+ "GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO $operator" >/dev/null
+snapshot="$RUNNER_TEMP/s51-snapshot-$GITHUB_RUN_ID-$$.json"
+sqlfile="$RUNNER_TEMP/s51-genesis-$GITHUB_RUN_ID-$$.sql"
+docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ < scripts/ci/sabora-s46-dba-readonly.sql > "$snapshot"
+node --input-type=module -e '
+ import {readFileSync} from "node:fs";
+ import {buildGenesisSql} from "./scripts/ops/sabora-s46-genesis.mjs";
+ process.stdout.write(buildGenesisSql(process.cwd(),JSON.parse(readFileSync(process.argv[1],"utf8"))));
+ ' "$snapshot" > "$sqlfile"
+# Wait for the real cooperative lock in another session, then prove the
+# contender stops before creating any ledger. Keep both in the same fixture.
+docker exec "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ -c 'SELECT pg_advisory_lock(513046,1); SELECT pg_sleep(6);' >/dev/null &
+lock_pid=$!
+held=false
+for _ in $(seq 1 30); do
+ if [[ "$(docker exec "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+  -c "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype='advisory' AND classid=513046 AND objid=1 AND objsubid=2 AND granted)")" == t ]]; then
+  held=true
+  break
+ fi
+ sleep 0.1
+done
+[[ "$held" == true ]]
+if docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U "$operator" -d "$database" < "$sqlfile" > "$log" 2>&1; then
+ echo 'sabora_s51_concurrent_operation_not_denied' >&2
+ exit 1
+fi
+grep -F 'sabora_genesis_concurrent' "$log" >/dev/null
+test "$(docker exec "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ -c "SELECT to_regnamespace('sabora_migration_meta') IS NULL")" = t
+wait "$lock_pid"
+echo 'sabora_s51_concurrent_genesis_denied_before_ledger'
+if ! docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 \
+ -U "$operator" -d "$database" < "$sqlfile" > "$log" 2>&1; then
+ echo 'sabora_nonsuperuser_migration_blocked:single-session' >&2
+ grep -E 'ERROR:|FATAL:|permission denied' "$log" | tail -n 4 >&2 || true
+ exit 1
+fi
+grep -Fx 'sabora_s51_genesis_catalog_ledger_verified' "$log" >/dev/null
+node --input-type=module -e '
+ import {readFileSync} from "node:fs";
+ import {buildMigrationManifest} from "./scripts/ci/migration-manifest.mjs";
+ import {verifyAppliedGenesisLedger} from "./scripts/ops/sabora-s46-genesis.mjs";
+ process.stdout.write("sabora_s51_applied_ledger_sha256:"+verifyAppliedGenesisLedger(
+   readFileSync(process.argv[1],"utf8"),buildMigrationManifest(process.cwd()))+"\n");
+ ' "$log"
+count="$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
+ 'SELECT count(*) FROM sabora_migration_meta.applied_migrations')"
+# Replay of the same genesis is denied by the live catalog guard, not by a
+# malformed script or an invented offline result.
+if docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 \
+ -U "$operator" -d "$database" < "$sqlfile" > "$log" 2>&1; then
+ echo 'sabora_s51_genesis_replay_not_denied' >&2; exit 1
+fi
+grep -F 'sabora_genesis_catalog_drift' "$log" >/dev/null
+rm -f "$snapshot" "$sqlfile"
+echo 'sabora_s51_genesis_single_session_and_replay_verified'
 [[ "$count" -eq "$expected_count" ]] || { echo "sabora_nonsuperuser_incomplete_chain:$count/$expected_count" >&2; exit 1; }
 
 # Exact provider-generated DBA membership is the ONLY tolerated membership
@@ -221,4 +270,65 @@ if docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
 fi
 echo 'sabora_provider_restricted_runtime_denied'
 rm -f "$log"
+# All versions and checksums must agree with the exact source tree.
+ledger_actual="$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
+ "SELECT name || ':' || sha256 FROM sabora_migration_meta.applied_migrations ORDER BY version")"
+ledger_expected="$(node scripts/ci/migration-manifest.mjs | node -e \
+ 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>console.log(JSON.parse(s).migrations.map(x=>x.name+":"+x.sha256).join("\n")))')"
+[[ "$ledger_actual" == "$ledger_expected" ]] || { echo 'sabora_s51_ledger_mismatch' >&2; exit 1; }
+# Exercise a COMMIT-time deferred constraint failure after the shared builder
+# inserts its ledger record. Neither DDL nor ledger row may survive.
+probe="$RUNNER_TEMP/s51-commit-probe-$GITHUB_RUN_ID-$.sql"
+node --input-type=module -e '
+ import {renderAtomicMigration} from "./scripts/ci/sabora-s46-atomic-migration.mjs";
+ import {createHash} from "node:crypto";
+ const b=Buffer.from("BEGIN;\nCREATE TABLE sabora_migration_meta.s51_parent(id int PRIMARY KEY);\nCREATE TABLE sabora_migration_meta.s51_child(id int REFERENCES sabora_migration_meta.s51_parent(id) DEFERRABLE INITIALLY DEFERRED);\nINSERT INTO sabora_migration_meta.s51_child VALUES (1);\nCOMMIT;\n");
+ process.stdout.write(renderAtomicMigration({name:"00000000000000_s51_atomic_probe.sql",version:"00000000000000",bytes:b.length,sha256:createHash("sha256").update(b).digest("hex")},b));
+ ' > "$probe"
+if docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" < "$probe" > "$log" 2>&1; then
+ echo 'sabora_s51_commit_failure_not_rejected' >&2; exit 1
+fi
+grep -F 'violates foreign key constraint' "$log" >/dev/null
+rm -f "$probe" "$log"
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
+ "SELECT to_regclass('sabora_migration_meta.s51_child') IS NULL AND to_regclass('sabora_migration_meta.s51_parent') IS NULL AND NOT EXISTS (SELECT 1 FROM sabora_migration_meta.applied_migrations WHERE version='00000000000000')")" == t ]] || exit 1
+if docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" -c \
+ 'TRUNCATE sabora_migration_meta.applied_migrations' >/dev/null 2>&1; then
+ echo 'sabora_s51_ledger_truncate_not_rejected' >&2; exit 1
+fi
+# The relocated pre-COMMIT CV005 check must reject a genuine, unsafe
+# membership change and roll back the ledger entry in the very same transaction.
+probe="$RUNNER_TEMP/s51-membership-probe-$GITHUB_RUN_ID-$.sql"
+node --input-type=module -e '
+ import {renderAtomicMigration} from "./scripts/ci/sabora-s46-atomic-migration.mjs";
+ import {createHash} from "node:crypto";
+ const b=Buffer.from("BEGIN;\nGRANT sabora_h6_fn_owner TO cv005_ci_restricted_probe WITH SET TRUE, INHERIT TRUE;\nCOMMIT;\n");
+ process.stdout.write(renderAtomicMigration({name:"00000000000001_s51_membership_probe.sql",version:"00000000000001",bytes:b.length,sha256:createHash("sha256").update(b).digest("hex")},b));
+ ' > "$probe"
+if docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" < "$probe" > "$log" 2>&1; then
+ echo 'sabora_s51_membership_failure_not_rejected' >&2; exit 1
+fi
+grep -F 'sabora_s51_unsafe_membership' "$log" >/dev/null
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
+ "SELECT NOT EXISTS (SELECT 1 FROM pg_auth_members WHERE roleid=(SELECT oid FROM pg_roles WHERE rolname='sabora_h6_fn_owner') AND member=(SELECT oid FROM pg_roles WHERE rolname='cv005_ci_restricted_probe')) AND NOT EXISTS (SELECT 1 FROM sabora_migration_meta.applied_migrations WHERE version='00000000000001')")" == t ]] || exit 1
+rm -f "$probe" "$log"
+echo 'sabora_s51_membership_failure_rolled_back'
+# Residual CREATE for a NOLOGIN owner is forbidden even when its memberships
+# are clean. The same shared guard must abort it with its ledger row.
+probe="$RUNNER_TEMP/s51-create-probe-$GITHUB_RUN_ID-$.sql"
+node --input-type=module -e '
+ import {renderAtomicMigration} from "./scripts/ci/sabora-s46-atomic-migration.mjs";
+ import {createHash} from "node:crypto";
+ const b=Buffer.from("BEGIN;\nGRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;\nCOMMIT;\n");
+ process.stdout.write(renderAtomicMigration({name:"00000000000002_s51_create_probe.sql",version:"00000000000002",bytes:b.length,sha256:createHash("sha256").update(b).digest("hex")},b));
+ ' > "$probe"
+if docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" < "$probe" > "$log" 2>&1; then
+ echo 'sabora_s51_residual_create_not_rejected' >&2; exit 1
+fi
+grep -F 'sabora_s51_residual_schema_create' "$log" >/dev/null
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
+ "SELECT NOT has_schema_privilege('sabora_h6_fn_owner','sabora','CREATE') AND NOT EXISTS (SELECT 1 FROM sabora_migration_meta.applied_migrations WHERE version='00000000000002')")" == t ]] || exit 1
+rm -f "$probe" "$log"
+echo 'sabora_s51_residual_create_rolled_back'
+echo 'sabora_s51_nonsuperuser_atomic_ledger_verified'
 echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"
