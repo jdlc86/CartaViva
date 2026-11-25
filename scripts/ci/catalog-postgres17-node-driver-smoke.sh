@@ -35,6 +35,7 @@ node --check scripts/ci/ownership-governance-postgres17.test.mjs
 node --check scripts/ci/cv014-communications-postgres17.test.mjs
 node --check scripts/ci/waiter-calls-postgres17.test.mjs
 node --check scripts/ci/staff-lifecycle-postgres17.test.mjs
+node --check scripts/ci/staff-root-bootstrap-postgres17.test.mjs
 node --check scripts/ci/staff-display-id-postgres17.test.mjs
 node --check scripts/ci/staff-directory-postgres17.test.mjs
 node --check scripts/ci/staff-invitation-outbox-postgres17.test.mjs
@@ -145,6 +146,10 @@ if [[ "$scope" = issue61 ]]; then
  fi
  exit 0
 fi
+# ROOT bootstrap requires empty staff tables and an irreversible receipt;
+# clone the freshly migrated disposable DB before other suites seed identities.
+docker exec -e PGPASSWORD=sabora_ci_ephemeral_only "$container" psql -X -h 127.0.0.1 -v ON_ERROR_STOP=1 -U postgres -d postgres -c 'CREATE DATABASE sabora_root_bootstrap_ci TEMPLATE postgres' >/dev/null
+node --test scripts/ci/staff-root-bootstrap-postgres17.test.mjs
 node --test scripts/ci/catalog-postgres17-driver-integration.test.mjs
 node --test scripts/ci/order-operations-postgres17-integration.test.mjs
 node --test scripts/ci/order-operations-identity-postgres17.test.mjs

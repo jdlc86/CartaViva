@@ -88,7 +88,8 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
     }
   };
 
-  function register(app, {forRoles, features}) {
+  function register(app, {forRoles, features, rootBootstrap}) {
+    if(rootBootstrap!==undefined&&typeof rootBootstrap!=='function')throw Error('invalid_root_bootstrap_config');
     const staff = forRoles(ROLES);
     const [, authorizeMembership] = staff;
     const originOnly = async (request, reply) => {
@@ -117,17 +118,30 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
         return unavailable(reply);
       }
     });
-    app.post(PATH + '/verify', {preHandler: originOnly, bodyLimit: 16_384}, async (request, reply) => {
+    const completePasskey = async (request, reply, bootstrap) => {
       const [challenge, expires] = (open(request, CHALLENGE) ?? '').split('.');
       const credential = request.body?.credential;
       reply.header('Set-Cookie', cookie(CHALLENGE, '', 0));
       if (!UUID.test(challenge) || !(Number(expires) > clock()) || !verifiedAssertion(credential, origin))
         return unauthorized(reply);
+      if(bootstrap&&(Object.keys(request.body??{}).sort().join(',')!=='authorizationCode,credential,grantId'||
+        !UUID.test(request.body.grantId??'')||typeof request.body.authorizationCode!=='string'||
+        !/^[A-Za-z0-9_-]{43}$/.test(request.body.authorizationCode)))return unauthorized(reply);
       try {
         const result = await provider.verify(challenge, credential);
         const token = result?.access_token;
         const identity = await verify(token);
         if (!identity) return unauthorized(reply);
+        if(bootstrap){
+          if((await provider.user(token))?.id!==identity.userId)return unauthorized(reply);
+          try{
+            if(await rootBootstrap({identity,grantId:request.body.grantId,
+              authorizationCode:request.body.authorizationCode})!==true)return unauthorized(reply);
+          }catch(error){
+            if(error?.code==='42501'||error?.message==='invalid_root_bootstrap_request')return unauthorized(reply);
+            return unavailable(reply);
+          }
+        }
         request.verifiedIdentity = identity;
         await authorizeMembership(request, reply);
         if (reply.sent) return;
@@ -138,7 +152,13 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
       } catch {
         return unavailable(reply);
       }
-    });
+    };
+    app.post(PATH + '/verify', {preHandler: originOnly, bodyLimit: 16_384},
+      (request,reply)=>completePasskey(request,reply,false));
+    // No runtime composition enables this candidate route. Only a dedicated
+    // operator-authorized bootstrap installation may supply the callback.
+    if(rootBootstrap)app.post(PATH+'/bootstrap/root',{preHandler:originOnly,bodyLimit:16_384},
+      (request,reply)=>completePasskey(request,reply,true));
     app.post(PATH + '/logout', {preHandler: originOnly}, async (request, reply) => {
       try {
         const token = open(request, SESSION);

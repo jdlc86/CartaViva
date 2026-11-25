@@ -36,3 +36,10 @@ El antiguo `admin-write-gate.mjs` se retiró: su consulta separada no podía imp
 
 **No confundir:** implementación candidata y CI aislada **no** equivalen a identidad operativa aprovisionada, usuarios reales, despliegue, revisión externa ni autorización de fusionar o de aplicar migraciones. ROOT sigue **sin poder** ser titular ADMIN ni hacer escrituras administrativas ordinarias; nada en esta adenda inventa excepciones. [Preflight de integración S34](../reviews/SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md).
 
+## Adenda S52 — decisión de arranque inicial (26-11-2026)
+
+El propietario aprobó el flujo excepcional de inicialización: una autorización inicial de un solo uso vincula una identidad confirmada y passkey verificada a ROOT único y activo; su consumo y la creación de ROOT deben ser atómicos y auditables. No existe alta ordinaria de ROOT ni reutilización de la autorización tras consumo.
+
+Antes de existir el primer ADMIN titular, ROOT puede autorizar exclusivamente la incorporación excepcional del primer ADMIN, mediante el ciclo de invitación, aceptación, registro de passkey y activación, con revocación desde el primer registro durable. Una vez activo, ROOT le asigna la titularidad por el mecanismo de gobierno existente. La excepción queda inutilizada al completar el arranque. ROOT nunca se convierte en titular ni adquiere escritura administrativa ordinaria; no se alteran los permisos del ciclo posterior. La implementación debe impedir carreras, altas paralelas por la excepción, replay y activación sin credencial verificada; cualquier reanudación antes de finalizar conserva la auditoría y no permite reactivar un registro revocado.
+
+Esta decisión se incorpora como candidata en el PR #92 hasta integración autorizada. No autoriza crear usuarios, aplicar SQL, desplegar ni configurar proveedores. El primer incremento técnico de ROOT se mantiene en SQL desechable; las decisiones de retención/recuperación y extensión de V2 se resuelven separadamente.
