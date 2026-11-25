@@ -256,3 +256,8 @@ Propietario autorizó el bloque de identidades/HMAC y red exclusiva mediante «A
 ## S51 · Encargo único de cierre operativo a Codex
 
 El propietario autoriza preparar el encargo y asume personalmente la validación visual y funcional de ambas PWA. [Encargo](../assignments/CODEX_S51_PRIMER_DESPLIEGUE_CIERRE_OPERATIVO_2026-11-24.md): reutilizar main y el aprovisionamiento real SQL ya completado, resolver en un bloque egress/receptor/acceso ficticio/instalación V2/plan exacto, pruebas integradoras y entrega al operador. Sin PR salvo defecto imprescindible; sin cambios VPS/Supabase ni deploy por publicar este encargo. La autorización de despliegue debe quedar vinculada al SHA final por V2; aceptación humana pendiente hasta que el propietario pruebe las apps.
+
+
+## Fase de cierre final · 25-11-2026
+
+El propietario solicita inventario de arquitectura y funcionalidad para el despliegue final. [Inventario único](../tracking/SABORA_FINAL_DEPLOYMENT_CLOSURE_INVENTORY_2026-11-25.md): 11 frentes arquitectura/operación y 15 recorridos funcionales, trazabilidad CV001–019, decisiones pendientes y propuesta de cuatro hitos. Main da02d5d97c3eb26d4c1530e0b0c4c4f7a14012d7, PR #92 Draft 8c9497225651602d848cc805321bc14b1ec0ef77; informe Codex y fuentes normativas contrastados. Login gestión sin montaje real, llamada y cambio de mesa restringidos MODE=test, reservas/Excel/Stripe/IA/directorio pendientes según evidencia. Diferenciar primer ensayo ficticio y uso real; aceptación visual/funcional del propietario. Inventario inicial, auditoría diferencial exhaustiva pendiente. Sin cambios código/PR92/main/infraestructura; no autoriza despliegue.
