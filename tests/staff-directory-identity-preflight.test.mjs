@@ -7,7 +7,7 @@ const valid={current_role:'sabora_staff_directory_ci',session_role:'sabora_staff
  superuser:false,bypass_rls:false,can_login:true,inherits_roles:false,can_create_role:false,
  can_create_db:false,can_replicate:false,schema_usage:true,schema_create:false,database_create:false,
  directory_execute:true,accessible_private_tables:0,accessible_private_sequences:0,
- accessible_definer_routines:1,directory_is_definer:true,
+ accessible_private_routines:1,directory_is_definer:true,
  directory_owner:'sabora_staff_directory_fn_owner',search_path_locked:true,owner_is_sealed:true,
  owner_memberships:0,contact_rls_forced:true,has_role_memberships:false};
 const pool=(row=valid)=>({connect:async()=>({query:async(sql,values)=>{
@@ -20,7 +20,7 @@ test('directory preflight accepts only the exact restricted login',async()=>{
 });
 
 test('directory preflight rejects privilege, identity, RLS and owner drift',async()=>{
- for(const change of [{superuser:true},{accessible_private_tables:1},{accessible_definer_routines:2},
+ for(const change of [{superuser:true},{accessible_private_tables:1},{accessible_private_routines:2},
   {contact_rls_forced:false},{owner_memberships:1},{current_role:'other'}])
   await assert.rejects(preflightStaffDirectoryIdentity({pool:pool({...valid,...change}),
    role:'sabora_staff_directory_ci'}),/staff_directory_sql_identity_rejected/);

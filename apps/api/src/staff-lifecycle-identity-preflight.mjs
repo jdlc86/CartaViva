@@ -37,9 +37,11 @@ export async function preflightStaffLifecycleIdentity({pool, role} = {}) {
               has_schema_privilege(current_user,'sabora','USAGE') AS schema_usage,
               has_schema_privilege(current_user,'sabora','CREATE') AS schema_create,
               has_database_privilege(current_user,current_database(),'CREATE') AS database_create,
-              has_function_privilege(current_user,
+              (has_function_privilege(current_user,
                 'sabora.transition_staff_lifecycle_with_directory_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text)',
-                'EXECUTE') AS lifecycle_execute,
+                'EXECUTE') AND NOT has_function_privilege(current_user,
+                'sabora.transition_staff_lifecycle_with_directory_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text)',
+                'EXECUTE WITH GRANT OPTION')) AS lifecycle_execute,
               (SELECT count(*)::integer
                  FROM pg_catalog.pg_class resource
                  JOIN pg_catalog.pg_namespace ns ON ns.oid=resource.relnamespace
@@ -68,9 +70,9 @@ export async function preflightStaffLifecycleIdentity({pool, role} = {}) {
               (SELECT count(*)::integer
                  FROM pg_catalog.pg_proc routine
                  JOIN pg_catalog.pg_namespace ns ON ns.oid=routine.pronamespace
-                WHERE ns.nspname='sabora' AND routine.prosecdef
+                WHERE ns.nspname='sabora'
                   AND has_function_privilege(current_user,routine.oid,'EXECUTE')
-              ) AS accessible_private_definer_routines,
+              ) AS accessible_private_routines,
               (SELECT routine.prosecdef
                  FROM pg_catalog.pg_proc routine
                 WHERE routine.oid=
@@ -131,7 +133,7 @@ export async function preflightStaffLifecycleIdentity({pool, role} = {}) {
         row.schema_usage !== true || row.schema_create !== false ||
         row.database_create !== false || row.lifecycle_execute !== true ||
         row.accessible_private_tables !== 0 || row.accessible_private_sequences !== 0 ||
-        row.accessible_private_definer_routines !== 1 ||
+        row.accessible_private_routines !== 1 ||
         row.lifecycle_is_definer !== true ||
         row.lifecycle_owner !== 'sabora_staff_directory_fn_owner' ||
         row.lifecycle_search_path_locked !== true || row.lifecycle_owner_is_sealed !== true ||
@@ -139,7 +141,7 @@ export async function preflightStaffLifecycleIdentity({pool, role} = {}) {
         row.has_role_memberships !== false ||
         !Number.isSafeInteger(row.accessible_private_tables) ||
         !Number.isSafeInteger(row.accessible_private_sequences) ||
-        !Number.isSafeInteger(row.accessible_private_definer_routines) ||
+        !Number.isSafeInteger(row.accessible_private_routines) ||
         !Number.isSafeInteger(row.lifecycle_owner_memberships) ||
         !Number.isSafeInteger(row.forced_rls_lifecycle_tables)) {
       throw Error('staff_lifecycle_sql_identity_rejected');

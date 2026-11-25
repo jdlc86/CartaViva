@@ -125,6 +125,13 @@ test('PG17 directory runtime has one RPC, FORCE RLS and no direct or escalated a
   'UPDATE sabora.staff_members SET state=state','CREATE TABLE sabora.directory_escape(id integer)',
   'SET ROLE sabora_staff_directory_fn_owner'])
   await assert.rejects(directoryPool.query(statement),/permission denied|must be able to SET ROLE/);
+ await admin.query('GRANT TRIGGER ON sabora.staff_directory_contacts TO '+directoryRole);
+ try{
+  await assert.rejects(preflightStaffDirectoryIdentity({pool:directoryPool,role:directoryRole}),
+   /staff_directory_sql_identity_rejected/);
+ }finally{
+  await admin.query('REVOKE TRIGGER ON sabora.staff_directory_contacts FROM '+directoryRole);
+ }
 });
 
 test('PG17 staff identity and directory SQL reject NULL signed capabilities without writes or disclosures',async()=>{
