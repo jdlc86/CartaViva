@@ -67,6 +67,14 @@ export function createStaffSessionFetch(session: StaffSession, onExpired: () => 
     headers.set(SESSION_HEADER, session.sessionId);
     const response = await fetch(input, {...options, headers, credentials: 'same-origin', redirect: 'error'});
     if (response.status === 401) onExpired();
+    if (response.status === 403) {
+      const current = await readStaffSession().catch(() => null);
+      if (current?.sessionId !== session.sessionId || current.role !== session.role) onExpired();
+    }
+    if (response.status === 503) {
+      const failure = await response.clone().json().catch(() => null);
+      if (failure?.error === 'staff_auth_unavailable') onExpired();
+    }
     return response;
   };
 }

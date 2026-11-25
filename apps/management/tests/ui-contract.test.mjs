@@ -80,9 +80,9 @@ test('navigation is deep-linkable and read transports remain injected and discon
   const tables = readFileSync(new URL('../src/views/TablesView.tsx', import.meta.url), 'utf8');
   const catalog = readFileSync(new URL('../src/views/CatalogView.tsx', import.meta.url), 'utf8');
   assert.match(main, /href=\{toManagementHash\(section\.id\)\}/);
-  assert.match(main, /aria-current=\{area === section\.id \? 'page'/);
+  assert.match(main, /aria-current=\{activeArea === section\.id \? 'page'/);
   assert.match(main, /window\.addEventListener\('popstate'/);
-  assert.match(main, /renderManagement\(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut\)/);
+  assert.match(main, /renderManagement\(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut,staffRole\)/);
   assert.match(main, /enableOwnershipGovernance = false/);
   assert.match(main, /ownershipGateway\?\.revoke\(\)/);
   assert.match(main, /ownershipGateway=\{ownershipGateway\}/);

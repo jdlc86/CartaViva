@@ -37,6 +37,12 @@ const sections: ReadonlyArray<{id: ManagementArea; label: string; detail: string
   {id:'configuracion', label:'Configuración',detail:'Comunicaciones y finanzas',icon:'overview'},
   {id:'equipo', label: 'Equipo', detail: 'Roles y titularidad', icon: 'team'},
 ];
+const areasByRole: Record<StaffSession['role'], readonly ManagementArea[]> = {
+  root: ['resumen','catalogo','mesas','configuracion','equipo'],
+  admin: ['resumen','catalogo','mesas','comandas','caja','configuracion','equipo'],
+  waiter: ['resumen','mesas','comandas','caja'],
+  kitchen: ['resumen','comandas'],
+};
 
 export function ManagementApp({
   tablesGateway,
@@ -48,6 +54,7 @@ export function ManagementApp({
   staffDirectoryGateway,
   financeGateway,
   ownershipGateway,
+  staffRole,
   onSignOut,
 }: {
   tablesGateway?: AdminTablesGateway;
@@ -59,6 +66,7 @@ export function ManagementApp({
   staffDirectoryGateway?: StaffDirectoryGateway;
   financeGateway?: M3AuthenticatedManagementGateway;
   ownershipGateway?: OwnershipGovernanceGateway;
+  staffRole?: StaffSession['role'];
   onSignOut?: () => void;
 }) {
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
@@ -111,7 +119,17 @@ export function ManagementApp({
   const focusAfterNavigation = useRef(false);
   const hasReadProjection = Boolean(tablesGateway || catalogGateway || catalogManagementGateway || staffDirectoryGateway);
   const hasOperationalChannel = Boolean(operationsGateway);
-  const activeSection = sections.find((section) => section.id === area) ?? sections[0];
+  const visibleSections = sections.filter(({id}) => {
+    if (staffRole && !areasByRole[staffRole].includes(id)) return false;
+    if (id === 'configuracion') return financeAllowed || commsAllowed;
+    if (!staffRole) return true;
+    if (id === 'catalogo') return Boolean(catalogManagementGateway);
+    if (id === 'mesas') return Boolean(tablesGateway || tableChangeGateway);
+    if (id === 'equipo') return Boolean(ownershipGateway || staffGateway || staffDirectoryGateway);
+    return true;
+  });
+  const activeSection = (staffRole ? visibleSections : sections).find((section) => section.id === area) ?? sections[0];
+  const activeArea = activeSection.id;
 
   useEffect(() => {
     const syncFromLocation = () => {
@@ -142,12 +160,12 @@ export function ManagementApp({
     window.scrollTo({top: 0, behavior: 'auto'});
   };
 
-  const activeView = area === 'resumen' ? <SummaryView/>
-    : area === 'catalogo' ? <CatalogView gateway={catalogGateway} managementGateway={catalogManagementGateway} operationsGateway={operationsGateway}/>
-    : area === 'mesas' ? <TablesView gateway={tablesGateway} tableChangeGateway={tableChangeGateway}/>
-    : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
-    : area === 'caja' ? <CashView gateway={operationsGateway}/>
-    : area === 'configuracion' ? <ConfigurationView gateway={financeGateway??null}
+  const activeView = activeArea === 'resumen' ? <SummaryView/>
+    : activeArea === 'catalogo' ? <CatalogView gateway={catalogGateway} managementGateway={catalogManagementGateway} operationsGateway={operationsGateway}/>
+    : activeArea === 'mesas' ? <TablesView gateway={tablesGateway} tableChangeGateway={tableChangeGateway}/>
+    : activeArea === 'comandas' ? <OrdersView gateway={operationsGateway}/>
+    : activeArea === 'caja' ? <CashView gateway={operationsGateway}/>
+    : activeArea === 'configuracion' ? <ConfigurationView gateway={financeGateway??null}
         financeAllowed={financeAllowed} commsAllowed={commsAllowed} canWriteAdmin={canWriteAdmin}/>
     : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway} ownershipGateway={ownershipGateway} onOwnershipChanged={()=>setOwnershipRevision(v=>v+1)}/>;
 
@@ -175,11 +193,11 @@ export function ManagementApp({
             <strong>Administración</strong>
           </div>
           <nav className="management-nav" aria-label="Áreas de gestión">
-            {sections.filter(section=>section.id!=='configuracion'||financeAllowed||commsAllowed).map((section) => (
+            {visibleSections.map((section) => (
               <a
                 key={section.id}
-                className={area === section.id ? 'management-tab management-tab--active' : 'management-tab'}
-                aria-current={area === section.id ? 'page' : undefined}
+                className={activeArea === section.id ? 'management-tab management-tab--active' : 'management-tab'}
+                aria-current={activeArea === section.id ? 'page' : undefined}
                 href={toManagementHash(section.id)}
                 onClick={(event) => {
                   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -245,6 +263,7 @@ function renderManagement(
   managementGateway?:M3AuthenticatedManagementGateway,
   ownershipGateway?:OwnershipGovernanceGateway,
   onSignOut?:()=>void,
+  staffRole?:StaffSession['role'],
 ) {
   if (managementRoot && managementElement !== element) {
     throw Error('management_root_already_mounted');
@@ -273,7 +292,7 @@ function renderManagement(
     <React.StrictMode><ManagementApp key={key} operationsGateway={gateway}
       tableChangeGateway={tableChangeGateway} tablesGateway={managementGateway}
       catalogManagementGateway={managementGateway} financeGateway={managementGateway}
-      ownershipGateway={ownershipGateway} onSignOut={onSignOut}/></React.StrictMode>,
+      ownershipGateway={ownershipGateway} staffRole={staffRole} onSignOut={onSignOut}/></React.StrictMode>,
   ));
 }
 
@@ -288,11 +307,13 @@ export function mountAuthenticatedManagementApp({
   enableWaiterCalls = false,
   enableOwnershipGovernance = false,
   onSignOut,
+  staffRole,
 }: StaffGatewayAuth & {
   element: HTMLElement;
   fetchImpl?: typeof fetch;
   reconnectDelayMs?: number;
   onSignOut?: () => void;
+  staffRole?: StaffSession['role'];
   /** Opt-in only after the server's six isolated SQL logins pass preflight. */
   enableTableChangeQueue?: boolean;
   /** Opt-in only after both M3 SQL capability preflights succeed. */
@@ -331,7 +352,7 @@ export function mountAuthenticatedManagementApp({
     ? {listPendingTableChanges: operationsGateway.listPendingTableChanges,
        decideTableChange: operationsGateway.decideTableChange}
     : undefined;
-  renderManagement(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut);
+  renderManagement(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut,staffRole);
   let disposed = false;
   return () => {
     if (disposed) return;
@@ -391,11 +412,11 @@ function startStaffLogin(element: HTMLElement) {
       });
     };
     const current = mountAuthenticatedManagementApp({element, cookieSession: true,
-      fetchImpl: createStaffSessionFetch(session, expire), onSignOut: signOut,
-      enableTableChangeQueue: session.features.tableChange,
-      enableWaiterCalls: session.features.waiterCalls,
-      enableM3Management: session.features.management,
-      enableOwnershipGovernance: session.features.ownership
+      staffRole: session.role, fetchImpl: createStaffSessionFetch(session, expire), onSignOut: signOut,
+      enableTableChangeQueue: session.features.tableChange && ['admin', 'waiter'].includes(session.role),
+      enableWaiterCalls: session.features.waiterCalls && session.role === 'waiter',
+      enableM3Management: session.features.management && session.role !== 'kitchen',
+      enableOwnershipGovernance: session.features.ownership && ['root', 'admin'].includes(session.role)
     });
     dispose = current;
     expiry = setTimeout(expire, session.expiresAt * 1000 - Date.now());

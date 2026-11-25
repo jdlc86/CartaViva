@@ -222,6 +222,9 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
   assert((await managementContext.cookies()).some(item=>
    item.name==='__Host-sabora-staff'&&item.httpOnly&&item.secure&&item.sameSite==='Strict'));
   await manager.reload();
+  await manager.getByRole('button',{name:'Cerrar sesión'}).waitFor();
+  assert.equal(await manager.getByRole('link',{name:/Configuración/}).count(),0);
+  assert.equal(await manager.getByRole('link',{name:/Equipo/}).count(),0);
   await manager.getByRole('link',{name:/Comandas/}).click();
   await manager.getByRole('button',{name:'Sala'}).click();
   await manager.getByRole('button',{name:'Marcar atendida'}).waitFor({timeout:15000});

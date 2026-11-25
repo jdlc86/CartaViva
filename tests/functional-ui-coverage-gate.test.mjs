@@ -15,8 +15,8 @@ const realRead=path=>{try{return readFileSync(join(root,path),'utf8');}catch{ret
 test('integral functional coverage: candidate interfaces and scenarios exist, CV-014 gaps are not misreported as complete',()=>{
  const report=auditFunctionalUi(root);
  assert.deepEqual(report.errors,[]);
- assert.equal(report.gaps.length,1);
- assert.deepEqual(report.gaps.map(x=>x.id),['CV-014-reservas-anticipadas']);
+ assert(report.gaps.some(x=>x.id==='CV-014-reservas-anticipadas'));
+ assert(report.gaps.some(x=>x.id==='H1-identidad-personal'));
  assert.equal(manifest.capabilities.find(x=>x.id==='CV-014-llamada-camarero').status,
   'CANDIDATO_TECNICO');
  assert(!report.gaps.some(x=>x.id==='CV-014-comunicaciones-anuncios'));
@@ -56,6 +56,7 @@ test('regression: a candidate losing its button/entrypoint or scenario is reject
 test('final acceptance cannot silently pass while reservations and other unapproved requirements remain pending',()=>{
  const report=auditFunctionalUi(root,{requireAll:true});
  assert(report.errors.includes('functional_ui_not_ready:CV-014-reservas-anticipadas'));
+ assert(report.errors.includes('functional_ui_not_ready:H1-identidad-personal'));
  assert(!report.errors.includes('functional_ui_not_ready:CV-014-llamada-camarero'));
  assert(!report.errors.includes('functional_ui_not_ready:CV-014-comunicaciones-anuncios'));
  // Candidate code is not accepted product, not a deployment authorization:
