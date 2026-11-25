@@ -73,14 +73,16 @@ export function createStaffLifecycleCoordinator({
   hashInviteeEmail,
   verifyCredentialRegistration,
   uuid,
+  revocationOnly = false,
 } = {}) {
   if (typeof withTransaction !== 'function' ||
       !repository || typeof repository.transition !== 'function' ||
       typeof issueCapability !== 'function' ||
+      typeof revocationOnly !== 'boolean' || (!revocationOnly && (
       typeof issueInvitationToken !== 'function' ||
       typeof hashInviteeEmail !== 'function' ||
       typeof verifyCredentialRegistration !== 'function' ||
-      typeof uuid !== 'function') {
+      typeof uuid !== 'function'))) {
     throw Error('invalid_staff_lifecycle_coordinator_config');
   }
 
@@ -95,6 +97,7 @@ export function createStaffLifecycleCoordinator({
         throw Error('invalid_staff_lifecycle_request');
       }
       const action = actionDescriptor.value;
+      if (revocationOnly && action !== 'revoke') throw Error('invalid_staff_lifecycle_request');
       const adminRequired = ADMIN_ACTIONS.has(action);
       const actorId = verifiedActor(context, adminRequired);
       let enrollmentId;

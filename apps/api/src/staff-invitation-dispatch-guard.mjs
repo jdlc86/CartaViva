@@ -30,3 +30,26 @@ export async function authorizeStaffInvitationDispatch({
     return Object.freeze({authorized: true});
   });
 }
+
+// Called with an existing claim. The material reader only returns an
+// enrollment URL after its own fenced read. No transaction spans the send.
+export async function dispatchStaffInvitation({withTransaction,repository,jobId,fence,
+  readDelivery,send,recordOutcome}){
+  if(typeof readDelivery!=='function'||typeof send!=='function'||typeof recordOutcome!=='function')
+    throw Error('invalid_staff_dispatch_config');
+  const decision=await authorizeStaffInvitationDispatch({withTransaction,repository,jobId,fence});
+  if(!decision.authorized)return decision;
+  let outcome='unknown';
+  try{
+    const delivery=await readDelivery({jobId,fence});
+    if(delivery?.authorized===true){
+      const receipt=await send({jobId,recipient:delivery.recipient,enrollmentUrl:delivery.enrollmentUrl});
+      if(['accepted','permanent_failure'].includes(receipt?.outcome))outcome=receipt.outcome;
+    }else if(delivery?.authorized===false){
+      outcome='permanent_failure';
+    }
+  }catch{
+    // Do not automatically reschedule after a definitive dispatch fence.
+  }
+  return recordOutcome({jobId,fence,outcome});
+}

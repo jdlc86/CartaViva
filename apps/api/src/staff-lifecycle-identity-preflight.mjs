@@ -1,3 +1,5 @@
+import {CV005_BOOTSTRAP_GRANT} from './order-operations-identity-preflight.mjs';
+
 const ROLE_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 
 function validRole(role) {
@@ -97,6 +99,7 @@ export async function preflightStaffLifecycleIdentity({pool, role} = {}) {
                  JOIN pg_catalog.pg_roles owner
                    ON owner.oid=membership.roleid OR owner.oid=membership.member
                 WHERE owner.rolname='sabora_staff_directory_fn_owner'
+                  AND NOT (membership.roleid=owner.oid AND (${CV005_BOOTSTRAP_GRANT}))
               ) AS lifecycle_owner_memberships,
               (SELECT count(*)::integer
                  FROM pg_catalog.pg_class resource
@@ -113,7 +116,7 @@ export async function preflightStaffLifecycleIdentity({pool, role} = {}) {
                   AND resource.relrowsecurity AND resource.relforcerowsecurity
               ) AS forced_rls_lifecycle_tables,
               EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members membership
-                WHERE membership.member=role.oid) AS has_role_memberships
+                WHERE membership.member=role.oid OR membership.roleid=role.oid) AS has_role_memberships
          FROM pg_catalog.pg_roles role
         WHERE role.rolname=current_user`
     );

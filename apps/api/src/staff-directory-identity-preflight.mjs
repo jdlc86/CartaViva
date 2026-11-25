@@ -1,3 +1,5 @@
+import {CV005_BOOTSTRAP_GRANT} from './order-operations-identity-preflight.mjs';
+
 const ROLE=/^[a-z][a-z0-9_]{0,62}$/;
 const ROUTINE='sabora.read_staff_directory_authorized_candidate(text,text,uuid,text,text,uuid,text,integer,integer,bigint,bigint,text)';
 
@@ -61,12 +63,13 @@ export async function preflightStaffDirectoryIdentity({pool,role}={}){
     WHERE owner.rolname='sabora_staff_directory_fn_owner') AS owner_is_sealed,
    (SELECT count(*)::integer FROM pg_catalog.pg_auth_members membership
     JOIN pg_catalog.pg_roles owner ON owner.oid=membership.roleid OR owner.oid=membership.member
-    WHERE owner.rolname='sabora_staff_directory_fn_owner') AS owner_memberships,
+    WHERE owner.rolname='sabora_staff_directory_fn_owner'
+      AND NOT (membership.roleid=owner.oid AND (${CV005_BOOTSTRAP_GRANT}))) AS owner_memberships,
    (SELECT resource.relrowsecurity AND resource.relforcerowsecurity
     FROM pg_catalog.pg_class resource JOIN pg_catalog.pg_namespace ns ON ns.oid=resource.relnamespace
     WHERE ns.nspname='sabora' AND resource.relname='staff_directory_contacts') AS contact_rls_forced,
    EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members membership
-    WHERE membership.member=role.oid) AS has_role_memberships
+    WHERE membership.member=role.oid OR membership.roleid=role.oid) AS has_role_memberships
    FROM pg_catalog.pg_roles role WHERE role.rolname=current_user`,[ROUTINE]);
   if(!Array.isArray(result?.rows)||result.rows.length!==1)
    throw Error('staff_directory_sql_identity_rejected');

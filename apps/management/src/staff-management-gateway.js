@@ -1,5 +1,6 @@
 const CORRELATION=/^[A-Za-z0-9_-]{8,128}$/;
 const CODE=/^[0-9A-Z]{3}$/;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class StaffManagementGatewayError extends Error {
   constructor(code,details=null){super(code);this.name='StaffManagementGatewayError';this.code=code;this.details=details;}
@@ -34,6 +35,16 @@ function maintenance(value,action){
 export function createStaffManagementGateway({send=globalThis.fetch}={}){
   if(typeof send!=='function')throw Error('invalid_staff_management_gateway');
   return Object.freeze({
+    async revokeAccess({enrollmentId,reason,correlationId}={}){
+      if(!UUID.test(enrollmentId??'')||typeof reason!=='string'||!reason.trim()||
+        reason.trim().length>500||!CORRELATION.test(correlationId??''))
+        throw Error('invalid_staff_revocation');
+      const value=await mutation(send,'/api/v1/staff/lifecycle',{action:'revoke',
+        enrollmentId,subjectUserId:null,reason:reason.trim(),correlationId});
+      if(value?.enrollmentId!==enrollmentId||value.state!=='revoked'||typeof value.repeated!=='boolean')
+        throw new StaffManagementGatewayError('invalid_response');
+      return Object.freeze({enrollmentId,state:'revoked',repeated:value.repeated});
+    },
     async invite({email,givenName,familyName,requestedRole,correlationId}={}){
       if(typeof email!=='string'||typeof givenName!=='string'||typeof familyName!=='string'||
         !['admin','waiter','kitchen'].includes(requestedRole)||!CORRELATION.test(correlationId??''))

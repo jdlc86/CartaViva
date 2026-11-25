@@ -12,6 +12,8 @@ import {createWaiterCallStaffIssuer} from './waiter-call-candidate.mjs';
 import {hashCustomerSessionToken} from './customer-session.mjs';
 import {createGatewayJwksFetch,createGatewayPasskeyProvider,isStaffAuthPublishableKey} from './gateway-jwks-fetch.mjs';
 import {createStaffPasskeySession} from './staff-passkey-session.mjs';
+import {createStaffDirectoryCapabilityIssuer} from './staff-directory-capability.mjs';
+import {createStaffLifecycleDirectoryCapabilityIssuer} from './staff-lifecycle-capability.mjs';
 import {validateSaboraEgressPolicy} from './sabora-egress-gateway.mjs';
 import {PILOT_ACTIVATION_REQUIREMENTS,assertFirstTestActivation} from './pilot-activation-gate.mjs';
 
@@ -41,6 +43,8 @@ const META=Object.freeze({
  'tableChange.h6ReadPool':['sabora_b3_h6_reader_runtime','customer_economic_read'],
  'tableChange.pendingPool':['sabora_f12_pending_reader_runtime','pending_table_change_read'],
  'staff.pool':['sabora_staff_reader','staff_membership_read'],
+ 'staff.directory.pool':['sabora_staff_directory_reader','staff_directory_read'],
+ 'staff.revocation.pool':['sabora_staff_lifecycle_writer','staff_lifecycle_revocation'],
  'h4.operationsPool':['sabora_b3_h4_transition_runtime','kitchen_waiter_operations'],
  'h6.customerPool':['sabora_h6_customer_runtime','h6_customer_economic'],
  'h6.providerPool':['sabora_h6_provider_runtime','payment_provider_ledger'],
@@ -62,7 +66,8 @@ const NOTIFIERS=Object.freeze([
 
 export function describeOperationalSqlContract(features={}){
  const normalized={management:true,ownership:features.ownership===true,
-  communications:features.communications===true,waiterCalls:features.waiterCalls===true};
+  communications:features.communications===true,waiterCalls:features.waiterCalls===true,
+  staffDirectory:features.staffDirectory===true,staffRevocation:features.staffRevocation===true};
  const slots=describeM2RuntimeSqlSlots(normalized).map(item=>{
   const meta=META[item.poolPath];
   if(!meta)throw invalid();
@@ -116,7 +121,8 @@ export function validateOperationalActivationManifest(manifest){
     !['loopback','container_private'].includes(manifest.listener.exposure)||
     (manifest.listener.host==='0.0.0.0'&&manifest.listener.exposure!=='container_private')||
     (manifest.listener.host==='127.0.0.1'&&manifest.listener.exposure!=='loopback'))throw invalid();
- if(!exactKeys(manifest.features,['ownership','communications','waiterCalls'])||
+ if(!exactKeys(manifest.features,['ownership','communications','waiterCalls'],
+   ['staffDirectory','staffRevocation'])||
     Object.values(manifest.features).some(value=>typeof value!=='boolean'))throw invalid();
  if(!exactKeys(manifest.activationEvidence,PILOT_ACTIVATION_REQUIREMENTS)||
     Object.values(manifest.activationEvidence).some(value=>typeof value!=='boolean'))throw invalid();
@@ -171,12 +177,25 @@ export function validateOperationalActivationManifest(manifest){
     notifierKeys.some(path=>manifest.database.notifiers[path]?.credentialSlot!==
       NOTIFIERS.find(item=>item.poolPath===path).credentialSlot||
       manifest.database.notifiers[path]?.dedicatedPool!==true))throw invalid();
- if(!exactKeys(manifest.signing,['keyId','capabilitySecretRef','customerSecretRef','qrSecretRef'])||
-    !KEY_ID.test(manifest.signing.keyId)||
-    ![manifest.signing.capabilitySecretRef,manifest.signing.customerSecretRef,
-      manifest.signing.qrSecretRef].every(value=>REF.test(value))||
-    new Set([manifest.signing.capabilitySecretRef,manifest.signing.customerSecretRef,
-      manifest.signing.qrSecretRef]).size!==3)throw invalid();
+ const signingRefs=['capabilitySecretRef','customerSecretRef','qrSecretRef'];
+ const keyFields=['keyId'];
+ if(manifest.features.staffDirectory){
+  if(!manifest.auth.staffPasskeyPublishableKey)throw invalid();
+  signingRefs.push('staffDirectorySecretRef');
+  keyFields.push('staffDirectoryKeyId');
+ }
+ if(manifest.features.staffRevocation){
+  signingRefs.push('staffRevocationSecretRef');
+  keyFields.push('staffRevocationKeyId');
+ }
+ const signingValues=signingRefs.map(key=>manifest.signing?.[key]);
+ const keyIds=keyFields.map(key=>manifest.signing?.[key]);
+ if(!exactKeys(manifest.signing,[...keyFields,...signingRefs])||
+    !keyIds.every(value=>typeof value==='string'&&KEY_ID.test(value))||
+    new Set(keyIds).size!==keyIds.length||
+    !signingValues.every(value=>REF.test(value))||
+    new Set([...signingValues,...passwordRefs]).size!==signingValues.length+passwordRefs.length)
+  throw invalid();
  const requiredHosts=[issuer.hostname,...new Set(Object.values(slots).map(item=>item.serverName))].sort();
  const allowed=[...manifest.network.allowedTlsHosts].sort();
  if(requiredHosts.length!==allowed.length||requiredHosts.some((host,index)=>host!==allowed[index])||
@@ -329,6 +348,22 @@ export async function materializeOperationalM3Options({manifest,Pool,resolveSecr
    });
   }
   options.staff.requirePasskey=config.stage==='production';
+  const staffSigningValues=new Set([capabilityValue,customerSecret,qrSecret]);
+  for(const [feature,name,issuer] of [
+   ['staffDirectory','directory',createStaffDirectoryCapabilityIssuer],
+   ['staffRevocation','revocation',createStaffLifecycleDirectoryCapabilityIssuer]
+  ]){
+   if(!config.features[feature])continue;
+   const value=await readSecret(config.signing[feature+'SecretRef']);
+   if(value!==value.trim()||/[\r\n]/.test(value)||
+      staffSigningValues.has(value)||
+      (config.stage==='production'&&isUnsafeProductionSecret(value)))throw secretFailure();
+   staffSigningValues.add(value);
+   options.staff[name].issueCapability=issuer({
+    keyId:config.signing[feature+'KeyId'],secret:Buffer.from(value,'utf8'),
+    databaseRole:login('staff.'+name+'.pool')
+   });
+  }
   options.h4.issueTransitionCapability=createOrderOperationCapabilityIssuer({
    keyId:config.signing.keyId,secret:capabilitySecret,databaseRole:login('h4.operationsPool')});
   options.h4.issueReadCapability=createOrderOperationReadCapabilityIssuer({

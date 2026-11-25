@@ -3,10 +3,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {randomUUID,randomBytes,createHash,generateKeyPairSync,sign,verify as verifySignature} from 'node:crypto';
+import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {startPublishedClientPwa,startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
+import {createStaffPasskeyBrowserFixture} from './staff-passkey-browser-fixture.mjs';
 import {createStaffPasskeySession} from '../../apps/api/src/staff-passkey-session.mjs';
 import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
 import {createCustomerCookieAuth,readCustomerCookie} from '../../apps/api/src/customer-cookie-session-candidate.mjs';
@@ -77,60 +78,16 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
   await assert.rejects(pools[1].query('SELECT * FROM sabora.waiter_call_events'),/permission denied/);
   const repository=createWaiterCallComposition({customerPool:pools[0],staffPool:pools[1],
    issueStaffCapability:createWaiterCallStaffIssuer({keyId,secret,databaseRole:loginS})});
-  const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
   const issuer='https://sabora-cv014-ci.test/auth/v1';
-  const jwk={...publicKey.export({format:'jwk'}),alg:'RS256',kid:'call-ci-'+suffix,use:'sig'};
-  const jwt=(id,sessionId)=>{
-   const now=Math.floor(Date.now()/1000);
-   const a=Buffer.from(JSON.stringify({typ:'JWT',alg:'RS256',kid:jwk.kid})).toString('base64url');
-   const b=Buffer.from(JSON.stringify({iss:issuer,aud:'authenticated',sub:id,role:'authenticated',
-    iat:now,exp:now+3600,...(sessionId?{is_anonymous:false,session_id:sessionId,
-     amr:[{method:'passkey',timestamp:now}]}:{})})).toString('base64url');
-   return a+'.'+b+'.'+sign('RSA-SHA256',Buffer.from(a+'.'+b),privateKey).toString('base64url');
-  };
-  // The loopback provider verifies a real Chromium assertion with a
-  // disposable registered public key before issuing its signed fixture JWT.
-  const {privateKey:deviceKey,publicKey:devicePublicKey}=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
-  const credentialId=randomBytes(32),challenges=new Map();
-  const rpId=new URL(managementOrigin).hostname;
-  const rpHash=createHash('sha256').update(rpId).digest();
-  let activeToken;
-  const provider={
-   async options(){
-    const id=randomUUID(),challenge=randomBytes(32).toString('base64url');
-    const expiresAt=Math.floor(Date.now()/1000)+60;
-    challenges.set(id,{challenge,expiresAt});
-    return {challenge_id:id,expires_at:expiresAt,options:{challenge,rpId,timeout:60000}};
-   },
-   async verify(id,credential){
-    const expected=challenges.get(id);
-    challenges.delete(id);
-    if(!expected||expected.expiresAt<=Date.now()/1000||
-       credential.id!==credentialId.toString('base64url'))return null;
-    const response=credential.response;
-    const clientData=Buffer.from(response.clientDataJSON,'base64url');
-    const client=JSON.parse(clientData);
-    const data=Buffer.from(response.authenticatorData,'base64url');
-    if(client.challenge!==expected.challenge||client.origin!==managementOrigin||
-       Buffer.from(response.userHandle,'base64url').toString()!==waiterA||
-       !data.subarray(0,32).equals(rpHash))return null;
-    const signed=Buffer.concat([data,createHash('sha256').update(clientData).digest()]);
-    if(!verifySignature('sha256',signed,devicePublicKey,Buffer.from(response.signature,'base64url')))return null;
-    activeToken=jwt(waiterA,randomUUID());
-    return {access_token:activeToken};
-   },
-   async user(token){return token===activeToken?{id:waiterA}:null;},
-   async logout(token){
-    if(token!==activeToken)return null;
-    activeToken=undefined;
-    return true;
-   }
-  };
-  const guardHooks=createStaffProtectedHooksFromPool({pool:pools[2],issuer,getTrustedKeys:async()=>[jwk]});
+  const authFixture=createStaffPasskeyBrowserFixture({
+   issuer,origin:managementOrigin,kid:'call-ci-'+suffix,userIds:[waiterA]
+  });
+  const {getTrustedKeys,provider,token:jwt}=authFixture;
+  const guardHooks=createStaffProtectedHooksFromPool({pool:pools[2],issuer,getTrustedKeys});
   const passkey=createStaffPasskeySession({origin:managementOrigin,issuer,secret,
-   getTrustedKeys:async()=>[jwk],provider});
+   getTrustedKeys,provider});
   const passkeyGuard=createStaffProtectedHooksFromPool({pool:pools[2],issuer,
-   getTrustedKeys:async()=>[jwk],authenticate:passkey.authenticate});
+   getTrustedKeys,authenticate:passkey.authenticate});
   const forRoles=roles=>async(req,reply)=>{
    // Direct Fastify injections still exercise the two independent Bearer
    // fixtures for concurrency. The browser uses only the passkey session.
@@ -207,16 +164,7 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
   const manager=await managementContext.newPage();
   await manager.setViewportSize({width:1200,height:900});
   await manager.goto(managementOrigin);
-  const cdp=await managementContext.newCDPSession(manager);
-  await cdp.send('WebAuthn.enable');
-  const {authenticatorId}=await cdp.send('WebAuthn.addVirtualAuthenticator',{
-   options:{protocol:'ctap2',transport:'internal',hasResidentKey:true,
-    hasUserVerification:true,isUserVerified:true,automaticPresenceSimulation:true}
-  });
-  await cdp.send('WebAuthn.addCredential',{authenticatorId,credential:{
-   credentialId:credentialId.toString('base64'),privateKey:deviceKey.export({format:'der',type:'pkcs8'}).toString('base64'),
-   rpId:'localhost',isResidentCredential:true,signCount:0,userHandle:Buffer.from(waiterA).toString('base64')
-  }});
+  await authFixture.registerDevice(managementContext,manager,waiterA);
   await manager.getByRole('button',{name:'Entrar con passkey'}).click();
   await manager.getByRole('button',{name:'Cerrar sesión'}).waitFor();
   assert((await managementContext.cookies()).some(item=>

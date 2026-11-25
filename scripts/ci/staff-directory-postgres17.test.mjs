@@ -2,12 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
+import {pathToFileURL} from 'node:url';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createStaffLifecycleDirectoryCapabilityIssuer} from '../../apps/api/src/staff-lifecycle-capability.mjs';
 import {createStaffDirectoryCapabilityIssuer} from '../../apps/api/src/staff-directory-capability.mjs';
 import {createStaffDirectoryRepository} from '../../apps/api/src/staff-directory-repository.mjs';
 import {preflightStaffDirectoryIdentity} from '../../apps/api/src/staff-directory-identity-preflight.mjs';
 import {createStaffCodeMaintenanceCapabilityIssuer} from '../../apps/api/src/staff-code-maintenance-candidate.mjs';
+import {createVerifiedStaffDirectoryFromPool} from '../../apps/api/src/staff-directory-composition.mjs';
+import {createVerifiedStaffLifecycleFromPool} from '../../apps/api/src/staff-lifecycle-composition.mjs';
+import {registerStaffDirectoryHttpCandidate} from '../../apps/api/src/staff-directory-http-candidate.mjs';
+import {registerStaffRevocationHttp} from '../../apps/api/src/staff-lifecycle-http-candidate.mjs';
+import {createStaffPasskeySession} from '../../apps/api/src/staff-passkey-session.mjs';
+import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
+import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
+import {OWNERSHIP_ROLE,OWNERSHIP_SQL,assertOwnershipRuntimeIdentity,createOwnershipCapabilityIssuer,
+ createOwnershipGovernanceRepository,registerOwnershipGovernanceHttp} from '../../apps/api/src/ownership-governance-candidate.mjs';
+import {createStaffPasskeyBrowserFixture} from './staff-passkey-browser-fixture.mjs';
+import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
@@ -217,4 +229,102 @@ test('PG17 code reuse keeps historical operational identity snapshots immutable'
  assert.equal(replacementDetail.member.operationalDisplayId,replacement.row.result_operational_display_id);
  const paged=await queryDirectory('list',directoryCapability(ownerId,'admin','admin_list',{limit:1}));
  assert.equal(paged.items.length,1);assert.ok(paged.nextCursor!==null);
+});
+
+test('PG17 + Chromium passkey connects own profile, administrative directory and durable revocation',
+ {timeout:90_000},async()=>{
+ const staffReader='sabora_ci_directory_membership',ownershipLogin='sabora_ci_directory_ownership';
+ const pending=await invite({email:'pendiente-h1@example.invalid',givenName:'Persona',familyName:'Pendiente'});
+ const active=await invite({email:'personal-h1@example.invalid',givenName:'Persona',familyName:'Activa'});
+ const subjectId=randomUUID(),nonOwnerId=randomUUID();
+ await activate(active,subjectId);
+ await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'admin','active')",[nonOwnerId]);
+ await admin.query(`CREATE ROLE ${staffReader} LOGIN NOINHERIT PASSWORD '${password}';
+  CREATE ROLE ${ownershipLogin} LOGIN NOINHERIT PASSWORD '${password}';
+  GRANT USAGE ON SCHEMA sabora TO ${staffReader};
+  GRANT SELECT (user_id,role,state) ON sabora.staff_members TO ${staffReader};
+  CREATE POLICY ci_directory_membership ON sabora.staff_members FOR SELECT TO ${staffReader} USING(true);
+  GRANT ${OWNERSHIP_ROLE} TO ${ownershipLogin} WITH SET TRUE,INHERIT FALSE`);
+ await admin.query(`INSERT INTO sabora.order_operation_signing_keys(key_id,hmac_key,not_before,expires_at)
+  VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')`,[keyId,secret]);
+ const staffPool=new Pool({connectionString:login(staffReader)});
+ const ownershipPool=new Pool({connectionString:login(ownershipLogin)});
+ const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
+ const app=Fastify(),origin='https://localhost:4187',issuer='https://sabora-directory-ci.test/auth/v1';
+ const auth=createStaffPasskeyBrowserFixture({origin,issuer,kid:keyId,userIds:[ownerId,subjectId,nonOwnerId]});
+ const passkey=createStaffPasskeySession({origin,issuer,secret,provider:auth.provider,getTrustedKeys:auth.getTrustedKeys});
+ const forRoles=createStaffProtectedHooksFromPool({pool:staffPool,issuer,
+  getTrustedKeys:auth.getTrustedKeys,authenticate:passkey.authenticate});
+ let preview,browser;
+ try {
+  const [directory,coordinator]=await Promise.all([
+   createVerifiedStaffDirectoryFromPool({pool:directoryPool,role:directoryRole,issueCapability:issueDirectory}),
+   createVerifiedStaffLifecycleFromPool({pool:lifecyclePool,role:lifecycleRole,
+    issueCapability:issueLifecycle,revocationOnly:true}),
+   assertOwnershipRuntimeIdentity({pool:ownershipPool,expectedLogin:ownershipLogin})
+  ]);
+  const ownership=createOwnershipGovernanceRepository({
+   withTransaction:createRoleScopedPostgresTransaction({pool:ownershipPool,role:OWNERSHIP_ROLE,
+    allowedSql:new Set([OWNERSHIP_SQL])}),
+   issueCapability:createOwnershipCapabilityIssuer({keyId,secret,databaseRole:ownershipLogin})
+  });
+  registerStaffDirectoryHttpCandidate(app,{forRoles,directory});
+  registerStaffRevocationHttp(app,{forRoles,coordinator});
+  registerOwnershipGovernanceHttp(app,{forRoles,repository:ownership});
+  passkey.register(app,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,
+   ownership:true,staffDirectory:true,staffRevocation:true}});
+  const apiOrigin=await app.listen({host:'127.0.0.1',port:0});
+  preview=await startPublishedManagementPwa({apiOrigin,port:4187,tls:true});
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true});
+  async function loginAs(userId){
+   const context=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
+   const page=await context.newPage();
+   await page.goto(origin+'/#equipo');
+   await auth.registerDevice(context,page,userId);
+   await page.getByRole('button',{name:'Entrar con passkey'}).click();
+   await page.getByRole('button',{name:'Cerrar sesión'}).waitFor();
+   return page;
+  }
+  const [manager,staff,nonOwner]=await Promise.all([loginAs(ownerId),loginAs(subjectId),loginAs(nonOwnerId)]);
+  await staff.getByText('personal-h1@example.invalid',{exact:true}).waitFor();
+  assert.equal(await staff.getByRole('heading',{name:'Miembros del equipo'}).count(),0);
+  await manager.getByRole('button',{name:/Persona Pendiente/}).click();
+  await manager.getByLabel('Motivo de revocación').fill('Revocación de prueba antes de aceptar');
+  await manager.getByRole('button',{name:'Revocar acceso'}).click();
+  await manager.getByText('Acceso revocado.',{exact:true}).waitFor();
+  await nonOwner.getByRole('button',{name:/Persona Activa/}).click();
+  await nonOwner.getByRole('heading',{name:'Persona Activa'}).waitFor();
+  assert.equal(await nonOwner.getByRole('button',{name:'Revocar acceso'}).count(),0);
+  const denied=await nonOwner.evaluate(async({enrollmentId})=>{
+   const current=await fetch('/api/v1/staff/auth/session').then(result=>result.json());
+   const result=await fetch('/api/v1/staff/lifecycle',{method:'POST',
+    headers:{'X-Sabora-Staff-Session':current.sessionId,'Content-Type':'application/json'},
+    body:JSON.stringify({action:'revoke',enrollmentId,subjectUserId:null,
+     reason:'Prueba de permiso del ADMIN lector',correlationId:'staff_revoke_reader_denied'})
+   });
+   return result.status;
+  },{enrollmentId:active.enrollmentId});
+  assert.equal(denied,403);
+  await manager.getByRole('button',{name:/Persona Activa/}).click();
+  await manager.getByLabel('Motivo de revocación').fill('Revocación de prueba durante la sesión');
+  await manager.getByRole('button',{name:'Revocar acceso'}).click();
+  await manager.getByText('Acceso revocado.',{exact:true}).waitFor();
+  const audits=(await admin.query(`SELECT enrollment_id,next_state,actor_user_id
+   FROM sabora.staff_lifecycle_audit WHERE enrollment_id=ANY($1::uuid[]) AND action='revoke'`,
+   [[pending.enrollmentId,active.enrollmentId]])).rows;
+  assert.deepEqual(audits.map(row=>row.enrollment_id).sort(),[pending.enrollmentId,active.enrollmentId].sort());
+  assert(audits.every(row=>row.next_state==='revoked'&&row.actor_user_id===ownerId));
+  await assert.rejects(transition(pending,'accept',randomUUID()),/revoked/);
+  const beforeReload=await staff.evaluate(async()=>(await fetch('/api/v1/staff/auth/session')).status);
+  assert.equal(beforeReload,403);
+  await staff.reload();
+  await staff.getByRole('button',{name:'Entrar con passkey'}).waitFor();
+  assert.equal(await staff.getByText('personal-h1@example.invalid',{exact:true}).count(),0);
+ }finally{
+  await browser?.close();
+  await preview?.close();
+  await app.close();
+  await Promise.all([staffPool.end(),ownershipPool.end()]);
+ }
 });

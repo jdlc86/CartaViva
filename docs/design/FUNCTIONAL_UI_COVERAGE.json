@@ -230,8 +230,14 @@
       "id": "H1-identidad-personal",
       "status": "PENDIENTE",
       "surfaces": ["management"],
-      "ui": [{"surface": "management", "path": "apps/management/src/main.tsx", "marker": "Entrar con passkey"}],
-      "api": [{"path": "apps/api/src/staff-passkey-session.mjs", "marker": "createStaffPasskeySession"}],
+      "ui": [
+        {"surface": "management", "path": "apps/management/src/main.tsx", "marker": "Entrar con passkey"},
+        {"surface": "management", "path": "apps/management/src/views/TeamView.tsx", "marker": "Revocar acceso"}
+      ],
+      "api": [
+        {"path": "apps/api/src/staff-passkey-session.mjs", "marker": "createStaffPasskeySession"},
+        {"path": "apps/api/src/m2-restaurant-candidate.mjs", "marker": "registerStaffRevocationHttp"}
+      ],
       "evidence": [
         {
           "kind": "browser-management",
@@ -242,6 +248,11 @@
           "kind": "postgres17",
           "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
           "marker": "CV-014 PG17 + Fastify + Chromium passkey login"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/staff-directory-postgres17.test.mjs",
+          "marker": "PG17 + Chromium passkey connects own profile, administrative directory and durable revocation"
         }
       ],
       "blockers": [
@@ -249,7 +260,7 @@
         "Completar el enrolamiento y entrega durable con Resend, la recuperación y el alta inicial de ROOT",
         "Obtener la aceptación del propietario"
       ],
-      "note": "Entrada para personal activo implementada. Las invitaciones habilitan el enrolamiento y las operaciones de gestión requieren una sesión de passkey y membresía vigente."
+      "note": "Entrada para personal activo, directorio y revocación conectados mediante passkey. Sigue pendiente el ciclo completo con proveedor autorizado. Véase SABORA_S52_H1_A_STAFF_IDENTITY_REVIEW_2026-11-25.md."
     }
   ]
 }

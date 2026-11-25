@@ -6,8 +6,9 @@ import type {OrderOperationsGateway} from './order-operations-gateway.js';
 import {createAuthenticatedOrderOperationsGateway} from './order-operations-authenticated-gateway.js';
 import {createManagementSessionFence} from './management-session-fence.js';
 import {createAuthenticatedOwnershipGovernanceGateway,type OwnershipGovernanceGateway} from './ownership-governance-gateway.js';
-import type {StaffManagementGateway} from './staff-management-gateway.js';
-import type {StaffDirectoryGateway} from './staff-directory-gateway.js';
+import {createStaffManagementGateway,type StaffManagementGateway,
+  type StaffRevocationGateway} from './staff-management-gateway.js';
+import {createStaffDirectoryGateway,type StaffDirectoryGateway} from './staff-directory-gateway.js';
 import {Icon, type IconName} from './components/Icon';
 import {parseManagementArea, toManagementHash, type ManagementArea} from './navigation-model';
 import type {AdminTablesGateway} from './tables-read-model';
@@ -40,8 +41,8 @@ const sections: ReadonlyArray<{id: ManagementArea; label: string; detail: string
 const areasByRole: Record<StaffSession['role'], readonly ManagementArea[]> = {
   root: ['resumen','catalogo','mesas','configuracion','equipo'],
   admin: ['resumen','catalogo','mesas','comandas','caja','configuracion','equipo'],
-  waiter: ['resumen','mesas','comandas','caja'],
-  kitchen: ['resumen','comandas'],
+  waiter: ['resumen','mesas','comandas','caja','equipo'],
+  kitchen: ['resumen','comandas','equipo'],
 };
 
 export function ManagementApp({
@@ -52,6 +53,7 @@ export function ManagementApp({
   operationsGateway,
   staffGateway,
   staffDirectoryGateway,
+  staffRevocationGateway,
   financeGateway,
   ownershipGateway,
   staffRole,
@@ -64,6 +66,7 @@ export function ManagementApp({
   operationsGateway?: OrderOperationsGateway;
   staffGateway?: StaffManagementGateway;
   staffDirectoryGateway?: StaffDirectoryGateway;
+  staffRevocationGateway?: StaffRevocationGateway;
   financeGateway?: M3AuthenticatedManagementGateway;
   ownershipGateway?: OwnershipGovernanceGateway;
   staffRole?: StaffSession['role'];
@@ -73,6 +76,7 @@ export function ManagementApp({
   const [financeAllowed,setFinanceAllowed]=useState(false);
   const [commsAllowed,setCommsAllowed]=useState(false);
   const [canWriteAdmin,setCanWriteAdmin]=useState(false);
+  const [canRevokeStaff,setCanRevokeStaff]=useState(false);
   const [ownershipRevision,setOwnershipRevision]=useState(0);
   // Effective permissions come from a signed PG17 read, never the JWT role.
   // Refresh on navigation, foreground and explicit governance decisions.
@@ -81,6 +85,13 @@ export function ManagementApp({
    const refresh=()=>{
     const current=++revision;
     setCanWriteAdmin(false);
+    setCanRevokeStaff(false);
+    if(area==='equipo'&&staffRevocationGateway&&ownershipGateway){
+     void ownershipGateway.read().then(page=>{
+      if(active&&current===revision)setCanRevokeStaff(page.role==='admin'&&page.isOwner===true);
+     }).catch(()=>{if(active&&current===revision)setCanRevokeStaff(false);});
+     return;
+    }
     if(area==='configuracion'&&financeGateway){
      // M5 can be installed separately from M3; its own signed SQL read
      // returns the effective ADMIN writer without relying on table RPCs.
@@ -99,7 +110,7 @@ export function ManagementApp({
    document.addEventListener('visibilitychange',visible);
    return()=>{active=false;revision++;window.removeEventListener('focus',refresh);
     document.removeEventListener('visibilitychange',visible);};
-  },[financeGateway,area,ownershipRevision]);
+  },[financeGateway,area,ownershipRevision,ownershipGateway,staffRevocationGateway]);
   useEffect(()=>{
    let active=true;
    setFinanceAllowed(false);
@@ -167,7 +178,10 @@ export function ManagementApp({
     : activeArea === 'caja' ? <CashView gateway={operationsGateway}/>
     : activeArea === 'configuracion' ? <ConfigurationView gateway={financeGateway??null}
         financeAllowed={financeAllowed} commsAllowed={commsAllowed} canWriteAdmin={canWriteAdmin}/>
-    : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway} ownershipGateway={ownershipGateway} onOwnershipChanged={()=>setOwnershipRevision(v=>v+1)}/>;
+    : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway}
+        ownershipGateway={ownershipGateway} staffRole={staffRole}
+        revocationGateway={canRevokeStaff ? staffRevocationGateway : undefined}
+        onOwnershipChanged={()=>setOwnershipRevision(v=>v+1)}/>;
 
   return (
     <div className="management-shell">
@@ -264,6 +278,8 @@ function renderManagement(
   ownershipGateway?:OwnershipGovernanceGateway,
   onSignOut?:()=>void,
   staffRole?:StaffSession['role'],
+  staffDirectoryGateway?:StaffDirectoryGateway,
+  staffRevocationGateway?:StaffRevocationGateway,
 ) {
   if (managementRoot && managementElement !== element) {
     throw Error('management_root_already_mounted');
@@ -292,7 +308,8 @@ function renderManagement(
     <React.StrictMode><ManagementApp key={key} operationsGateway={gateway}
       tableChangeGateway={tableChangeGateway} tablesGateway={managementGateway}
       catalogManagementGateway={managementGateway} financeGateway={managementGateway}
-      ownershipGateway={ownershipGateway} staffRole={staffRole} onSignOut={onSignOut}/></React.StrictMode>,
+      ownershipGateway={ownershipGateway} staffRole={staffRole} onSignOut={onSignOut}
+      staffDirectoryGateway={staffDirectoryGateway} staffRevocationGateway={staffRevocationGateway}/></React.StrictMode>,
   ));
 }
 
@@ -306,6 +323,8 @@ export function mountAuthenticatedManagementApp({
   enableM3Management = false,
   enableWaiterCalls = false,
   enableOwnershipGovernance = false,
+  enableStaffDirectory = false,
+  enableStaffRevocation = false,
   onSignOut,
   staffRole,
 }: StaffGatewayAuth & {
@@ -320,6 +339,8 @@ export function mountAuthenticatedManagementApp({
   enableM3Management?:boolean;
   /** Opt-in only after isolated ownership runtime/SQL preflight succeeds. */
   enableOwnershipGovernance?:boolean;
+  enableStaffDirectory?:boolean;
+  enableStaffRevocation?:boolean;
   /** Only after waiter-call SQL identity preflight succeeds. */
   enableWaiterCalls?:boolean;
 }) {
@@ -332,10 +353,24 @@ export function mountAuthenticatedManagementApp({
   });
   const m3Gateway=enableM3Management?createM3AuthenticatedManagementGateway({...auth,fetchImpl}):undefined;
   const ownershipGateway=enableOwnershipGovernance?createAuthenticatedOwnershipGovernanceGateway({...auth,fetchImpl}):undefined;
+  const directoryRequests=new AbortController();
+  const sendStaff: typeof fetch | undefined=cookieSession&&fetchImpl
+    ? async (path,options)=>{
+      directoryRequests.signal.throwIfAborted();
+      const response=await fetchImpl(path,{...options,signal:directoryRequests.signal});
+      directoryRequests.signal.throwIfAborted();
+      return response;
+    }
+    : undefined;
+  const staffDirectoryGateway=enableStaffDirectory&&sendStaff
+    ? createStaffDirectoryGateway({send:sendStaff}) : undefined;
+  const staffRevocationGateway=enableStaffRevocation&&sendStaff
+    ? createStaffManagementGateway({send:sendStaff}) : undefined;
   if (managementRoot && managementElement !== element) {
     operationsGateway.revoke();
     m3Gateway?.revoke();
     ownershipGateway?.revoke();
+    directoryRequests.abort();
     throw Error('management_root_already_mounted');
   }
   // All capability gateways belong to one verified employee session.
@@ -344,6 +379,7 @@ export function mountAuthenticatedManagementApp({
     operationsGateway.revoke();
     m3Gateway?.revoke();
     ownershipGateway?.revoke();
+    directoryRequests.abort();
   }};
   const disposeSession = managementSessionFence.replace(sessionChannel);
   // The default preview and authenticated operation mount keep the queue
@@ -352,7 +388,8 @@ export function mountAuthenticatedManagementApp({
     ? {listPendingTableChanges: operationsGateway.listPendingTableChanges,
        decideTableChange: operationsGateway.decideTableChange}
     : undefined;
-  renderManagement(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut,staffRole);
+  renderManagement(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut,staffRole,
+    staffDirectoryGateway,staffRevocationGateway);
   let disposed = false;
   return () => {
     if (disposed) return;
@@ -416,7 +453,9 @@ function startStaffLogin(element: HTMLElement) {
       enableTableChangeQueue: session.features.tableChange && ['admin', 'waiter'].includes(session.role),
       enableWaiterCalls: session.features.waiterCalls && session.role === 'waiter',
       enableM3Management: session.features.management && session.role !== 'kitchen',
-      enableOwnershipGovernance: session.features.ownership && ['root', 'admin'].includes(session.role)
+      enableOwnershipGovernance: session.features.ownership && ['root', 'admin'].includes(session.role),
+      enableStaffDirectory: session.features.staffDirectory === true && session.role !== 'root',
+      enableStaffRevocation: session.features.staffRevocation === true && session.role === 'admin'
     });
     dispose = current;
     expiry = setTimeout(expire, session.expiresAt * 1000 - Date.now());

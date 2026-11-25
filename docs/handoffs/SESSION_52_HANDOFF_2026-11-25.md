@@ -74,3 +74,7 @@ Antigravity es opcional como auditor independiente si disponible y autorizado; l
 Cambios propios S52: publicación del encargo H1-A y creación de este documento en la misma rama Draft #92 para evitar PR documental adicional. No cambios funcionales, normas, main, merge, SQL, Auth, Resend, VPS, Cloudflare, secretos, despliegue ni Fleetia. No se han ejecutado nuevas pruebas en S52. No se ha actualizado estado funcional del tablero por la mera creación de un encargo. No transferir autorización histórica a operaciones nuevas.
 
 **Corte S52:** H1-A pendiente de ejecución y revisión de Codex; H1 parcial y NO-GO operativo. Mantener prioridad primer despliegue ficticio funcional.
+
+## S52-07 — Integración candidata de directorio y revocación
+
+[Draft #92](https://github.com/jdlc86/CartaViva/pull/92) conecta la ficha propia, el directorio de ADMIN y la revocación por el titular desde la PWA de gestión y a través de dos LOGIN SQL dedicados. Se añade un adaptador aislado de Resend y se conserva el árbol de genesis. El resultado del ensayo PG17/Fastify/Chromium, los pendientes agrupados y el inventario de configuración se registran en el [informe S52](../reviews/SABORA_S52_H1_A_STAFF_IDENTITY_REVIEW_2026-11-25.md) y en los checks del PR. El [tablero](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) conserva H1-A parcial y NO-GO operativo.

@@ -8,21 +8,20 @@ import {preflightStaffLifecycleIdentity} from './staff-lifecycle-identity-prefli
 // The caller must provide a separately verified HTTP identity and staff context.
 export async function createVerifiedStaffLifecycleFromPool({
   pool, role, issueCapability, issueInvitationToken, hashInviteeEmail,
-  verifyCredentialRegistration, uuid,
+  verifyCredentialRegistration, uuid, revocationOnly,
 } = {}) {
-  if (typeof issueCapability !== 'function' ||
-      typeof issueInvitationToken !== 'function' ||
-      typeof hashInviteeEmail !== 'function' ||
-      typeof verifyCredentialRegistration !== 'function' ||
-      typeof uuid !== 'function') {
+  if (typeof issueCapability !== 'function' || (!revocationOnly && (
+      typeof issueInvitationToken !== 'function' || typeof hashInviteeEmail !== 'function' ||
+      typeof verifyCredentialRegistration !== 'function' || typeof uuid !== 'function'))) {
     throw Error('invalid_staff_lifecycle_composition');
   }
   // A failed preflight must never expose a coordinator that can issue SQL.
-  await preflightStaffLifecycleIdentity({pool, role});
-  return createStaffLifecycleCoordinator({
+  const coordinator = createStaffLifecycleCoordinator({
     withTransaction: createPostgresTransaction({pool}),
     repository: createStaffLifecycleRepository(),
     issueCapability, issueInvitationToken, hashInviteeEmail,
-    verifyCredentialRegistration, uuid,
+    verifyCredentialRegistration, uuid, revocationOnly,
   });
+  await preflightStaffLifecycleIdentity({pool, role});
+  return coordinator;
 }

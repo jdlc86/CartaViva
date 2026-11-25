@@ -9,6 +9,12 @@ registra el SMTP previsto para las invitaciones de Supabase Auth y la entrada de
 personal activo por passkey. Siguen pendientes la entrega durable, el
 enrolamiento completo y la prueba del servicio alojado.
 
+**Candidato S52.** El transporte de Resend usa la API y el ID durable del job
+para la clave de idempotencia, con un único intento tras el fence y resultado
+incierto para reconciliar. El envío requiere un lector autorizado que entregue
+el destinatario y el enlace de enrolamiento vigente. El plan de revisión y las
+decisiones de política se registran en el [informe S52](../reviews/SABORA_S52_H1_A_STAFF_IDENTITY_REVIEW_2026-11-25.md).
+
 ## Fuente normativa y alcance
 
 La regla de revocación desde el primer registro durable está en

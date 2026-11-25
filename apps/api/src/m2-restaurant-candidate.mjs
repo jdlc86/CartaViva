@@ -31,6 +31,12 @@ import {registerTableChangeStaffHttp,registerTableChangeStaffPendingHttp}
  from './table-change-http-candidate.mjs';
 import {createTableChangeCommitNotifier} from './table-change-state-stream-candidate.mjs';
 import {createStaffProtectedHooksFromPool} from './staff-protected-hooks-from-pool.mjs';
+import {createVerifiedStaffDirectoryFromPool} from './staff-directory-composition.mjs';
+import {registerStaffDirectoryHttpCandidate} from './staff-directory-http-candidate.mjs';
+import {preflightStaffDirectoryIdentity} from './staff-directory-identity-preflight.mjs';
+import {createVerifiedStaffLifecycleFromPool} from './staff-lifecycle-composition.mjs';
+import {registerStaffRevocationHttp} from './staff-lifecycle-http-candidate.mjs';
+import {preflightStaffLifecycleIdentity} from './staff-lifecycle-identity-preflight.mjs';
 import {preflightOrderTransitionStaffIdentity}
  from './order-operations-identity-preflight.mjs';
 import {createOrderOperationsCoordinator} from './order-operations-coordinator.mjs';
@@ -138,6 +144,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
      typeof customer.allowedOrigin!=='string'||typeof customer.secretKey!=='string'||
      Buffer.byteLength(customer.secretKey,'utf8')<32||
      typeof staff.issuer!=='string'||typeof staff.getTrustedKeys!=='function'||
+     (staff.directory!=null&&(!staff.passkey||typeof staff.directory.issueCapability!=='function'))||
+     (staff.revocation!=null&&typeof staff.revocation.issueCapability!=='function')||
      typeof h4.issueTransitionCapability!=='function'||typeof h4.issueReadCapability!=='function'||
      typeof h6.issueStaffCapability!=='function'||typeof h6.issueCloseCapability!=='function'||
      !h6.stripe||
@@ -177,6 +185,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    customer,tableChange,staff,h4,h6,management,waiterCalls
   });
 
+  let staffDirectory,staffRevocation;
   const preflight=async()=>{
    // Readiness includes the configured issuer and a bounded trusted JWKS
    // source. Routes must not be considered ready merely because SQL works.
@@ -215,6 +224,12 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    await assertPendingReaderCapabilities({pool:tableChange.pendingPool,
     expectedLogin:tableChange.expectedPendingLogin});
    await preflightOrderTransitionStaffIdentity({pool:staff.pool,role:staff.expectedLogin});
+   if(staffDirectory)await preflightStaffDirectoryIdentity({
+    pool:staff.directory.pool,role:staff.directory.expectedLogin
+   });
+   if(staffRevocation)await preflightStaffLifecycleIdentity({
+    pool:staff.revocation.pool,role:staff.revocation.expectedLogin
+   });
    await assertM2H4OperationsCapability({pool:h4.operationsPool,
     expectedLogin:h4.expectedOperationsLogin});
    await assertH6RuntimeIdentity({pool:h6.customerPool,
@@ -312,9 +327,24 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    getTrustedKeys:staff.getTrustedKeys,...(staff.verify?{verify:staff.verify}:{}),
    ...(staff.observe?{observe:staff.observe}:{})});
   const oneGuard=staffGuard(forRoles);
+  if(staff.directory){
+   staffDirectory=await createVerifiedStaffDirectoryFromPool({
+    pool:staff.directory.pool,role:staff.directory.expectedLogin,
+    issueCapability:staff.directory.issueCapability
+   });
+   registerStaffDirectoryHttpCandidate(app,{forRoles:oneGuard,directory:staffDirectory});
+  }
+  if(staff.revocation){
+   staffRevocation=await createVerifiedStaffLifecycleFromPool({
+    pool:staff.revocation.pool,role:staff.revocation.expectedLogin,
+    issueCapability:staff.revocation.issueCapability,revocationOnly:true
+   });
+   registerStaffRevocationHttp(app,{forRoles:oneGuard,coordinator:staffRevocation});
+  }
   staff.passkey?.register(app,{forRoles,features:{
    tableChange:true,waiterCalls:Boolean(waiterCalls),management:Boolean(management),
-   ownership:Boolean(management?.ownership)
+   ownership:Boolean(management?.ownership),staffDirectory:Boolean(staffDirectory),
+   staffRevocation:Boolean(staffRevocation)
   }});
   const h4Operations=createOrderOperationsCoordinator({withTransaction:h4Tx,
    repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),

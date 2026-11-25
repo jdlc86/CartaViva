@@ -35,6 +35,12 @@ const WAITER_CALLS = Object.freeze([
  ['waiterCalls.customerPool','waiterCalls.expectedCustomerLogin'],
  ['waiterCalls.staffPool','waiterCalls.expectedStaffLogin']
 ]);
+const STAFF_DIRECTORY = Object.freeze([
+ ['staff.directory.pool','staff.directory.expectedLogin']
+]);
+const STAFF_REVOCATION = Object.freeze([
+ ['staff.revocation.pool','staff.revocation.expectedLogin']
+]);
 const LOGIN = /^[a-z][a-z0-9_]{0,62}$/;
 const invalid = () => Error('m2_restaurant_candidate_isolation_required');
 
@@ -42,14 +48,17 @@ const read = (object,path) =>
  path.split('.').reduce((value,key)=>value?.[key],object);
 
 export function describeM2RuntimeSqlSlots({
- management=true,ownership=false,communications=false,waiterCalls=false
+ management=true,ownership=false,communications=false,waiterCalls=false,staffDirectory=false,
+ staffRevocation=false
 }={}){
  if(typeof management!=='boolean'||typeof ownership!=='boolean'||
-    typeof communications!=='boolean'||typeof waiterCalls!=='boolean'||
+    typeof communications!=='boolean'||typeof waiterCalls!=='boolean'||typeof staffDirectory!=='boolean'||
+    typeof staffRevocation!=='boolean'||(staffRevocation&&(!ownership||!staffDirectory))||
     (!management&&(ownership||communications)))throw invalid();
  const groups=[...CORE,...(management?MANAGEMENT:[]),
   ...(ownership?OWNERSHIP:[]),...(communications?COMMUNICATIONS:[]),
-  ...(waiterCalls?WAITER_CALLS:[])];
+  ...(waiterCalls?WAITER_CALLS:[]),...(staffDirectory?STAFF_DIRECTORY:[]),
+  ...(staffRevocation?STAFF_REVOCATION:[])];
  return Object.freeze(groups.map(([poolPath,loginPath]) =>
   Object.freeze({poolPath,loginPath})));
 }
@@ -66,7 +75,8 @@ export function validateM2RuntimeSqlIdentities(options={}){
  const communications=management&&options.management.communications!=null;
  const waiterCalls=options.waiterCalls!=null;
  const requirements=describeM2RuntimeSqlSlots({
-  management,ownership,communications,waiterCalls
+  management,ownership,communications,waiterCalls,staffDirectory:options.staff?.directory!=null,
+  staffRevocation:options.staff?.revocation!=null
  });
  const entries=[];
  for(const spec of requirements){

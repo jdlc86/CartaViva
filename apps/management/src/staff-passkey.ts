@@ -5,7 +5,8 @@ export type StaffSession = {
   sessionId: string;
   role: 'root' | 'admin' | 'waiter' | 'kitchen';
   expiresAt: number;
-  features: {tableChange: boolean; waiterCalls: boolean; management: boolean; ownership: boolean};
+  features: {tableChange: boolean; waiterCalls: boolean; management: boolean; ownership: boolean;
+    staffDirectory?: boolean; staffRevocation?: boolean};
 };
 
 export function supportsStaffPasskey() {
@@ -32,7 +33,9 @@ async function readSession(response: Response): Promise<StaffSession> {
   if (!value || typeof value.sessionId !== 'string' || !Number.isSafeInteger(value.expiresAt) ||
       value.expiresAt * 1000 <= Date.now() || !['root', 'admin', 'waiter', 'kitchen'].includes(value.role) ||
       !value.features || !['tableChange', 'waiterCalls', 'management', 'ownership']
-        .every(feature => typeof value.features[feature] === 'boolean')) {
+        .every(feature => typeof value.features[feature] === 'boolean') ||
+      !['staffDirectory','staffRevocation'].every(feature =>
+        value.features[feature] === undefined || typeof value.features[feature] === 'boolean')) {
     throw new StaffAuthenticationError(503);
   }
   return value;
@@ -61,7 +64,8 @@ export function endStaffSession(session: StaffSession) {
 
 export function createStaffSessionFetch(session: StaffSession, onExpired: () => void): typeof fetch {
   return async (input, options) => {
-    if (typeof input !== 'string' || !/^\/api\/v1\/(operations|admin)\//.test(input))
+    if (typeof input !== 'string' ||
+        !/^\/api\/v1\/(?:operations\/|admin\/|staff\/(?:me$|lifecycle$|directory(?:[/?]|$)))/.test(input))
       throw new StaffAuthenticationError(400);
     const headers = new Headers(options?.headers);
     headers.set(SESSION_HEADER, session.sessionId);

@@ -6,4 +6,8 @@ export interface StaffManagementGateway{
  recoverCodes(input:{reason:string;confirmed:true;correlationId:string}):Promise<StaffMaintenanceResult>;
 }
 export class StaffManagementGatewayError extends Error{code:string;details:unknown;}
-export function createStaffManagementGateway(input?:{send?:typeof fetch}):StaffManagementGateway;
+export type StaffRevocationGateway = {
+ revokeAccess(input:{enrollmentId:string;reason:string;correlationId:string}):
+  Promise<Readonly<{enrollmentId:string;state:'revoked';repeated:boolean}>>;
+};
+export function createStaffManagementGateway(input?:{send?:typeof fetch}):StaffManagementGateway&StaffRevocationGateway;

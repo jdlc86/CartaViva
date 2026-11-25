@@ -5,7 +5,7 @@ const ROLE_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 // genesis DBA is admissible. The protected ledger's owner identifies the
 // installer; read catalog metadata, not the ledger contents or its ACLs.
 // Without a genesis ledger (older disposable fixtures) no exception applies.
-const CV005_BOOTSTRAP_GRANT = `membership.admin_option
+export const CV005_BOOTSTRAP_GRANT = `membership.admin_option
   AND NOT membership.set_option AND NOT membership.inherit_option
   AND EXISTS (
     SELECT 1 FROM pg_catalog.pg_roles dba

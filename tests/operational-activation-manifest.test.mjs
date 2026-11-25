@@ -11,8 +11,8 @@ import {PILOT_ACTIVATION_REQUIREMENTS} from '../apps/api/src/pilot-activation-ga
 
 const features=Object.freeze({ownership:true,communications:true,waiterCalls:true});
 
-function fixtureManifest({stage='lab',mutate}={}){
- const contract=describeOperationalSqlContract(features);
+function fixtureManifest({stage='lab',mutate,selectedFeatures=features}={}){
+ const contract=describeOperationalSqlContract(selectedFeatures);
  const slots={};
  for(const [index,item] of contract.slots.entries()){
   slots[item.poolPath]={login:`sabora_runtime_${String(index).padStart(2,'0')}`,
@@ -27,7 +27,7 @@ function fixtureManifest({stage='lab',mutate}={}){
   origins:{client:'https://menu.sabora.es',management:'https://gestion.sabora.es'},
   auth:{issuer:'https://project.supabase.co/auth/v1',
    connectHost:stage==='production'?'sabora-egress':'project.supabase.co',
-   connectPort:stage==='production'?15443:443},features,
+   connectPort:stage==='production'?15443:443},features:selectedFeatures,
   network:{allowedTlsHosts:['project.supabase.co','db.project.supabase.co'],
    egressGatewayHost:stage==='production'?'sabora-egress':null},
   database:{slots,notifiers:{
@@ -41,6 +41,40 @@ function fixtureManifest({stage='lab',mutate}={}){
  mutate?.(value,contract);
  return value;
 }
+
+test('directory and revocation require passkeys, distinct logins and distinct signing keys',async()=>{
+ const manifest=fixtureManifest({
+  selectedFeatures:{...features,staffDirectory:true,staffRevocation:true},mutate:value=>{
+   value.auth.staffPasskeyPublishableKey='sb_publishable_isolated_manifest_123456';
+   Object.assign(value.signing,{staffDirectoryKeyId:'staff_dir_ci_key',
+    staffDirectorySecretRef:'staff_directory_hmac',staffRevocationKeyId:'staff_revoke_ci_key',
+    staffRevocationSecretRef:'staff_revocation_hmac'});
+  }
+ });
+ const valid=validateOperationalActivationManifest(manifest);
+ assert.equal(valid.summary.capabilityCount,25);
+ for(const mutate of [
+  value=>{delete value.auth.staffPasskeyPublishableKey;},
+  value=>{value.signing.staffRevocationKeyId=value.signing.staffDirectoryKeyId;},
+  value=>{value.signing.staffRevocationSecretRef=value.signing.staffDirectorySecretRef;},
+  value=>{value.database.slots['staff.revocation.pool'].login=value.database.slots['staff.pool'].login;},
+  value=>{value.features.staffDirectory=false;},
+  value=>{value.features.ownership=false;}
+ ]){
+  const invalid=structuredClone(manifest);
+  mutate(invalid);
+  assert.throws(()=>validateOperationalActivationManifest(invalid));
+ }
+ const baseResolver=resolverFor(manifest);
+ const resources=await materializeOperationalM3Options({manifest,Pool:FakePool,
+  resolveSecret:async ref=>ref==='staff_directory_hmac'?'d'.repeat(32):
+   ref==='staff_revocation_hmac'?'r'.repeat(32):baseResolver(ref)});
+ try{
+  assert.notEqual(resources.options.staff.directory.pool,resources.options.staff.revocation.pool);
+  assert.equal(typeof resources.options.staff.directory.issueCapability,'function');
+  assert.equal(typeof resources.options.staff.revocation.issueCapability,'function');
+ }finally{await resources.close();}
+});
 
 class FakePool{
  static instances=[];
