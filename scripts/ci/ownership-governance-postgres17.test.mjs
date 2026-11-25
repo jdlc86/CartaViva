@@ -15,6 +15,7 @@ import {assertWaiterCallRuntimeIdentity,createWaiterCallStaffIssuer,
  WAITER_CALL_CUSTOMER_ROLE,WAITER_CALL_STAFF_ROLE}
  from '../../apps/api/src/waiter-call-candidate.mjs';
 import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
+import {registerPublishedCustomerFeatures} from '../../apps/api/src/published-customer-features.mjs';
 import {createM3ManagementCapabilityIssuer} from '../../apps/api/src/m3-management-capability.mjs';
 import {M3_TABLES_ROLE,M3_CATALOG_ROLE,assertM3TablesCapability,
  assertM3CatalogCapability} from '../../apps/api/src/m3-runtime-capabilities.mjs';
@@ -153,6 +154,7 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
    revokeCustomerSession:async()=>false,allowedOrigin:clientOrigin});
   registerOwnershipGovernanceHttp(api,{forRoles,repository:repo});
   registerWaiterCallHttp(api,{cookieAuth,forRoles,repository:callRepository});
+  registerPublishedCustomerFeatures(api,{tableChange:false,waiterCalls:true,isAvailable:()=>true});
   // H35-P1 is exercised in this *existing* real PG17 + verified JWT/HMAC +
   // Fastify + two-PWA Chromium journey, not a disconnected browser mock.
   const tablesTx=createRoleScopedPostgresTransaction({pool:pools[4],role:M3_TABLES_ROLE,
@@ -403,14 +405,11 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
    mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
     proxy:{'/api':apiUrl}}});
   await vite.listen();
-  // The existing CV-014 full-stack journey enables client calling only
-  // through its isolated Vite mode. Reuse that exact child-process boot,
-  // not a generic Vite instance whose feature stays disabled.
+  // The two-PWA journey discovers calling from the mounted Fastify API.
   clientVite=spawn('pnpm',['exec','vite','--mode','test','--host','127.0.0.1',
    '--port','4178','--strictPort'],{
    cwd:fileURLToPath(new URL('../../apps/client/',import.meta.url)),
-   env:{...process.env,SABORA_CI_COMMS_API:apiUrl,
-    VITE_SABORA_ENABLE_WAITER_CALLS:'isolated_pg17'},
+   env:{...process.env,SABORA_CI_COMMS_API:apiUrl},
    stdio:'ignore'});
   let clientReady=false;
   for(let attempt=0;attempt<120;attempt++){

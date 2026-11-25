@@ -114,6 +114,8 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  const [waiterCallState,setWaiterCallState]=useState<'none'|'pending'|'attended'|'loading'|'unavailable'>('none');
  const [waiterCallBusy,setWaiterCallBusy]=useState(false);
  const waiterCallRequestRef=useRef<string|null>(null);
+ const waiterCallRevision=useRef(0);
+ const waiterMutationInFlight=useRef(false);
  const [tableChangeState,setTableChangeState]=useState<TableChangeState|null>(null);
  const [tableChangeNotice,setTableChangeNotice]=useState<'approved'|'rejected'|null>(null);
  const [changeClock,setChangeClock]=useState(()=>Date.now());
@@ -152,48 +154,70 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  const catalogRef=useRef<CatalogState>(catalog);
  useEffect(()=>{catalogRef.current=catalog;},[catalog]);
  const copy=text[locale];
+ const waiterTableId=enableWaiterCalls&&identity.status==='authenticated'?tableVisit?.tableId:null;
+ const waiterIdentity=identity.status==='authenticated'?identity.publicId:null;
  useEffect(()=>{
-  if(!enableWaiterCalls||!tableVisit||identity.status!=='authenticated'){
-   setWaiterCallState('none');waiterCallRequestRef.current=null;return;
+  waiterCallRequestRef.current=null;
+  waiterMutationInFlight.current=false;
+  setWaiterCallBusy(false);
+  if(!waiterTableId){
+   setWaiterCallState('none');return;
   }
-  let current=true;
-  setWaiterCallState('loading');
-  void customerTransport.readWaiterCall(tableVisit.tableId).then(receipt=>{
-   if(current)setWaiterCallState(receipt.state);
-  }).catch(()=>{if(current)setWaiterCallState('unavailable');});
-  return()=>{current=false;};
- },[enableWaiterCalls,tableVisit?.tableId,identity.status]);
+  const reconcile=()=>{
+   if(waiterMutationInFlight.current)return;
+   const revision=++waiterCallRevision.current;
+   setWaiterCallBusy(false);
+   setWaiterCallState('loading');
+   void customerTransport.readWaiterCall(waiterTableId).then(receipt=>{
+    if(revision===waiterCallRevision.current)setWaiterCallState(receipt.state);
+   }).catch(()=>{if(revision===waiterCallRevision.current)setWaiterCallState('unavailable');});
+  };
+  reconcile();
+  window.addEventListener('online',reconcile);
+  window.addEventListener('focus',reconcile);
+  return()=>{
+   waiterCallRevision.current++;
+   window.removeEventListener('online',reconcile);
+   window.removeEventListener('focus',reconcile);
+  };
+ },[waiterTableId,waiterIdentity,tableVisit?.visitId]);
 
  const requestWaiterCall=useCallback(async()=>{
-  if(!enableWaiterCalls||!tableVisit||waiterCallBusy||
-     waiterCallState==='pending'||identity.status!=='authenticated')return;
+  if(!waiterTableId||waiterCallBusy||waiterMutationInFlight.current||waiterCallState==='pending')return;
+  const revision=++waiterCallRevision.current;
   const id=waiterCallRequestRef.current??crypto.randomUUID();
   waiterCallRequestRef.current=id;
+  waiterMutationInFlight.current=true;
   setWaiterCallBusy(true);
   try{
-   const result=await customerTransport.requestWaiterCall(tableVisit.tableId,id);
-   setWaiterCallState(result.state);waiterCallRequestRef.current=null;
-  }catch{setWaiterCallState('unavailable');}
-  finally{setWaiterCallBusy(false);}
- },[enableWaiterCalls,tableVisit,waiterCallBusy,waiterCallState,identity.status]);
+   const result=await customerTransport.requestWaiterCall(waiterTableId,id);
+   if(revision===waiterCallRevision.current){setWaiterCallState(result.state);waiterCallRequestRef.current=null;}
+  }catch{if(revision===waiterCallRevision.current)setWaiterCallState('unavailable');}
+  finally{
+   if(revision===waiterCallRevision.current){
+    waiterMutationInFlight.current=false;setWaiterCallBusy(false);
+   }
+  }
+ },[waiterTableId,waiterCallBusy,waiterCallState]);
 
  const refreshWaiterCall=useCallback(async()=>{
-  if(!enableWaiterCalls||!tableVisit||waiterCallBusy)return;
+  if(!waiterTableId||waiterCallBusy)return;
+  const revision=++waiterCallRevision.current;
   setWaiterCallBusy(true);
   try{
-   const receipt=await customerTransport.readWaiterCall(tableVisit.tableId);
-   setWaiterCallState(receipt.state);
-  }catch{setWaiterCallState('unavailable');}
-  finally{setWaiterCallBusy(false);}
- },[enableWaiterCalls,tableVisit,waiterCallBusy]);
+   const receipt=await customerTransport.readWaiterCall(waiterTableId);
+   if(revision===waiterCallRevision.current)setWaiterCallState(receipt.state);
+  }catch{if(revision===waiterCallRevision.current)setWaiterCallState('unavailable');}
+  finally{if(revision===waiterCallRevision.current)setWaiterCallBusy(false);}
+ },[waiterTableId,waiterCallBusy]);
 
  const authorizeTable=useCallback((credential:TableQrCredential)=>{
   if(qrAuthorizationRef.current)return qrAuthorizationRef.current;
   setQrState('authorizing');
   const pending=customerTransport.authorizeVisit({tableId:credential.tableId,qrToken:credential.token})
-   .then(visit=>{setTableVisit(visit);setQrState('authorized');})
+   .then(visit=>{qrCredentialRef.current=credential;setTableVisit(visit);setQrState('authorized');})
    .catch(error=>{
-    setTableVisit(null);
+    setTableVisit(current=>current?.tableId===credential.tableId?null:current);
     setQrState(error instanceof CustomerFlowTransportError&&[401,403].includes(error.status)?'forbidden':'unavailable');
    })
    .finally(()=>{qrAuthorizationRef.current=null;});
@@ -280,7 +304,6 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  const continueAfterApproval=useCallback(()=>{
   const credential=scannedCredentialRef.current;
   if(!credential||tableChangeState?.state!=='approved')return;
-  qrCredentialRef.current=credential;setTableVisit(null);
   void authorizeTable(credential);
  },[tableChangeState,authorizeTable]);
 
@@ -912,7 +935,15 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
        <button type="button" onClick={cancelChangePrompt}>Cancelar</button>
       </div>
     </div>:
-    qrState==='authorized'&&tableVisit?<><div className="qr-success" role="status"><Icon name="check"/><div><strong>{locale==='es'?'Mesa verificada':'Table verified'}</strong><span>{locale==='es'?`Autorización válida hasta ${new Date(tableVisit.expiresAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}.`:`Authorization valid until ${new Date(tableVisit.expiresAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}.`}</span></div></div>{enableWaiterCalls?<div className="table-change-client-notice" role="group" aria-label="Llamada al camarero">
+    qrState==='authorized'&&tableVisit?<><div className="qr-success" role="status"><Icon name="check"/><div><strong>{locale==='es'?'Mesa verificada':'Table verified'}</strong><span>{locale==='es'?`Autorización válida hasta ${new Date(tableVisit.expiresAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}.`:`Authorization valid until ${new Date(tableVisit.expiresAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}.`}</span></div></div>{basket.length&&issues.length===0?<button className="primary-action" type="button" onClick={()=>void prepareCheckout()}>{locale==='es'?'Continuar con el pedido':'Continue with order'}</button>:null}{flowContract==='h6'?<button type="button" onClick={()=>setOverlay('pay-others')}>{locale==='es'?'Liquidar consumo al final':'Settle consumption at the end'}</button>:null}<button type="button" onClick={()=>{qrCredentialRef.current=null;setTableVisit(null);setQrState('idle');}}> {locale==='es'?'Escanear de nuevo':'Scan again'}</button></>:
+    qrState==='authorizing'?<span className="honest-status" role="status">{locale==='es'?'Validando mesa y visita…':'Validating table and visit…'}</span>:
+    qrState==='identity_required'?<><span className="honest-status" role="status">{locale==='es'?'Crea tu identidad segura para validar esta mesa. El QR queda pendiente solo en memoria.':'Create your secure identity to validate this table. The QR remains pending in memory only.'}</span><button className="primary-action" type="button" onClick={()=>{setOverlay(null);setArea('settings');}}>{locale==='es'?'Crear identidad':'Create identity'}</button></>:
+    qrState==='invalid'?<><span className="qr-error" role="alert">{locale==='es'?'Este QR no cumple el contrato seguro de Sabora o pertenece a otra instalación.':'This QR does not meet Sabora’s secure contract or belongs to another installation.'}</span><button type="button" onClick={()=>setQrState('idle')}>{locale==='es'?'Intentar otro QR':'Try another QR'}</button></>:
+    qrState==='forbidden'?<><span className="qr-error" role="alert">{locale==='es'?'El QR, la mesa o la sesión ya no están autorizados. Solicita ayuda al personal.':'The QR, table or session is no longer authorized. Ask staff for help.'}</span><button type="button" onClick={()=>setQrState('idle')}>{locale==='es'?'Escanear otro QR':'Scan another QR'}</button></>:
+    qrState==='unavailable'?<><span className="qr-error" role="alert">{locale==='es'?'No se ha podido verificar la mesa. No se ha habilitado ningún pedido.':'The table could not be verified. Ordering has not been enabled.'}</span><button type="button" onClick={()=>{if(identity.status==='authenticated'&&scannedCredentialRef.current)void refreshTableChange();else setQrState('idle');}}>{locale==='es'?'Reintentar':'Try again'}</button></>:
+    configuredRestaurantCode()?<TableQrScanner locale={locale} onScan={acceptScannedQr}/>:
+    <span className="qr-error" role="alert">{locale==='es'?'Esta instalación aún no tiene configurado su código de restaurante.':'This installation does not have its restaurant code configured yet.'}</span>}
+    {waiterTableId?<div className="table-change-client-notice" role="group" aria-label="Llamada al camarero">
      <strong>{locale==='es'?'Atención en mesa':'Table service'}</strong>
      <p role="status">{waiterCallState==='pending'?
       (locale==='es'?'Camarero solicitado. Una única llamada pendiente por mesa.':'A waiter has been called. Only one pending call per table.'):
@@ -926,14 +957,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
       {locale==='es'?'Llamar al camarero':'Call a waiter'}</button>
      <button type="button" disabled={waiterCallBusy} onClick={()=>void refreshWaiterCall()}>
       {locale==='es'?'Consultar llamada':'Check call'}</button>
-    </div>:null}{basket.length&&issues.length===0?<button className="primary-action" type="button" onClick={()=>void prepareCheckout()}>{locale==='es'?'Continuar con el pedido':'Continue with order'}</button>:null}{flowContract==='h6'?<button type="button" onClick={()=>setOverlay('pay-others')}>{locale==='es'?'Liquidar consumo al final':'Settle consumption at the end'}</button>:null}<button type="button" onClick={()=>{qrCredentialRef.current=null;setTableVisit(null);setQrState('idle');}}> {locale==='es'?'Escanear de nuevo':'Scan again'}</button></>:
-    qrState==='authorizing'?<span className="honest-status" role="status">{locale==='es'?'Validando mesa y visita…':'Validating table and visit…'}</span>:
-    qrState==='identity_required'?<><span className="honest-status" role="status">{locale==='es'?'Crea tu identidad segura para validar esta mesa. El QR queda pendiente solo en memoria.':'Create your secure identity to validate this table. The QR remains pending in memory only.'}</span><button className="primary-action" type="button" onClick={()=>{setOverlay(null);setArea('settings');}}>{locale==='es'?'Crear identidad':'Create identity'}</button></>:
-    qrState==='invalid'?<><span className="qr-error" role="alert">{locale==='es'?'Este QR no cumple el contrato seguro de Sabora o pertenece a otra instalación.':'This QR does not meet Sabora’s secure contract or belongs to another installation.'}</span><button type="button" onClick={()=>setQrState('idle')}>{locale==='es'?'Intentar otro QR':'Try another QR'}</button></>:
-    qrState==='forbidden'?<><span className="qr-error" role="alert">{locale==='es'?'El QR, la mesa o la sesión ya no están autorizados. Solicita ayuda al personal.':'The QR, table or session is no longer authorized. Ask staff for help.'}</span><button type="button" onClick={()=>setQrState('idle')}>{locale==='es'?'Escanear otro QR':'Scan another QR'}</button></>:
-    qrState==='unavailable'?<><span className="qr-error" role="alert">{locale==='es'?'No se ha podido verificar la mesa. No se ha habilitado ningún pedido.':'The table could not be verified. Ordering has not been enabled.'}</span><button type="button" onClick={()=>{const credential=qrCredentialRef.current;if(identity.status==='authenticated'&&credential)void authorizeTable(credential);else setQrState('idle');}}>{locale==='es'?'Reintentar':'Try again'}</button></>:
-    configuredRestaurantCode()?<TableQrScanner locale={locale} onScan={acceptScannedQr}/>:
-    <span className="qr-error" role="alert">{locale==='es'?'Esta instalación aún no tiene configurado su código de restaurante.':'This installation does not have its restaurant code configured yet.'}</span>}
+    </div>:null}
    <p className="privacy-copy">{locale==='es'?'El token no se guarda en el historial ni en el almacenamiento del navegador. El QR identifica contexto de mesa; no acredita presencia física ni permite ver cuentas ajenas.':'The token is not kept in browser history or storage. The QR identifies table context; it does not prove physical presence or grant access to other accounts.'}</p></div></Modal>:null}
   {overlay==='cart'?<Modal title={copy.selection} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><div className="basket-lines">{basket.length?basket.map(line=>{const item=items.find(value=>value.id.toLowerCase()===line.itemId.toLowerCase());const currentPrice=item?currentCatalogUnitPrice(item,line):null;const changed=currentPrice===null||currentPrice!==line.priceCents;const lineKey=basketLineKey(line);const variant=item?basketSelectionDescription(item,line.selection):'';return <article key={lineKey}><div className="basket-line-main"><h3>{line.name}</h3>{variant?<p className="privacy-copy">{variant}</p>:null}<p>{formatPrice(line.priceCents,locale==='es'?'es-ES':'en-IE')} · {item?(item.available?(locale==='es'?'Disponible':'Available'):(locale==='es'?'Agotado: retira el plato antes de pedir':'Sold out: remove this dish before ordering')):(locale==='es'?'Plato retirado de la carta: retíralo antes de pedir':'Dish no longer published: remove before ordering')}</p>{item&&item.available&&changed&&currentPrice!==null?<p className="basket-price-notice" role="status">{locale==='es'?'El precio ha cambiado a ':'The price has changed to '}{formatPrice(currentPrice,locale==='es'?'es-ES':'en-IE')}<button type="button" onClick={()=>acceptPrice(line.itemId,lineKey)}>{locale==='es'?'Aceptar nuevo precio':'Accept new price'}</button></p>:null}<div className="basket-line-actions"><button type="button" onClick={()=>removeLine(line.itemId,lineKey)}>{locale==='es'?'Retirar de la cesta':'Remove from basket'}</button>{item&&item.available?<button type="button" onClick={()=>openDetail(item,line)}>{locale==='es'?'Editar detalles':'Edit details'}</button>:null}</div></div>{item?<div className="quantity-control"><button type="button" onClick={()=>updateQuantity(item,-1,lineKey)} aria-label={`${locale==='es'?'Quitar una unidad de':'Remove one unit of'} ${item.name}${variant?' · '+variant:''}`}><Icon name="minus"/></button><strong>{line.quantity}</strong><button type="button" disabled={!item.available} onClick={()=>updateQuantity(item,1,lineKey)} aria-label={`${locale==='es'?'Añadir una unidad de':'Add one unit of'} ${item.name}${variant?' · '+variant:''}`}><Icon name="plus"/></button></div>:null}</article>}):<EmptyState>{locale==='es'?'Tu selección está vacía.':'Your selection is empty.'}</EmptyState>}</div>{basket.length?<><div className="basket-total"><span>Total {locale==='es'?'informativo':'for reference'}</span><strong>{formatPrice(total,locale==='es'?'es-ES':'en-IE')}</strong></div>{issues.length>0?<div className="prose-card" role="status" aria-live="polite"><h3>{locale==='es'?'Selección pendiente de revisión':'Selection needs review'}</h3><p>{locale==='es'?`${issues.length} plato(s) requieren una decisión antes de continuar.`:`${issues.length} dish(es) need your decision before continuing.`}</p><ul>{issueCounts.soldOut>0?<li>{locale==='es'?`${issueCounts.soldOut} agotado(s)`: `${issueCounts.soldOut} sold out`}</li>:null}{issueCounts.unpublished>0?<li>{locale==='es'?`${issueCounts.unpublished} retirado(s)`: `${issueCounts.unpublished} unpublished`}</li>:null}{issueCounts.priceChanged>0?<li>{locale==='es'?`${issueCounts.priceChanged} con precio actualizado`: `${issueCounts.priceChanged} with updated prices`}</li>:null}</ul></div>:null}<div className="basket-actions"><button type="button" disabled>{locale==='es'?'Reserva no disponible':'Reservation unavailable'}</button><button className="primary-action" type="button" disabled={!canRequestTableOrder} onClick={()=>{if(tableVisit)void prepareCheckout();else {setOverlay('qr');setArea('qr');}}}>{tableVisit?(locale==='es'?'Revalidar y continuar':'Revalidate and continue'):(locale==='es'?'Validar mesa para pedir':'Validate table to order')}</button></div>{!canRequestTableOrder?<p role="status" className="privacy-copy">{catalog.status!=='ready'?(locale==='es'?'Espera a que se cargue la carta para revisar la selección.':'Wait for the menu to load before reviewing your selection.'):(locale==='es'?'Revisa los platos agotados, retirados o con cambios de precio. Retira los no disponibles o acepta expresamente los nuevos precios.':'Review sold-out, unpublished or repriced dishes. Remove unavailable dishes or expressly accept the updated configured price.')}</p>:null}<p className="privacy-copy">{locale==='es'?'El servidor revalida la cesta antes de elegir pago. Las reservas permanecen en un circuito separado.':'The server revalidates the basket before payment choice. Reservations remain in a separate flow.'}</p></>:null}</Modal>:null}
   {overlay==='pay-others'&&tableVisit?<Modal title={locale==='es'?'Liquidar consumo':'Settle consumption'} onClose={closeOverlay}><EconomicSettlementPanel locale={locale} tableId={tableVisit.tableId} visitId={tableVisit.visitId} transport={customerTransport} confirmStripePayment={confirmStripePayment}/></Modal>:null}

@@ -1,5 +1,7 @@
 # CartaViva / Sabora — continuidad de la sesión 51 (24-11-2026)
 
+**Continuación H1 (25-11-2026).** El [Draft #92](https://github.com/jdlc86/CartaViva/pull/92) continúa desde el mismo árbol base. El [informe H1](../reviews/SABORA_FINAL_CLOSURE_H1_FUNCTIONAL_CONNECTION_REVIEW_2026-11-25.md) registra la conexión en cliente, las pruebas y las puertas pendientes para identidad, publicación y aceptación. Se conservan las 103 migraciones y la ruta operativa V2.
+
 **Corte de cierre del primer despliegue ficticio.** Los PR #87, #90 y #91 están integrados en el SHA base `da02d5d9`. Se reutilizan las 103 migraciones y se ha verificado el digest del recibo original. El nuevo hito reúne las pruebas y bloqueantes en el [informe único](../reviews/SABORA_S51_FIRST_TEST_DEPLOYMENT_CLOSURE_2026-11-24.md). El plan exacto del SHA base pasó. El primer deploy sigue pendiente de sus autorizaciones, preparación material y aceptación del propietario.
 
 > **DOCUMENTO DE CONTINUIDAD, NO NORMA, PRUEBA NI AUTORIZACIÓN OPERATIVA.** La fuente de verdad son los contratos normativos de `main`. Sabora es un único restaurante, dos PWA (cliente y gestión), y su prioridad es el primer despliegue funcional de prueba con datos exclusivamente ficticios en el VPS existente. No detener, modificar, reiniciar ni depender de Fleetia u otros proyectos. No añadir complejidad al procedimiento de despliegue.

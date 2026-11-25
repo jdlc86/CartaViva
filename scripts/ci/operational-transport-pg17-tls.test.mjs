@@ -264,13 +264,16 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
    assert.equal(apiRuntime.summary.capabilityCount,18);
    assert.equal(apiRuntime.mode,'operational-h3-h6-m3-candidate');
    const request=path=>fetch(apiRuntime.origin+path,{signal:AbortSignal.timeout(10_000)});
-   const [health,ready,catalog,unauthorized]=await Promise.all([
+   const [health,ready,catalog,unauthorized,features]=await Promise.all([
     request('/health'),request('/ready'),request('/api/v1/catalog'),
     request('/api/v1/operations/table-change/pending'),
+    request('/api/v1/customer/features'),
    ]);
    assert.equal(health.status,200);assert.equal(ready.status,200);
    assert.equal(catalog.status,200);
    assert.ok([401,403].includes(unauthorized.status));
+   assert.equal(features.headers.get('cache-control'),'no-store');
+   assert.deepEqual(await features.json(),{tableChange:true,waiterCalls:false});
    // Removing a critical role while the API is listening must make the
    // real PostgreSQL preflight return 503, not fabricate readiness.
    const catalogLogin=slots['customer.catalogReaderPool'].login;

@@ -16,6 +16,7 @@ import {createCustomerSessionRevoker} from './customer-session-revoker.mjs';
 import {createCustomerCookieAuth} from './customer-cookie-session-candidate.mjs';
 import {createCatalogScopedQuery} from './catalog-scoped-query.mjs';
 import {registerCatalogHttpRoute} from './catalog-http-route.mjs';
+import {registerPublishedCustomerFeatures} from './published-customer-features.mjs';
 import {createVerifiedTableChangeB3CustomerFlowCandidate,
  assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole}
  from './table-change-isolated-sql-composition-candidate.mjs';
@@ -379,6 +380,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    repository:createWaiterCallComposition({
     customerPool:waiterCalls.customerPool,staffPool:waiterCalls.staffPool,
     issueStaffCapability:waiterCalls.issueStaffCapability})});
+  registerPublishedCustomerFeatures(app,{tableChange:true,waiterCalls:Boolean(waiterCalls),
+   isAvailable:()=>operational});
   if(management)registerM3ManagementHttp(app,{forRoles:oneGuard,tables:m3Tables,
    catalog:m3Catalog,finance:m3Finance,qr:management.qr,observeFailure});
   if(ownershipGovernance)registerOwnershipGovernanceHttp(app,{

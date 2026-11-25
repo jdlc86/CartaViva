@@ -8,10 +8,12 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {resolve,dirname,join} from 'node:path';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
+import {startPublishedClientPwa} from './published-client-pwa-fixture.mjs';
 import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
 import {createCustomerCookieAuth,readCustomerCookie} from '../../apps/api/src/customer-cookie-session-candidate.mjs';
 import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs';
 import {createCustomerSessionVerifier} from '../../apps/api/src/customer-session-verifier.mjs';
+import {registerPublishedCustomerFeatures} from '../../apps/api/src/published-customer-features.mjs';
 import {assertWaiterCallRuntimeIdentity,createWaiterCallStaffIssuer,
  createWaiterCallComposition,registerWaiterCallHttp,
  WAITER_CALL_CUSTOMER_ROLE,WAITER_CALL_STAFF_ROLE}
@@ -34,8 +36,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function vite(app,port,api){
  const proc=spawn('pnpm',['exec','vite','--mode','test','--host','127.0.0.1',
   '--port',String(port),'--strictPort'],{cwd:join(dir,'apps',app),
-  env:{...process.env,SABORA_CI_COMMS_API:api,
-   VITE_SABORA_ENABLE_WAITER_CALLS:app==='client'?'isolated_pg17':'disabled'},stdio:'pipe'});
+  env:{...process.env,SABORA_CI_COMMS_API:api},stdio:'pipe'});
  let logs='';proc.stdout.on('data',c=>{logs+=String(c);});
  proc.stderr.on('data',c=>{logs+=String(c);});
  return {proc,logs:()=>logs};
@@ -58,8 +59,8 @@ test('CV-014 PG17 + cookie + JWT/HMAC + Fastify + Chromium: one waiter call per 
  const otherToken=randomBytes(32).toString('base64url');
  const qrToken=randomBytes(32).toString('base64url');
  const keyId='sabora_call_key_'+suffix,secret=randomBytes(32);
- const origin='http://127.0.0.1:4178',password='ci_call_'+randomBytes(12).toString('hex');
- const pools=[],processes=[];let api,browser;
+ const origin='https://127.0.0.1:4178',password='ci_call_'+randomBytes(12).toString('hex');
+ const pools=[],processes=[];let api,browser,clientPreview;
  try{
   await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'waiter','active'),($2,'waiter','active'),($3,'kitchen','active')",[waiterA,waiterB,kitchen]);
   await admin.query("INSERT INTO sabora.customer_profiles(id,public_id,alias) VALUES($1,$2,'Uno'),($3,$4,'Dos')",
@@ -119,6 +120,7 @@ test('CV-014 PG17 + cookie + JWT/HMAC + Fastify + Chromium: one waiter call per 
     ?reply.code(201).send({tableId,visitId:visitKey,
      basketId:'CI_CALL_BASKET_1234567890',expiresAt:new Date(Date.now()+3600000).toISOString()})
     :reply.code(403).send({error:'customer_context_forbidden'}));
+  registerPublishedCustomerFeatures(api,{tableChange:false,waiterCalls:true,isAvailable:()=>true});
   await api.ready();
   const cookie=v=>'__Secure-sabora_customer='+v;
   const customerGet=(t=cookieToken)=>api.inject({method:'GET',
@@ -152,11 +154,12 @@ test('CV-014 PG17 + cookie + JWT/HMAC + Fastify + Chromium: one waiter call per 
   assert.deepEqual(outbox.map(v=>v.event_type),['sabora.waiter_call.requested','sabora.waiter_call.attended']);
 
   const apiUrl=await api.listen({host:'127.0.0.1',port:0});
-  const cv=vite('client',4178,apiUrl),mv=vite('management',4179,apiUrl);
-  processes.push(cv,mv);
-  await Promise.all([waitHttp(origin+'/'),waitHttp('http://127.0.0.1:4179/')]);
+  clientPreview=await startPublishedClientPwa({apiOrigin:apiUrl,port:4178,tls:true});
+  const mv=vite('management',4179,apiUrl);
+  processes.push(mv);
+  await waitHttp('http://127.0.0.1:4179/');
   browser=await chromium.launch({headless:true});
-  const context=await browser.newContext({serviceWorkers:'block'});
+  const context=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
   await context.addCookies([{name:'__Secure-sabora_customer',value:cookieToken,
    domain:'127.0.0.1',path:'/api/v1/customer',secure:true,httpOnly:true,sameSite:'Strict'}]);
   const client=await context.newPage();
@@ -189,6 +192,7 @@ test('CV-014 PG17 + cookie + JWT/HMAC + Fastify + Chromium: one waiter call per 
  }finally{
   for(const p of processes)p.proc.kill('SIGTERM');
   await browser?.close().catch(()=>{});
+  await clientPreview?.close().catch(()=>{});
   await api?.close().catch(()=>{});
   for(const p of pools)await p.end().catch(()=>{});
   for(const l of logins){

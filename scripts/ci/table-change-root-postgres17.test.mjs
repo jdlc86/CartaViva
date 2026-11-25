@@ -46,6 +46,8 @@ import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-p
 import {createCustomerFlowTransport} from '../../apps/client/src/customer-flow-transport.ts';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createM2RestaurantCandidate} from '../../apps/api/src/m2-restaurant-candidate.mjs';
+import {registerPublishedCustomerFeatures} from '../../apps/api/src/published-customer-features.mjs';
+import {startPublishedClientPwa} from './published-client-pwa-fixture.mjs';
 import {startDisposableM3Runtime} from './disposable-h6-runtime-bootstrap.mjs';
 import {createM3AuthenticatedManagementGateway} from '../../apps/management/src/m3-authenticated-management-gateway.js';
 import {createM3ManagementCapabilityIssuer} from '../../apps/api/src/m3-management-capability.mjs';
@@ -2741,8 +2743,6 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   assert.equal(await page.getByRole('radio',{name:/Pagar ahora|Pagar al terminar/}).count(),0,
    'already selected payment mode is not offered in subsequent rounds');
  };
- const priorB3Flag=process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE;
- process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE='isolated_pg17';
  const suffix=process.pid.toString(36);
  const specs=[
   {role:'sabora_f12_customer_runtime',login:'sabora_b3_physical_request_'+suffix,
@@ -3198,6 +3198,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     secretKey:'sabora_b3_ephemeral_test_secret_key_32_bytes_minimum',
     cookieAuth:customerCookieAuth,
    }),{mounted:true});
+   registerPublishedCustomerFeatures(http,{tableChange:true,waiterCalls:false,isAvailable:()=>true});
    registerH6CustomerEventStreamHttp(http,{cookieAuth:customerCookieAuth,
     events:customerEvents,subscribeCommitted:customerEventNotifier.subscribe,
     heartbeatMs:5000});
@@ -3973,10 +3974,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     // Fastify and management-browser journey. Only the public catalog
     // presentation is an explicitly isolated HTTP fixture: the order,
     // quote, session, QR and account transfer use the live SQL functions.
-    const {pathToFileURL,fileURLToPath}=await import('node:url');
     const chromium=await loadChromium();
-    const clientRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
-    const {createServer}=await import(pathToFileURL(clientRequire.resolve('vite')).href);
     let clientVite,clientBrowser,clientContext;
     let confirmedOrderBody=null;
     const customerBrowserErrors=[];
@@ -3984,13 +3982,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal(http.server.listening,true,'management and client must use one live API');
      const address=http.server.address();
      assert.ok(address&&typeof address==='object'&&address.port>0);
-     clientVite=await createServer({
-      root:fileURLToPath(new URL('../../apps/client/',import.meta.url)),
-      mode:'test',logLevel:'error',
-      server:{host:'127.0.0.1',port:0,strictPort:false,
-       proxy:{'/api':{target:'http://127.0.0.1:'+address.port,changeOrigin:false}}}
-     });
-     await clientVite.listen();
+     clientVite=await startPublishedClientPwa({apiOrigin:'http://127.0.0.1:'+address.port});
      const uiAddress=clientVite.httpServer?.address();
      assert.ok(uiAddress&&typeof uiAddress==='object'&&uiAddress.port>0);
      const origin='http://127.0.0.1:'+uiAddress.port;
@@ -8711,8 +8703,6 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    /invalid_b3_confirmation_capabilities/,
    'a revoked writer privilege must prevent candidate construction');
  }finally{
-  if(priorB3Flag===undefined)delete process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE;
-  else process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE=priorB3Flag;
   if(customerEventNotifier)await customerEventNotifier.close();
   for(const connection of connections)connection.release();
   for(const pool of pools)await pool.end();

@@ -224,6 +224,7 @@ export function ManagementApp({
 let managementRoot: ReturnType<typeof createRoot> | null = null;
 let managementElement: HTMLElement | null = null;
 const managementSessionFence = createManagementSessionFence();
+const distributedManagement = import.meta.env.VITE_SABORA_OPERATIONAL_PWA === '1';
 let managementRenderGeneration = 0;
 
 function renderManagement(
@@ -243,6 +244,17 @@ function renderManagement(
   // Force a new component tree on every identity transition: no previous
   // employee's board, history, incident draft or SSE state may survive.
   const key = ++managementRenderGeneration;
+  if (distributedManagement && !gateway) {
+    flushSync(() => managementRoot!.render(
+      <main className="management-shell">
+        <section className="management-detail" aria-labelledby="management-session-required">
+          <h1 id="management-session-required">Acceso a Sabora Gestión</h1>
+          <p role="status">Para continuar se requiere una sesión de personal autorizada.</p>
+        </section>
+      </main>,
+    ));
+    return;
+  }
   flushSync(() => managementRoot!.render(
     <React.StrictMode><ManagementApp key={key} operationsGateway={gateway}
       tableChangeGateway={tableChangeGateway} tablesGateway={managementGateway}
