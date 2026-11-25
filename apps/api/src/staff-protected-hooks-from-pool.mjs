@@ -5,10 +5,10 @@ import { createPostgresProtectedRouteHooks } from './postgres-protected-route-ho
 // Bootstrap dependency injection only: does not open a connection or expose routes.
 // The caller must provide a separately provisioned, least-privilege PostgreSQL pool.
 export function createStaffProtectedHooksFromPool({
-  pool, issuer, getTrustedKeys, verify, observe
+  pool, issuer, getTrustedKeys, verify, observe, authenticate
 } = {}) {
   const query = createSafeStaffReaderQuery({
     query: createStaffReaderQuery({ pool }), observe
   });
-  return createPostgresProtectedRouteHooks({ query, issuer, getTrustedKeys, verify });
+  return createPostgresProtectedRouteHooks({ query, issuer, getTrustedKeys, verify, authenticate });
 }

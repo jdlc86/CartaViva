@@ -224,7 +224,32 @@
           "marker": "manager.getByRole('button',{name:'Marcar atendida'})"
         }
       ],
-      "note": "H1/F07 del inventario único: el bundle cliente descubre la llamada desde el runtime y su prueba usa build productivo con PostgreSQL 17. La gestión usa identidad de laboratorio en la prueba. Autenticación definitiva, recordatorios fuera de la PWA y aceptación humana pendientes. Véase el informe SABORA_FINAL_CLOSURE_H1_FUNCTIONAL_CONNECTION_REVIEW_2026-11-25.md."
+      "note": "H1/F07 del inventario único. El ensayo usa ambas PWA productivas, proveedor de passkeys local, Fastify y PostgreSQL 17. Pendientes el proveedor alojado, los recordatorios fuera de la PWA y la aceptación humana. Véase el informe SABORA_FINAL_CLOSURE_H1_FUNCTIONAL_CONNECTION_REVIEW_2026-11-25.md."
+    },
+    {
+      "id": "H1-identidad-personal",
+      "status": "PENDIENTE",
+      "surfaces": ["management"],
+      "ui": [{"surface": "management", "path": "apps/management/src/main.tsx", "marker": "Entrar con passkey"}],
+      "api": [{"path": "apps/api/src/staff-passkey-session.mjs", "marker": "createStaffPasskeySession"}],
+      "evidence": [
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "manager.getByRole('button',{name:'Entrar con passkey'})"
+        },
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "CV-014 PG17 + Fastify + Chromium passkey login"
+        }
+      ],
+      "blockers": [
+        "Verificar el flujo con Supabase Auth alojado y una identidad ficticia",
+        "Completar el enrolamiento y entrega durable con Resend, la recuperación y el alta inicial de ROOT",
+        "Obtener la aceptación del propietario"
+      ],
+      "note": "Entrada para personal activo implementada. Las invitaciones habilitan el enrolamiento y las operaciones de gestión requieren una sesión de passkey y membresía vigente."
     }
   ]
 }

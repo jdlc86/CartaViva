@@ -32,6 +32,7 @@ test('all contracted management workspaces are represented without operational f
 test('management keeps network access inside the injected authenticated operations boundary', () => {
   const transport = readFileSync(new URL('../src/order-operations-authenticated-gateway.js', import.meta.url), 'utf8');
   const managementTransport = readFileSync(new URL('../src/m3-authenticated-management-gateway.js', import.meta.url), 'utf8');
+  const staffTransport = readFileSync(new URL('../src/staff-gateway-auth.js', import.meta.url), 'utf8');
   const qrRenderer = readFileSync(new URL('../src/components/TableQrOneTime.tsx', import.meta.url), 'utf8');
   const defaultPreview = sources.filter(({path}) => !path.endsWith('order-operations-authenticated-gateway.js') &&
     !path.endsWith('order-operations-gateway.js') &&
@@ -40,11 +41,12 @@ test('management keeps network access inside the injected authenticated operatio
   assert.doesNotMatch(defaultPreview, /\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\bEventSource\b/);
   assert.match(transport, /getAccessToken/);
   assert.match(transport, /fetchImpl/);
-  assert.match(transport, /credentials:\s*'omit'/);
+  assert.match(transport, /credentials:\s*auth\.credentials/);
   assert.match(transport, /revoke/);
   assert.match(managementTransport, /getAccessToken/);
   assert.match(managementTransport, /fetchImpl/);
-  assert.match(managementTransport, /credentials:'omit'/);
+  assert.match(managementTransport, /credentials:auth\.credentials/);
+  assert.match(staffTransport, /credentials: cookieSession \? 'same-origin' : 'omit'/);
   assert.match(managementTransport, /revoke/);
   assert.doesNotMatch(combined, /\blocalStorage\b|\bsessionStorage\b|document\.cookie/);
   assert.doesNotMatch(combined, /googleapis\.com|generativelanguage|aiplatform|AIza[0-9A-Za-z_-]+/i);
@@ -80,7 +82,7 @@ test('navigation is deep-linkable and read transports remain injected and discon
   assert.match(main, /href=\{toManagementHash\(section\.id\)\}/);
   assert.match(main, /aria-current=\{area === section\.id \? 'page'/);
   assert.match(main, /window\.addEventListener\('popstate'/);
-  assert.match(main, /renderManagement\(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway\)/);
+  assert.match(main, /renderManagement\(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut\)/);
   assert.match(main, /enableOwnershipGovernance = false/);
   assert.match(main, /ownershipGateway\?\.revoke\(\)/);
   assert.match(main, /ownershipGateway=\{ownershipGateway\}/);

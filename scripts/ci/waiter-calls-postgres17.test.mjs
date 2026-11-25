@@ -3,12 +3,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {randomUUID,randomBytes,createHash,generateKeyPairSync,sign} from 'node:crypto';
-import {spawn} from 'node:child_process';
-import {fileURLToPath,pathToFileURL} from 'node:url';
-import {resolve,dirname,join} from 'node:path';
+import {randomUUID,randomBytes,createHash,generateKeyPairSync,sign,verify as verifySignature} from 'node:crypto';
+import {pathToFileURL} from 'node:url';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
-import {startPublishedClientPwa} from './published-client-pwa-fixture.mjs';
+import {startPublishedClientPwa,startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
+import {createStaffPasskeySession} from '../../apps/api/src/staff-passkey-session.mjs';
 import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
 import {createCustomerCookieAuth,readCustomerCookie} from '../../apps/api/src/customer-cookie-session-candidate.mjs';
 import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs';
@@ -30,22 +29,8 @@ if(u.protocol!=='postgresql:'||u.hostname!=='127.0.0.1'||u.username!=='postgres'
 const {Pool}=createRequire(import.meta.url)(pg);
 const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
 const {chromium}=await import(pathToFileURL(playwright).href);
-const dir=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
 const admin=new Pool({connectionString:target,max:3,connectionTimeoutMillis:3000});
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function vite(app,port,api){
- const proc=spawn('pnpm',['exec','vite','--mode','test','--host','127.0.0.1',
-  '--port',String(port),'--strictPort'],{cwd:join(dir,'apps',app),
-  env:{...process.env,SABORA_CI_COMMS_API:api},stdio:'pipe'});
- let logs='';proc.stdout.on('data',c=>{logs+=String(c);});
- proc.stderr.on('data',c=>{logs+=String(c);});
- return {proc,logs:()=>logs};
-}
-async function waitHttp(address){
- for(let n=0;n<120;n++){try{const r=await fetch(address);if(r.ok)return;}catch{}await sleep(200);}
- throw Error('waiter_call_vite_unavailable:'+address);
-}
-test('CV-014 PG17 + cookie + JWT/HMAC + Fastify + Chromium: one waiter call per table, concurrent attendance, durable events',
+test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table and durable attendance',
  {timeout:180_000},async()=>{
  const suffix=process.pid.toString(36),logins=['sabora_call_c_'+suffix,'sabora_call_s_'+suffix,'sabora_call_reader_'+suffix];
  const [loginC,loginS,loginR]=logins;
@@ -60,7 +45,8 @@ test('CV-014 PG17 + cookie + JWT/HMAC + Fastify + Chromium: one waiter call per 
  const qrToken=randomBytes(32).toString('base64url');
  const keyId='sabora_call_key_'+suffix,secret=randomBytes(32);
  const origin='https://127.0.0.1:4178',password='ci_call_'+randomBytes(12).toString('hex');
- const pools=[],processes=[];let api,browser,clientPreview;
+ const managementOrigin='https://localhost:4179';
+ const pools=[];let api,browser,clientPreview,managementPreview;
  try{
   await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'waiter','active'),($2,'waiter','active'),($3,'kitchen','active')",[waiterA,waiterB,kitchen]);
   await admin.query("INSERT INTO sabora.customer_profiles(id,public_id,alias) VALUES($1,$2,'Uno'),($3,$4,'Dos')",
@@ -94,21 +80,70 @@ test('CV-014 PG17 + cookie + JWT/HMAC + Fastify + Chromium: one waiter call per 
   const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
   const issuer='https://sabora-cv014-ci.test/auth/v1';
   const jwk={...publicKey.export({format:'jwk'}),alg:'RS256',kid:'call-ci-'+suffix,use:'sig'};
-  const jwt=id=>{
+  const jwt=(id,sessionId)=>{
    const now=Math.floor(Date.now()/1000);
    const a=Buffer.from(JSON.stringify({typ:'JWT',alg:'RS256',kid:jwk.kid})).toString('base64url');
    const b=Buffer.from(JSON.stringify({iss:issuer,aud:'authenticated',sub:id,role:'authenticated',
-    iat:now,exp:now+3600})).toString('base64url');
+    iat:now,exp:now+3600,...(sessionId?{is_anonymous:false,session_id:sessionId,
+     amr:[{method:'passkey',timestamp:now}]}:{})})).toString('base64url');
    return a+'.'+b+'.'+sign('RSA-SHA256',Buffer.from(a+'.'+b),privateKey).toString('base64url');
   };
+  // The loopback provider verifies a real Chromium assertion with a
+  // disposable registered public key before issuing its signed fixture JWT.
+  const {privateKey:deviceKey,publicKey:devicePublicKey}=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
+  const credentialId=randomBytes(32),challenges=new Map();
+  const rpId=new URL(managementOrigin).hostname;
+  const rpHash=createHash('sha256').update(rpId).digest();
+  let activeToken;
+  const provider={
+   async options(){
+    const id=randomUUID(),challenge=randomBytes(32).toString('base64url');
+    const expiresAt=Math.floor(Date.now()/1000)+60;
+    challenges.set(id,{challenge,expiresAt});
+    return {challenge_id:id,expires_at:expiresAt,options:{challenge,rpId,timeout:60000}};
+   },
+   async verify(id,credential){
+    const expected=challenges.get(id);
+    challenges.delete(id);
+    if(!expected||expected.expiresAt<=Date.now()/1000||
+       credential.id!==credentialId.toString('base64url'))return null;
+    const response=credential.response;
+    const clientData=Buffer.from(response.clientDataJSON,'base64url');
+    const client=JSON.parse(clientData);
+    const data=Buffer.from(response.authenticatorData,'base64url');
+    if(client.challenge!==expected.challenge||client.origin!==managementOrigin||
+       Buffer.from(response.userHandle,'base64url').toString()!==waiterA||
+       !data.subarray(0,32).equals(rpHash))return null;
+    const signed=Buffer.concat([data,createHash('sha256').update(clientData).digest()]);
+    if(!verifySignature('sha256',signed,devicePublicKey,Buffer.from(response.signature,'base64url')))return null;
+    activeToken=jwt(waiterA,randomUUID());
+    return {access_token:activeToken};
+   },
+   async user(token){return token===activeToken?{id:waiterA}:null;},
+   async logout(token){
+    if(token!==activeToken)return null;
+    activeToken=undefined;
+    return true;
+   }
+  };
   const guardHooks=createStaffProtectedHooksFromPool({pool:pools[2],issuer,getTrustedKeys:async()=>[jwk]});
+  const passkey=createStaffPasskeySession({origin:managementOrigin,issuer,secret,
+   getTrustedKeys:async()=>[jwk],provider});
+  const passkeyGuard=createStaffProtectedHooksFromPool({pool:pools[2],issuer,
+   getTrustedKeys:async()=>[jwk],authenticate:passkey.authenticate});
   const forRoles=roles=>async(req,reply)=>{
-   for(const hook of guardHooks(roles)){await hook(req,reply);if(reply.sent)return;}
+   // Direct Fastify injections still exercise the two independent Bearer
+   // fixtures for concurrency. The browser uses only the passkey session.
+   const hooks=req.headers.host===new URL(managementOrigin).host?passkeyGuard:guardHooks;
+   for(const hook of hooks(roles)){await hook(req,reply);if(reply.sent)return;}
   };
   const verify=createCustomerSessionVerifier({query:(sql,params)=>admin.query(sql,params)});
   const cookieAuth=createCustomerCookieAuth({verifyCustomerSession:verify,
    revokeCustomerSession:async()=>false,allowedOrigin:origin});
   api=Fastify({logger:false,trustProxy:false});
+  passkey.register(api,{forRoles:passkeyGuard,features:{
+   waiterCalls:true,tableChange:false,management:false,ownership:false
+  }});
   registerWaiterCallHttp(api,{cookieAuth,forRoles,repository});
   api.get('/api/v1/customer/session',{preHandler:cookieAuth.authenticate},
    async req=>({authenticated:true,publicId:req.customerIdentity.publicId,
@@ -155,9 +190,7 @@ test('CV-014 PG17 + cookie + JWT/HMAC + Fastify + Chromium: one waiter call per 
 
   const apiUrl=await api.listen({host:'127.0.0.1',port:0});
   clientPreview=await startPublishedClientPwa({apiOrigin:apiUrl,port:4178,tls:true});
-  const mv=vite('management',4179,apiUrl);
-  processes.push(mv);
-  await waitHttp('http://127.0.0.1:4179/');
+  managementPreview=await startPublishedManagementPwa({apiOrigin:apiUrl,port:4179,tls:true});
   browser=await chromium.launch({headless:true});
   const context=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
   await context.addCookies([{name:'__Secure-sabora_customer',value:cookieToken,
@@ -170,15 +203,25 @@ test('CV-014 PG17 + cookie + JWT/HMAC + Fastify + Chromium: one waiter call per 
   await client.getByText('Camarero solicitado.',{exact:false}).waitFor({timeout:12000});
   const call=(await getStaff(waiterB)).json().items[0];
   assert(call&&call.tableNumber===9911);
-  const manager=await context.newPage();
+  const managementContext=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
+  const manager=await managementContext.newPage();
   await manager.setViewportSize({width:1200,height:900});
-  await manager.goto('http://127.0.0.1:4179/');
-  await manager.evaluate(async auth=>{
-   const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
-   window.__ciCallDispose=mountAuthenticatedManagementApp({
-    element:document.getElementById('root'),
-    getAccessToken:async()=>auth,enableWaiterCalls:true});
-  },jwt(waiterA));
+  await manager.goto(managementOrigin);
+  const cdp=await managementContext.newCDPSession(manager);
+  await cdp.send('WebAuthn.enable');
+  const {authenticatorId}=await cdp.send('WebAuthn.addVirtualAuthenticator',{
+   options:{protocol:'ctap2',transport:'internal',hasResidentKey:true,
+    hasUserVerification:true,isUserVerified:true,automaticPresenceSimulation:true}
+  });
+  await cdp.send('WebAuthn.addCredential',{authenticatorId,credential:{
+   credentialId:credentialId.toString('base64'),privateKey:deviceKey.export({format:'der',type:'pkcs8'}).toString('base64'),
+   rpId:'localhost',isResidentCredential:true,signCount:0,userHandle:Buffer.from(waiterA).toString('base64')
+  }});
+  await manager.getByRole('button',{name:'Entrar con passkey'}).click();
+  await manager.getByRole('button',{name:'Cerrar sesión'}).waitFor();
+  assert((await managementContext.cookies()).some(item=>
+   item.name==='__Host-sabora-staff'&&item.httpOnly&&item.secure&&item.sameSite==='Strict'));
+  await manager.reload();
   await manager.getByRole('link',{name:/Comandas/}).click();
   await manager.getByRole('button',{name:'Sala'}).click();
   await manager.getByRole('button',{name:'Marcar atendida'}).waitFor({timeout:15000});
@@ -188,11 +231,16 @@ test('CV-014 PG17 + cookie + JWT/HMAC + Fastify + Chromium: one waiter call per 
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.waiter_call_events WHERE call_id=$1',[call.id])).rows[0].n,2);
   await client.getByRole('button',{name:'Consultar llamada'}).click();
   await client.getByText('Puedes avisar a sala',{exact:false}).waitFor({timeout:12000});
+  await manager.getByRole('button',{name:'Cerrar sesión'}).click();
+  await manager.getByText('Sesión cerrada.').waitFor();
+  await manager.reload();
+  await manager.getByRole('button',{name:'Entrar con passkey'}).waitFor();
+  await managementContext.close();
   await context.close();
  }finally{
-  for(const p of processes)p.proc.kill('SIGTERM');
   await browser?.close().catch(()=>{});
   await clientPreview?.close().catch(()=>{});
+  await managementPreview?.close().catch(()=>{});
   await api?.close().catch(()=>{});
   for(const p of pools)await p.end().catch(()=>{});
   for(const l of logins){

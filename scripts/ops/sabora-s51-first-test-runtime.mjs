@@ -15,7 +15,7 @@ const gateway='sabora-egress';
 const productionEvidence=new Set(PILOT_ACTIVATION_REQUIREMENTS.filter(key=>
  !['backupRestoreVerified','rollbackVerified','operationalBootstrapVerified','twoPwasValidated'].includes(key)));
 
-export function firstTestRuntime(inventory,restaurantCode,evidence){
+export function firstTestRuntime(inventory,restaurantCode,evidence,staffPasskeyPublishableKey){
  const features={ownership:true,communications:true,waiterCalls:true};
  const {slots,notifiers}=describeOperationalSqlContract(features);
  if(inventory?.schema!=='sabora-runtime-provision-inventory/v1'||inventory.project!=='sabora'||
@@ -38,7 +38,8 @@ export function firstTestRuntime(inventory,restaurantCode,evidence){
  const activation={
   schemaVersion:1,stage:'production',restaurantCode,
   listener:{host:'0.0.0.0',port:4100,exposure:'container_private'},origins,
-  auth:{issuer:'https://'+issuerHost+'/auth/v1',connectHost:gateway,connectPort:14443},features,
+  auth:{issuer:'https://'+issuerHost+'/auth/v1',connectHost:gateway,connectPort:14443,
+   ...(staffPasskeyPublishableKey===undefined?{}:{staffPasskeyPublishableKey})},features,
   network:{allowedTlsHosts:[pooler,issuerHost],egressGatewayHost:gateway},database,
   signing:{keyId:inventory.keyId,capabilitySecretRef:'capability_hmac',
    customerSecretRef:'customer_hmac',qrSecretRef:'qr_hmac'},
@@ -68,7 +69,8 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const [inventoryFile,code,evidenceFile,destination]=process.argv.slice(2);
  if(process.argv.length!==6)throw Error('usage: node sabora-s51-first-test-runtime.mjs INVENTORY RESTAURANT_CODE EVIDENCE NEW_OUTPUT');
  const readJson=path=>JSON.parse(readFileSync(path,'utf8'));
- const {activation,egress,runtimeEnv}=firstTestRuntime(readJson(inventoryFile),code,readJson(evidenceFile));
+ const {activation,egress,runtimeEnv}=firstTestRuntime(readJson(inventoryFile),code,readJson(evidenceFile),
+  process.env.SABORA_STAFF_AUTH_PUBLISHABLE_KEY);
  mkdirSync(destination,{mode:0o700});
  const put=(name,bytes)=>writeFileSync(join(destination,name),bytes,{flag:'wx',mode:0o600});
  put('activation.json',JSON.stringify(activation,null,2)+'\n');

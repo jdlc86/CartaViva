@@ -305,10 +305,17 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   const composedOperations=Object.freeze({...operations,
    closeAccount:closeOperations.closeAccount});
   const customerEvents=createH6CustomerEventRepository({withTransaction:eventTx});
-  const forRoles=createStaffProtectedHooksFromPool({pool:staff.pool,issuer:staff.issuer,
+  const authenticate=staff.passkey?.authenticate??(staff.requirePasskey
+   ? async (_request,reply)=>reply.header('Cache-Control','no-store').code(401).send({error:'unauthorized'})
+   : undefined);
+  const forRoles=createStaffProtectedHooksFromPool({pool:staff.pool,issuer:staff.issuer,authenticate,
    getTrustedKeys:staff.getTrustedKeys,...(staff.verify?{verify:staff.verify}:{}),
    ...(staff.observe?{observe:staff.observe}:{})});
   const oneGuard=staffGuard(forRoles);
+  staff.passkey?.register(app,{forRoles,features:{
+   tableChange:true,waiterCalls:Boolean(waiterCalls),management:Boolean(management),
+   ownership:Boolean(management?.ownership)
+  }});
   const h4Operations=createOrderOperationsCoordinator({withTransaction:h4Tx,
    repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
    issueTransitionCapability:h4.issueTransitionCapability,
@@ -375,7 +382,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    subscribeCommitted:h6Notifier.subscribe,heartbeatMs:eventHeartbeatMs});
   registerH6StaffEventStreamHttp(app,{forRoles:oneGuard,events:operationsRepository,
    issueCapability:h6.issueStaffCapability,subscribeCommitted:h6Notifier.subscribe,
-   heartbeatMs:eventHeartbeatMs});
+   heartbeatMs:eventHeartbeatMs,assertIdentity:staff.passkey?.assertIdentity});
   if(waiterCalls)registerWaiterCallHttp(app,{cookieAuth,forRoles:oneGuard,
    repository:createWaiterCallComposition({
     customerPool:waiterCalls.customerPool,staffPool:waiterCalls.staffPool,

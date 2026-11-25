@@ -3,6 +3,12 @@
 Estado: **esquema candidato validado en PG17; gate operativo no aprobado ni
 activado**. Fecha: 2026-10-25.
 
+**Decisión posterior, 25-11-2026.** El propietario eligió Resend. El
+[informe H1](../reviews/SABORA_FINAL_CLOSURE_H1_FUNCTIONAL_CONNECTION_REVIEW_2026-11-25.md#login-de-personal-y-resend)
+registra el SMTP previsto para las invitaciones de Supabase Auth y la entrada de
+personal activo por passkey. Siguen pendientes la entrega durable, el
+enrolamiento completo y la prueba del servicio alojado.
+
 ## Fuente normativa y alcance
 
 La regla de revocación desde el primer registro durable está en

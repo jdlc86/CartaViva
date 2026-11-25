@@ -10,7 +10,8 @@ import {createM3ManagementCapabilityIssuer} from './m3-management-capability.mjs
 import {createOwnershipCapabilityIssuer} from './ownership-governance-candidate.mjs';
 import {createWaiterCallStaffIssuer} from './waiter-call-candidate.mjs';
 import {hashCustomerSessionToken} from './customer-session.mjs';
-import {createGatewayJwksFetch} from './gateway-jwks-fetch.mjs';
+import {createGatewayJwksFetch,createGatewayPasskeyProvider,isStaffAuthPublishableKey} from './gateway-jwks-fetch.mjs';
+import {createStaffPasskeySession} from './staff-passkey-session.mjs';
 import {validateSaboraEgressPolicy} from './sabora-egress-gateway.mjs';
 import {PILOT_ACTIVATION_REQUIREMENTS,assertFirstTestActivation} from './pilot-activation-gate.mjs';
 
@@ -133,7 +134,9 @@ export function validateOperationalActivationManifest(manifest){
        ['sabora.allaiso.com','gestion-sabora.allaiso.com'].includes(host)))&&
      (clientOrigin.origin!=='https://sabora.allaiso.com:8443'||
       managementOrigin.origin!=='https://gestion-sabora.allaiso.com:8443')))throw invalid();
- if(!exactKeys(manifest.auth,['issuer','connectHost','connectPort'])||!exactKeys(manifest.network,
+ if(!exactKeys(manifest.auth,['issuer','connectHost','connectPort'],['staffPasskeyPublishableKey'])||
+    (Object.hasOwn(manifest.auth,'staffPasskeyPublishableKey')&&
+     !isStaffAuthPublishableKey(manifest.auth.staffPasskeyPublishableKey))||!exactKeys(manifest.network,
   ['allowedTlsHosts','egressGatewayHost'])||!Array.isArray(manifest.network.allowedTlsHosts)||
   manifest.network.allowedTlsHosts.length===0||new Set(manifest.network.allowedTlsHosts).size!==
   manifest.network.allowedTlsHosts.length)throw invalid();
@@ -316,6 +319,16 @@ export async function materializeOperationalM3Options({manifest,Pool,resolveSecr
    connectHost:config.auth.connectHost,connectPort:config.auth.connectPort});
   options.staff.getTrustedKeys=createSupabaseJwksProvider({issuer:config.auth.issuer,
    fetchImpl:trustedFetch});
+  if(config.auth.staffPasskeyPublishableKey){
+   options.staff.passkey=createStaffPasskeySession({
+    origin:config.origins.management,issuer:config.auth.issuer,
+    getTrustedKeys:options.staff.getTrustedKeys,secret:capabilitySecret,
+    provider:createGatewayPasskeyProvider({issuer:config.auth.issuer,
+     connectHost:config.auth.connectHost,connectPort:config.auth.connectPort,
+     publishableKey:config.auth.staffPasskeyPublishableKey})
+   });
+  }
+  options.staff.requirePasskey=config.stage==='production';
   options.h4.issueTransitionCapability=createOrderOperationCapabilityIssuer({
    keyId:config.signing.keyId,secret:capabilitySecret,databaseRole:login('h4.operationsPool')});
   options.h4.issueReadCapability=createOrderOperationReadCapabilityIssuer({

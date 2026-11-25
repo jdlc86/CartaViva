@@ -23,6 +23,9 @@ import {TablesView} from './views/TablesView';
 import type {TableChangeQueueGateway} from './views/TableChangeRequestsPanel';
 import {TeamView} from './views/TeamView';
 import {registerManagementServiceWorker} from './pwa';
+import type {StaffGatewayAuth} from './staff-gateway-auth.js';
+import {createStaffSessionFetch,endStaffSession,readStaffSession,signInWithStaffPasskey,
+  StaffAuthenticationError,supportsStaffPasskey,type StaffSession} from './staff-passkey';
 import './style.css';
 
 const sections: ReadonlyArray<{id: ManagementArea; label: string; detail: string; icon: IconName}> = [
@@ -45,6 +48,7 @@ export function ManagementApp({
   staffDirectoryGateway,
   financeGateway,
   ownershipGateway,
+  onSignOut,
 }: {
   tablesGateway?: AdminTablesGateway;
   tableChangeGateway?: TableChangeQueueGateway;
@@ -55,6 +59,7 @@ export function ManagementApp({
   staffDirectoryGateway?: StaffDirectoryGateway;
   financeGateway?: M3AuthenticatedManagementGateway;
   ownershipGateway?: OwnershipGovernanceGateway;
+  onSignOut?: () => void;
 }) {
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
   const [financeAllowed,setFinanceAllowed]=useState(false);
@@ -160,6 +165,7 @@ export function ManagementApp({
           <strong>{hasOperationalChannel ? 'OPERACIÓN RESTRINGIDA'
             : hasReadProjection ? 'LECTURA PARCIAL' : 'NO OPERATIVA'}</strong>
         </div>
+        {onSignOut && <button type="button" className="button" onClick={onSignOut}>Cerrar sesión</button>}
       </header>
 
       <div className="management-layout">
@@ -226,6 +232,11 @@ let managementElement: HTMLElement | null = null;
 const managementSessionFence = createManagementSessionFence();
 const distributedManagement = import.meta.env.VITE_SABORA_OPERATIONAL_PWA === '1';
 let managementRenderGeneration = 0;
+let staffLogin = {
+  message: 'Comprobando la sesión de personal.',
+  action: undefined as (() => void) | undefined,
+  label: 'Entrar con passkey',
+};
 
 function renderManagement(
   element: HTMLElement,
@@ -233,6 +244,7 @@ function renderManagement(
   tableChangeGateway?: TableChangeQueueGateway,
   managementGateway?:M3AuthenticatedManagementGateway,
   ownershipGateway?:OwnershipGovernanceGateway,
+  onSignOut?:()=>void,
 ) {
   if (managementRoot && managementElement !== element) {
     throw Error('management_root_already_mounted');
@@ -249,7 +261,9 @@ function renderManagement(
       <main className="management-shell">
         <section className="management-detail" aria-labelledby="management-session-required">
           <h1 id="management-session-required">Acceso a Sabora Gestión</h1>
-          <p role="status">Para continuar se requiere una sesión de personal autorizada.</p>
+          <p role="status">{staffLogin.message}</p>
+          <button type="button" className="button button--primary" disabled={!staffLogin.action}
+            onClick={staffLogin.action}>{staffLogin.label}</button>
         </section>
       </main>,
     ));
@@ -259,24 +273,26 @@ function renderManagement(
     <React.StrictMode><ManagementApp key={key} operationsGateway={gateway}
       tableChangeGateway={tableChangeGateway} tablesGateway={managementGateway}
       catalogManagementGateway={managementGateway} financeGateway={managementGateway}
-      ownershipGateway={ownershipGateway}/></React.StrictMode>,
+      ownershipGateway={ownershipGateway} onSignOut={onSignOut}/></React.StrictMode>,
   ));
 }
 
 export function mountAuthenticatedManagementApp({
   element,
   getAccessToken,
+  cookieSession,
   fetchImpl,
   reconnectDelayMs,
   enableTableChangeQueue = false,
   enableM3Management = false,
   enableWaiterCalls = false,
   enableOwnershipGovernance = false,
-}: {
+  onSignOut,
+}: StaffGatewayAuth & {
   element: HTMLElement;
-  getAccessToken: () => Promise<string>;
   fetchImpl?: typeof fetch;
   reconnectDelayMs?: number;
+  onSignOut?: () => void;
   /** Opt-in only after the server's six isolated SQL logins pass preflight. */
   enableTableChangeQueue?: boolean;
   /** Opt-in only after both M3 SQL capability preflights succeed. */
@@ -286,14 +302,15 @@ export function mountAuthenticatedManagementApp({
   /** Only after waiter-call SQL identity preflight succeeds. */
   enableWaiterCalls?:boolean;
 }) {
-  if (!(element instanceof HTMLElement) || typeof getAccessToken !== 'function') {
+  if (!(element instanceof HTMLElement)) {
     throw Error('invalid_management_bootstrap');
   }
+  const auth = cookieSession ? {cookieSession} : {getAccessToken};
   const operationsGateway = createAuthenticatedOrderOperationsGateway({
-    getAccessToken, fetchImpl, reconnectDelayMs, enableWaiterCalls,
+    ...auth, fetchImpl, reconnectDelayMs, enableWaiterCalls,
   });
-  const m3Gateway=enableM3Management?createM3AuthenticatedManagementGateway({getAccessToken,fetchImpl}):undefined;
-  const ownershipGateway=enableOwnershipGovernance?createAuthenticatedOwnershipGovernanceGateway({getAccessToken,fetchImpl}):undefined;
+  const m3Gateway=enableM3Management?createM3AuthenticatedManagementGateway({...auth,fetchImpl}):undefined;
+  const ownershipGateway=enableOwnershipGovernance?createAuthenticatedOwnershipGovernanceGateway({...auth,fetchImpl}):undefined;
   if (managementRoot && managementElement !== element) {
     operationsGateway.revoke();
     m3Gateway?.revoke();
@@ -314,7 +331,7 @@ export function mountAuthenticatedManagementApp({
     ? {listPendingTableChanges: operationsGateway.listPendingTableChanges,
        decideTableChange: operationsGateway.decideTableChange}
     : undefined;
-  renderManagement(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway);
+  renderManagement(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut);
   let disposed = false;
   return () => {
     if (disposed) return;
@@ -325,8 +342,86 @@ export function mountAuthenticatedManagementApp({
   };
 }
 
+function startStaffLogin(element: HTMLElement) {
+  let dispose: (() => void) | undefined;
+  let expiry: ReturnType<typeof setTimeout> | undefined;
+  let check: (() => void) | undefined;
+  const screen = (message: string, action?: () => void, label = 'Entrar con passkey') => {
+    staffLogin = {message, action, label};
+    renderManagement(element);
+  };
+  const offerPasskey = (message = 'Usa la passkey de tu cuenta de personal.') => {
+    if (!supportsStaffPasskey()) {
+      screen('Abre Sabora Gestión en un navegador compatible con passkeys.');
+      return;
+    }
+    screen(message, () => {
+      screen('Completa la verificación en tu dispositivo.');
+      void signInWithStaffPasskey().then(connect).catch(error => {
+        const denied = error instanceof StaffAuthenticationError && [401, 403].includes(error.status);
+        offerPasskey(denied ? 'Esta passkey no tiene acceso activo a Sabora Gestión.'
+          : error instanceof DOMException && error.name === 'NotAllowedError'
+            ? 'La verificación se canceló o no se encontró la passkey.'
+            : 'No se pudo verificar la passkey. Inténtalo de nuevo.');
+      });
+    });
+  };
+  const disconnect = () => {
+    clearTimeout(expiry);
+    if (check) window.removeEventListener('focus', check);
+    check = undefined;
+    dispose?.();
+    dispose = undefined;
+  };
+  const connect = (session: StaffSession) => {
+    const expire = () => {
+      if (dispose !== current) return;
+      disconnect();
+      offerPasskey('Tu sesión ha terminado. Vuelve a entrar con tu passkey.');
+    };
+    const signOut = () => {
+      disconnect();
+      screen('Cerrando la sesión.');
+      void endStaffSession(session).then(() => offerPasskey('Sesión cerrada.')).catch(error => {
+        if (error instanceof StaffAuthenticationError && error.status === 409) {
+          offerPasskey('La sesión cambió en otra pestaña.');
+          return;
+        }
+        screen('No se pudo confirmar el cierre de sesión.', signOut, 'Reintentar cierre de sesión');
+      });
+    };
+    const current = mountAuthenticatedManagementApp({element, cookieSession: true,
+      fetchImpl: createStaffSessionFetch(session, expire), onSignOut: signOut,
+      enableTableChangeQueue: session.features.tableChange,
+      enableWaiterCalls: session.features.waiterCalls,
+      enableM3Management: session.features.management,
+      enableOwnershipGovernance: session.features.ownership
+    });
+    dispose = current;
+    expiry = setTimeout(expire, session.expiresAt * 1000 - Date.now());
+    check = () => {
+      void readStaffSession().then(active => {
+        if (active.sessionId !== session.sessionId || active.role !== session.role) expire();
+      }).catch(expire);
+    };
+    window.addEventListener('focus', check);
+  };
+  const restore = () => {
+    screen('Comprobando la sesión de personal.');
+    void readStaffSession().then(connect).catch(error => {
+      if (error instanceof StaffAuthenticationError && [401, 403].includes(error.status)) {
+        offerPasskey();
+        return;
+      }
+      screen('El acceso de personal no está disponible en este momento.', restore, 'Volver a comprobar');
+    });
+  };
+  restore();
+}
+
 if (typeof document !== 'undefined') {
   const element = document.getElementById('root');
-  if (element) renderManagement(element);
+  if (element && distributedManagement) startStaffLogin(element);
+  else if (element) renderManagement(element);
 }
 registerManagementServiceWorker();
