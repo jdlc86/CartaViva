@@ -15,6 +15,8 @@ La base protegida observada es `da02d5d97c3eb26d4c1530e0b0c4c4f7a14012d7`. El pu
 
 Los cambios de descubrimiento solo describen rutas activas. Las comprobaciones de autorización permanecen en API y PostgreSQL. No se amplió la autoridad de los JWT, se evitó montar el modo diseño en el bundle operativo y no se transportan tokens en la respuesta de configuración. Los estados de llamada se descartan al cambiar de identidad o visita y las respuestas de una acción anterior no actualizan la visita nueva. El servicio no declara aceptación visual, entrega remota ni operación saludable por pruebas de interfaz.
 
+La revisión diferencial directa cubrió el descubrimiento anónimo sin cookies ni cabecera de autorización, el cierre de gestión sin sesión, el límite de API/SQL de cada acción, la exclusión de API del service worker y la custodia de material TLS desechable fuera del árbol servido. El escaneo gestionado Codex Security rechazó este worktree al resolver HEAD. La revisión directa es del autor del cambio y queda pendiente la revisión independiente.
+
 ## Decisión indispensable para A
 
 La vía propuesta aprovecha **Supabase Auth RESTAURANTE**, con SDK JS fijado a una versión revisada que soporte passkeys y una prueba previa del servicio alojado. Supabase documenta soporte experimental a partir de `@supabase/supabase-js 2.105.0`. El RP ID propuesto es `gestion-sabora.allaiso.com` y el único origen de personal es `https://gestion-sabora.allaiso.com:8443`. El navegador y el proveedor han de comprobarlo juntos en el ensayo. Supabase exige una identidad confirmada, no anónima y ya autenticada para el registro inicial. [Passkeys de Supabase](https://supabase.com/docs/guides/auth/passkeys).
