@@ -4346,6 +4346,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       item.accountId===uiCashDiner.account&&item.settlementIntentId===externalIntentId&&
       item.providerConfirmed===false&&item.externalVerified===false),
      'signed staff projection must expose the pending external intent with explicit booleans');
+     const {pathToFileURL,fileURLToPath}=await import('node:url');
      const cashierRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
      const {createServer:createCashVite}=await import(
       pathToFileURL(cashierRequire.resolve('vite')).href);
