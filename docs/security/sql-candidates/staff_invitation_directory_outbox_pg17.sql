@@ -216,13 +216,13 @@ DECLARE
  v_transition record;v_email_hash bytea;
 BEGIN
  IF session_user::text<>'sabora_staff_enrollment_login'
-  OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}
+  OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
   OR p_actor_user_id IS NULL OR p_enrollment_id IS NULL OR p_session_id IS NULL
   OR p_issued_at_ms IS NULL OR p_expires_at_ms IS NULL
   OR p_expires_at_ms::numeric-p_issued_at_ms::numeric NOT BETWEEN 1 AND 30000
-  OR p_signature_hex IS NULL OR p_signature_hex !~ '^[0-9a-f]{64}
-  OR p_confirmed_email_hash_hex IS NULL OR p_confirmed_email_hash_hex !~ '^[0-9a-f]{64}
-  OR p_proof_hex IS NULL OR p_proof_hex !~ '^[0-9a-f]{64} THEN
+  OR p_signature_hex IS NULL OR p_signature_hex !~ '^[0-9a-f]{64}$'
+  OR p_confirmed_email_hash_hex IS NULL OR p_confirmed_email_hash_hex !~ '^[0-9a-f]{64}$'
+  OR p_proof_hex IS NULL OR p_proof_hex !~ '^[0-9a-f]{64}$' THEN
   RAISE EXCEPTION 'staff_enrollment_identity_forbidden' USING ERRCODE='42501';
  END IF;
  v_now:=clock_timestamp();v_ms:=floor(extract(epoch FROM v_now)*1000)::bigint;
@@ -310,8 +310,8 @@ DECLARE v_key bytea;v_expected bytea;v_given bytea;v_diff integer:=0;v_i integer
 BEGIN
  v_ms:=floor(extract(epoch FROM v_now)*1000)::bigint;
  IF session_user::text<>'sabora_staff_enrollment_login' OR p_actor IS NULL OR p_enrollment IS NULL
-  OR p_session IS NULL OR p_key_id IS NULL OR p_email_hash IS NULL OR p_email_hash !~ '^[0-9a-f]{64}
-  OR p_proof IS NULL OR p_proof !~ '^[0-9a-f]{64} OR p_expires_ms IS NULL
+  OR p_session IS NULL OR p_key_id IS NULL OR p_email_hash IS NULL OR p_email_hash !~ '^[0-9a-f]{64}$'
+  OR p_proof IS NULL OR p_proof !~ '^[0-9a-f]{64}$' OR p_expires_ms IS NULL
   OR p_expires_ms<=v_ms OR p_expires_ms::numeric-v_ms::numeric>30000 THEN
   RAISE EXCEPTION 'staff_registration_forbidden' USING ERRCODE='42501';
  END IF;
@@ -354,10 +354,10 @@ BEGIN
   OR p_challenge_id IS NULL OR p_provider_id IS NULL
   OR p_issued_at_ms IS NULL OR p_expires_at_ms IS NULL
   OR p_expires_at_ms::numeric-p_issued_at_ms::numeric NOT BETWEEN 1 AND 30000
-  OR p_signature_hex IS NULL OR p_signature_hex !~ '^[0-9a-f]{64}
-  OR p_confirmed_email_hash_hex IS NULL OR p_confirmed_email_hash_hex !~ '^[0-9a-f]{64}
-  OR p_evidence_hash_hex IS NULL OR p_evidence_hash_hex !~ '^[0-9a-f]{64}
-  OR p_proof_hex IS NULL OR p_proof_hex !~ '^[0-9a-f]{64} THEN
+  OR p_signature_hex IS NULL OR p_signature_hex !~ '^[0-9a-f]{64}$'
+  OR p_confirmed_email_hash_hex IS NULL OR p_confirmed_email_hash_hex !~ '^[0-9a-f]{64}$'
+  OR p_evidence_hash_hex IS NULL OR p_evidence_hash_hex !~ '^[0-9a-f]{64}$'
+  OR p_proof_hex IS NULL OR p_proof_hex !~ '^[0-9a-f]{64}$' THEN
   RAISE EXCEPTION 'staff_registration_forbidden' USING ERRCODE='42501';
  END IF;
  v_now:=clock_timestamp();v_ms:=floor(extract(epoch FROM v_now)*1000)::bigint;

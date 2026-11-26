@@ -1507,7 +1507,7 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
    attestationObject:Buffer.from('provider-fixture-only').toString('base64url')}};
   const regInput={accessToken:acceptedJwt,enrollmentId:id,ticket:registration.ticket,credential,
    correlationId:'directory_verified_register_001'};
-  await assert.rejects(accept.register({...regInput,ticket:registration.ticket.slice(0,-1)+'z'}),e=>e.code==='42501');
+  await assert.rejects(accept.register({...regInput,ticket:registration.ticket.slice(0,-1)+(registration.ticket.endsWith('0')?'1':'0')}),e=>e.code==='42501');
   await assert.rejects(accept.register({...regInput,credential:{...credential,
    response:{...credential.response,clientDataJSON:encodeClient('wrong')}}}),e=>e.code==='42501');
   assert.equal(providerRegistrations,0);
