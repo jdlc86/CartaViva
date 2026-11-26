@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S54-29 · H1-A.** `93241200` 7/7 PASS; sonda Auth PASS; ensayo alojado administrativo NOT RUN. Encargo Codex documentado en `docs/assignments/CODEX_S54_HOSTED_AUTH_PROVIDER_ACCEPTANCE_2026-11-27.md`, seguimiento #93, sin autorización de activación.
+
 > **S54-28 · H1-A.** Ensayo manual Auth endurecido (entorno Chromium, reconciliación exacta, preflight vacío); pruebas focalizadas añadidas, ejecución alojada pendiente. CI ordinaria intacta; no se intenta sortear bloqueo de workflow privilegiado.
 
 > **S54-27 · CI H6.** Fallo 2B de `c992e1cd` localizado en lectura prematura de ACK de fixture SSH; publicación atómica corregida, CI pendiente. Auth proveedor inicial PASS; registro/recuperación real no ejecutados.

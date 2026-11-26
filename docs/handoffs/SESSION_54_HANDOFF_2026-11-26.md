@@ -208,3 +208,8 @@ El run `45906678456`, job `140204971989`, superó bloques 1/2A y falló en 2B de
 ## S54-28 — Endurecimiento de la prueba manual Auth
 
 Auditado `555c7e81`: propuesta CI privilegiada bloqueada antes de publicación; no conocemos causa exacta ni se reintenta el control. Se corrigen aislamiento del entorno de Chromium, preflight de Auth vacío, reconciliación de alta incierta por correo aleatorio exacto sin repetir creación, validación UUID/email en limpieza y diagnóstico HTTP reducido. Se mantienen CI prohibida para este ensayo y el workflow ordinario intacto. Añadidos tests focalizados de dos invariantes, pendientes de CI. La sonda anterior es la única evidencia alojada; ensayo manual y cierre integrado H1-A pendientes. Sin acceso al secreto, ni cambios reales de Auth, SQL, VPS, Fleetia, merge o despliegue.
+
+
+## S54-29 — Encargo Codex: aceptación real del proveedor Auth (27-11)
+
+CI ordinaria de `93241200` 7/7 PASS; CV005+B2 omitido. Issue #93 creado para seguimiento, sin disparo automático. Propietario pide encargo Codex; [documento](../assignments/CODEX_S54_HOSTED_AUTH_PROVIDER_ACCEPTANCE_2026-11-27.md) concreta A54-07 (proveedor únicamente), requisitos, límites, custodia, evidencias y limpieza. La operación administrativa anterior quedó bloqueada y no se reintentará por atajos; ejecución real solo en entorno expresamente admitido, de lo contrario informe de bloqueo y procedimiento manual del propietario. Secreto temporal declarado por propietario, valor no verificado. H1-A parcial; sin merge, deploy, VPS, SQL ni Fleetia.
