@@ -3,22 +3,26 @@
 import {generateRootRecoveryCode} from './staff-root-recovery-candidate.mjs';
 const HASH=/^[0-9a-f]{64}$/;
 const forbidden=()=>Object.assign(Error('root_security_forbidden'),{code:'42501'});
-export function createStaffRootSecurityCandidate({kernel}={}){
- if(typeof kernel?.command!=='function'||typeof kernel?.hash!=='function')throw Error('invalid_root_security_config');
+export function createStaffRootSecurityCandidate({kernel,mail}={}){
+ if(typeof kernel?.command!=='function'||typeof kernel?.hash!=='function'||
+   (mail&&!(typeof mail.stage==='function'&&typeof mail.confirm==='function')))throw Error('invalid_root_security_config');
  function context({identity,credentialHash}={}){
   if(!identity?.userId||!HASH.test(credentialHash??''))throw forbidden();
   return identity.userId;
  }
  const project=result=>({configured:result.outcome==='configured',failures:result.failures,blockedUntil:result.blockedUntil});
  return Object.freeze({
+  mailEnabled:Boolean(mail),
   async read(input){
    const result=await kernel.command('security_status',context(input),{a:input.credentialHash});
    if(!['configured','unconfigured'].includes(result.outcome))throw forbidden();
-   return project(result);
+   return {...project(result),...(mail?{mailEnabled:true}:{})};
   },
   async mutate(input){
    const actor=context(input);
    if(!Number.isSafeInteger(input.deadlineMs)||input.deadlineMs<=Date.now())throw forbidden();
+   if(input.action==='stage_email'&&mail)return mail.stage({...input,email:input.parameters.email});
+   if(input.action==='confirm_email'&&mail)return mail.confirm({...input,...input.parameters});
    if(input.action==='reset'){
     const result=await kernel.command('security_reset',actor,{a:input.credentialHash,requestId:input.requestId,deadlineMs:input.deadlineMs});
     if(result.outcome!=='reset')throw forbidden();

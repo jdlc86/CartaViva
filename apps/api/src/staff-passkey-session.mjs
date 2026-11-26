@@ -1,4 +1,4 @@
-import {createHmac, timingSafeEqual} from 'node:crypto';
+import {createHash, createHmac, timingSafeEqual} from 'node:crypto';
 import {verifySupabaseAccessToken} from './auth.mjs';
 import {hashRootCredentialId} from './staff-root-credential-id.mjs';
 
@@ -96,6 +96,7 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
       if (!identity || (request.url !== PATH + '/session' &&
           request.headers[SESSION_HEADER] !== identity.sessionId)) return unauthorized(reply);
       request.verifiedIdentity = identity;
+      if(rootAccess)request.verifiedRootCredential=rootProofHash(request,identity);
     } catch {
       return unavailable(reply);
     }
@@ -183,7 +184,26 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
     // ROOT identity and the just-proven credential are checked under SQL lock.
     if(rootSecurity){
       const root=forRoles(['root']),securityPath=PATH+'/root-security';
-      const actionAllowed=action=>['reset','replace_code'].includes(action);
+      function parseSecurityRequest(body,assertion=false){
+        const {action,parameters,credential}=body??{};
+        const basic=['reset','replace_code'].includes(action);
+        const fields=basic?['action']:['action','parameters'];
+        if(assertion)fields.push('credential');
+        if(Object.keys(body??{}).sort().join(',')!==fields.sort().join(','))return null;
+        let data=null;
+        if(!basic){
+          if(!rootSecurity.mailEnabled||!parameters||typeof parameters!=='object')return null;
+          if(action==='stage_email'&&Object.keys(parameters).join(',')==='email'&&
+            typeof parameters.email==='string'&&parameters.email.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parameters.email))
+            data={email:parameters.email};
+          else if(action==='confirm_email'&&Object.keys(parameters).sort().join(',')==='initial,proof'&&
+            typeof parameters.initial==='boolean'&&/^[A-Za-z0-9_-]{43}$/.test(parameters.proof??''))
+            data={initial:parameters.initial,proof:parameters.proof};
+          else return null;
+        }
+        const intent=createHash('sha256').update(JSON.stringify([action,data])).digest('base64url');
+        return {action,parameters:data,intent,credential};
+      }
       const responseError=(error,reply)=>error?.code==='42501'?reply.code(403).send({error:'forbidden'}):unavailable(reply);
       const safe=async(request,reply)=>{
         reply.header('Cache-Control','no-store');
@@ -195,8 +215,8 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
         catch(error){return responseError(error,reply);}
       });
       app.post(securityPath+'/options',{preHandler:[safe,...root],bodyLimit:1024},async(request,reply)=>{
-        const action=request.body?.action;
-        if(Object.keys(request.body??{}).join(',')!=='action'||!actionAllowed(action))return reply.code(400).send({error:'invalid_request'});
+        const input=parseSecurityRequest(request.body);
+        if(!input)return reply.code(400).send({error:'invalid_request'});
         try{
           const result=await provider.options();
           if(!UUID.test(result?.challenge_id??'')||result.options?.rpId!==hostname||
@@ -204,18 +224,18 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
             !Number.isSafeInteger(result.expires_at))return unavailable(reply);
           const identity=request.verifiedIdentity,expires=Math.min(result.expires_at,identity.expiresAt,clock()+60);
           if(expires<=clock())return unauthorized(reply);
-          const value=[result.challenge_id,expires,identity.userId,identity.sessionId,action].join('.');
+          const value=[result.challenge_id,expires,identity.userId,identity.sessionId,input.intent].join('.');
           reply.header('Set-Cookie',cookie(ROOT_SECURITY_CHALLENGE,signed(ROOT_SECURITY_CHALLENGE,value),expires-clock()));
           return {options:{...result.options,userVerification:'required'}};
         }catch{return unavailable(reply);}
       });
       app.post(securityPath+'/verify',{preHandler:[safe,...root],bodyLimit:16384},async(request,reply)=>{
-        const [challenge,expires,actor,sessionId,action,extra]=(open(request,ROOT_SECURITY_CHALLENGE)??'').split('.');
+        const [challenge,expires,actor,sessionId,intent,extra]=(open(request,ROOT_SECURITY_CHALLENGE)??'').split('.');
         reply.header('Set-Cookie',cookie(ROOT_SECURITY_CHALLENGE,'',0));
-        const identity=request.verifiedIdentity,credential=request.body?.credential;
+        const identity=request.verifiedIdentity,input=parseSecurityRequest(request.body,true);
+        const credential=input?.credential;
         if(!UUID.test(challenge??'')||!(Number(expires)>clock())||extra!==undefined||
-          actor!==identity.userId||sessionId!==identity.sessionId||!actionAllowed(action)||
-          Object.keys(request.body??{}).sort().join(',')!=='action,credential'||request.body.action!==action||
+          actor!==identity.userId||sessionId!==identity.sessionId||!input||input.intent!==intent||
           !verifiedAssertion(credential,origin))return unauthorized(reply);
         try{
           const result=await provider.verify(challenge,credential),token=result?.access_token;
@@ -230,7 +250,7 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
             Number(expires)<=clock()||identity.expiresAt<=clock())return unauthorized(reply);
           const credentialHash=hashRootCredentialId(credential.id);
           if(await rootAccess(identity.userId,credentialHash)!==true)return unauthorized(reply);
-          return await rootSecurity.mutate({identity,credentialHash,action,requestId:challenge,
+          return await rootSecurity.mutate({identity,credentialHash,action:input.action,parameters:input.parameters,requestId:challenge,
             deadlineMs:Math.min(Number(expires),identity.expiresAt,fresh.expiresAt)*1000});
         }catch(error){return responseError(error,reply);}
       });

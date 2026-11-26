@@ -95,7 +95,7 @@ test('navigation is deep-linkable and read transports remain injected and discon
   assert.match(main, /window\.addEventListener\('popstate'/);
   assert.match(main, /renderManagement\(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut,staffRole,\s*staffDirectoryGateway,staffRevocationGateway,staffLifecycleGateway,staffFirstAdminGateway,rootSecurityGateway\)/);
   assert.match(main, /enableRootSecurity = false/);
-  assert.match(main, /enableRootSecurity&&staffRole==='root'&&sendStaff\?createRootSecurityGateway\(\{send:sendStaff\}\):undefined/);
+  assert.match(main, /enableRootSecurity&&staffRole==='root'&&sendStaff\s*\?createRootSecurityGateway\(\{send:sendStaff,emailProof:rootEmailProof\}\):undefined/);
   assert.match(main, /rootSecurityGateway=\{staffRole==='root'\?rootSecurityGateway:undefined\}/);
   assert.match(main, /enableStaffFirstAdmin = false/);
   assert.match(main, /enableStaffFirstAdmin&&staffRole==='root'&&sendStaff&&ownershipGateway/);

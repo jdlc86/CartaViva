@@ -8,6 +8,7 @@ import {registerDurableStaffAdminHttpCandidate,registerDurableFirstAdminHttpCand
 import {FIRST_ADMIN_BOOTSTRAP_LOGIN} from './staff-lifecycle-coordinator.mjs';
 import {createStaffFirstAdminStateCandidate,FIRST_ADMIN_STATE_SQL} from './staff-first-admin-state-candidate.mjs';
 import {preflightStaffDurableAdminIdentity} from './staff-durable-admin-identity-preflight.mjs';
+import {ROOT_MUTATION_PROOF_SQL} from './staff-root-recovery-candidate.mjs';
 
 // Explicitly injected candidate. No environment access, provisioning,
 // provider dispatch or automatic registration in the operational runtime.
@@ -19,12 +20,14 @@ export async function createVerifiedDurableFirstAdminCandidate(config={}){
  if(config.role!==FIRST_ADMIN_BOOTSTRAP_LOGIN)throw Error('invalid_staff_durable_admin_config');
  return compose(config,true);
 }
-async function compose({pool,role,keyId,secret,emailHashSecret,keyring},first){
- if(typeof keyring?.active!=='function'||typeof keyring?.resolveKey!=='function')throw Error('invalid_staff_durable_admin_config');
+async function compose({pool,role,keyId,secret,emailHashSecret,keyring,issueRootMutationProof},first){
+ if(typeof keyring?.active!=='function'||typeof keyring?.resolveKey!=='function'||
+   (first&&typeof issueRootMutationProof!=='function'))throw Error('invalid_staff_durable_admin_config');
  const issueCapability=createStaffLifecycleDirectoryCapabilityIssuer({keyId,secret,databaseRole:role});
  const hashInviteeEmail=createStaffInviteeEmailHasher({secret:emailHashSecret});
  const tx=createPostgresTransaction({pool});
  const allowed=new Set([DIRECTORY_OUTBOX_SQL,STAFF_INVITATION_CUSTODY_RESTRICTED_SQL]);
+ if(first)allowed.add(ROOT_MUTATION_PROOF_SQL);
  const withTransaction=work=>tx(query=>work((sql,args)=>{
   if(!allowed.has(sql))throw Error('staff_durable_admin_sql_not_allowed');
   return query(sql,args);
@@ -43,6 +46,7 @@ async function compose({pool,role,keyId,secret,emailHashSecret,keyring},first){
  return Object.freeze({readiness,register(app,{forRoles}={}){
   return (first?registerDurableFirstAdminHttpCandidate:registerDurableStaffAdminHttpCandidate)(app,{forRoles,keyring,resolveSubject,readState,lifecycleConfig:{
    withTransaction,issueCapability,hashInviteeEmail,uuid:randomUUID,
+   ...(first?{issueRootMutationProof,setRootMutationProof:(query,proof)=>query(ROOT_MUTATION_PROOF_SQL,[proof])}:{}),
    issueInvitationToken:()=>randomBytes(32).toString('base64url'),
    verifyCredentialRegistration:async()=>{throw Error('staff_admin_registration_forbidden');}
   }});

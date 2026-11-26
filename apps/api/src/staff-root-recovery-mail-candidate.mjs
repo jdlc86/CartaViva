@@ -6,6 +6,7 @@ import {normalizeStaffInviteeEmail} from './staff-lifecycle-capability.mjs';
 import {generateRootRecoveryCode,generateRootRecoveryToken,ROOT_RECOVERY_LOGIN} from './staff-root-recovery-candidate.mjs';
 
 export const ROOT_MAIL_SQL='SELECT sabora.root_recovery_mail_candidate($1::text,$2::uuid,$3::uuid,$4::text,$5::text,$6::bigint,$7::bigint,$8::text) AS result';
+export const ROOT_MAIL_LOGIN='sabora_root_recovery_mail_login';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HASH=/^[0-9a-f]{64}$/;
 const KEY=/^[A-Za-z0-9_-]{8,64}$/;
@@ -13,11 +14,13 @@ const tokenValid=t=>typeof t==='string'&&/^[A-Za-z0-9_-]{43}$/.test(t)&&Buffer.f
 const forbidden=()=>Object.assign(Error('root_recovery_mail_denied'),{code:'42501'});
 const hashMatches=(a,b)=>HASH.test(a??'')&&HASH.test(b??'')&&timingSafeEqual(Buffer.from(a,'hex'),Buffer.from(b,'hex'));
 
-export function createRootRecoveryMailCandidate({pool,keyId,signingSecret,hash,keyring,clock=Date.now}={}){
+export function createRootRecoveryMailCandidate({pool,keyId,signingSecret,hash,keyring,mode='control',clock=Date.now}={}){
  if(!KEY.test(keyId??'')||!(signingSecret instanceof Uint8Array)||signingSecret.byteLength!==32||
+  !['control','worker'].includes(mode)||
   typeof hash!=='function'||typeof keyring?.active!=='function'||typeof keyring?.resolveKey!=='function'||typeof clock!=='function')
   throw Error('invalid_root_mail_configuration');
  const key=Buffer.from(signingSecret),tx=createPostgresTransaction({pool});
+ const login=mode==='control'?ROOT_RECOVERY_LOGIN:ROOT_MAIL_LOGIN;
  function aad(actor,domain,binding,kid){
   return Buffer.from(['sabora.root-recovery-mail-envelope.v1',actor,domain,binding,kid].join('\n'));
  }
@@ -50,7 +53,7 @@ export function createRootRecoveryMailCandidate({pool,keyId,signingSecret,hash,k
   const issued=clock(),expires=Math.min(issued+15000,deadlineMs);
   if(!Number.isSafeInteger(issued)||!Number.isSafeInteger(expires)||expires<=issued)throw forbidden();
   const args=[keyId,actor,requestId.toLowerCase(),action,JSON.stringify(fields),issued,expires];
-  const signature=createHmac('sha256',key).update(['sabora.root-recovery-mail.v1',keyId,ROOT_RECOVERY_LOGIN,...args.slice(1)].join('\n')).digest('hex');
+  const signature=createHmac('sha256',key).update(['sabora.root-recovery-mail.v1',keyId,login,...args.slice(1)].join('\n')).digest('hex');
   const result=await tx(query=>query(ROOT_MAIL_SQL,[...args,signature]));
   const row=result?.rows?.[0]?.result;
   if(result?.rows?.length!==1||typeof row?.outcome!=='string')throw Error('invalid_root_mail_result');
@@ -123,5 +126,5 @@ export function createRootRecoveryMailCandidate({pool,keyId,signingSecret,hash,k
   if(result==='accepted'&&job.purpose==='link')return {outcome:result,promotion:(await promote(actor,jobId)).outcome};
   return {outcome:result};
  }
- return Object.freeze({stage,confirm,queueLink,queueChallenge,list,dispatch,promote});
+ return Object.freeze(mode==='control'?{stage,confirm,queueChallenge}:{queueLink,list,dispatch,promote});
 }

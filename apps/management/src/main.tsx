@@ -19,7 +19,7 @@ import {OrdersView} from './views/OrdersView';
 import {CashView} from './views/CashView';
 import {SummaryView} from './views/SummaryView';
 import {FinanceDashboardView} from './views/FinanceDashboardView';
-import {createRootSecurityGateway,type RootSecurityGateway} from './staff-root-security-gateway';
+import {createRootSecurityGateway,readRootEmailVerification,type RootSecurityGateway} from './staff-root-security-gateway';
 import {ConfigurationView} from './views/ConfigurationView';
 import {TablesView} from './views/TablesView';
 import type {TableChangeQueueGateway} from './views/TableChangeRequestsPanel';
@@ -343,6 +343,7 @@ export function mountAuthenticatedManagementApp({
   enableStaffLifecycle = false,
   enableStaffFirstAdmin = false,
   enableRootSecurity = false,
+  rootEmailProof = null,
   onSignOut,
   staffRole,
 }: StaffGatewayAuth & {
@@ -362,6 +363,7 @@ export function mountAuthenticatedManagementApp({
   enableStaffLifecycle?:boolean;
   enableStaffFirstAdmin?:boolean;
   enableRootSecurity?:boolean;
+  rootEmailProof?:string|null;
   /** Only after waiter-call SQL identity preflight succeeds. */
   enableWaiterCalls?:boolean;
 }) {
@@ -391,7 +393,8 @@ export function mountAuthenticatedManagementApp({
     ? createStaffManagementGateway({send:sendStaff}) : undefined;
   const staffFirstAdminGateway=enableStaffFirstAdmin&&staffRole==='root'&&sendStaff&&ownershipGateway
     ? createStaffFirstAdminGateway({send:sendStaff}):undefined;
-  const rootSecurityGateway=enableRootSecurity&&staffRole==='root'&&sendStaff?createRootSecurityGateway({send:sendStaff}):undefined;
+  const rootSecurityGateway=enableRootSecurity&&staffRole==='root'&&sendStaff
+    ?createRootSecurityGateway({send:sendStaff,emailProof:rootEmailProof}):undefined;
   if (managementRoot && managementElement !== element) {
     operationsGateway.revoke();
     m3Gateway?.revoke();
@@ -426,7 +429,7 @@ export function mountAuthenticatedManagementApp({
   };
 }
 
-function startStaffLogin(element: HTMLElement) {
+function startStaffLogin(element: HTMLElement, rootEmailProof: string|null) {
   let dispose: (() => void) | undefined;
   let expiry: ReturnType<typeof setTimeout> | undefined;
   let check: (() => void) | undefined;
@@ -484,8 +487,10 @@ function startStaffLogin(element: HTMLElement) {
       enableStaffRevocation: session.features.staffRevocation === true && session.role === 'admin',
       enableStaffLifecycle: session.features.staffLifecycle === true && session.role === 'admin',
       enableStaffFirstAdmin: session.features.staffFirstAdmin === true && session.role === 'root',
-      enableRootSecurity: session.features.rootSecurity === true && session.role === 'root'
+      enableRootSecurity: session.features.rootSecurity === true && session.role === 'root',
+      rootEmailProof: session.role === 'root' ? rootEmailProof : null
     });
+    rootEmailProof=null;
     dispose = current;
     expiry = setTimeout(expire, session.expiresAt * 1000 - Date.now());
     check = () => {
@@ -514,7 +519,7 @@ if (typeof document !== 'undefined') {
     const invitation=takeStaffEnrollmentInvitation();
     createRoot(element).render(<StaffEnrollmentView invitation={invitation}
       gateway={createStaffEnrollmentGateway(window.fetch.bind(window))}/>);
-  }else if (element && distributedManagement) startStaffLogin(element);
+  }else if (element && distributedManagement) startStaffLogin(element,readRootEmailVerification());
   else if (element) renderManagement(element);
 }
 registerManagementServiceWorker();

@@ -38,7 +38,8 @@ function registerLifecycle(app,{forRoles,keyring,lifecycleConfig,resolveSubject,
     throw Error('invalid_staff_lifecycle_request');
   }catch{return reply.code(400).send({error:'invalid_staff_lifecycle_request'});}
   try{
-   const context={verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff};
+   const context={verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff,
+    verifiedRootCredential:request.verifiedRootCredential};
    const input=['activate','suspend'].includes(parsed.action)
     ? {...parsed.input,subjectUserId:await resolveSubject(context,parsed.input)}:parsed.input;
    const result=await coordinator.transition(context,input);

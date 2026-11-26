@@ -71,6 +71,8 @@ export function createStaffLifecycleCoordinator({
   withTransaction,
   repository,
   issueCapability,
+  issueRootMutationProof,
+  setRootMutationProof,
   issueInvitationToken,
   hashInviteeEmail,
   verifyCredentialRegistration,
@@ -211,9 +213,19 @@ export function createStaffLifecycleCoordinator({
         correlationId,
       });
       const durable=repository.storesInvitationMaterial===true;
-      const result = await withTransaction(async (query) => durable
-        ? repository.transition(query,capability,deliveryToken)
-        : repository.transition(query, capability));
+      const result = await withTransaction(async (query) => {
+        if (firstAdminBootstrapOnly && issueRootMutationProof) {
+          const proof = issueRootMutationProof({
+            actorId, credentialHash: context.verifiedRootCredential,
+            deadlineMs: Math.min(capability.expiresAtMs, context.verifiedIdentity.expiresAt * 1000),
+            scope: 'first-admin', binding: correlationId,
+          });
+          await setRootMutationProof(query, proof);
+        }
+        return durable
+          ? repository.transition(query, capability, deliveryToken)
+          : repository.transition(query, capability);
+      });
       // A repeated correlation reuses the original durable transition, but a
       // freshly generated invitation token is NOT the original stored hash.
       // Never hand this new, invalid token to a delivery provider.

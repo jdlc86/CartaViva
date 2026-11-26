@@ -6,6 +6,7 @@ import {createPostgresTransaction} from './postgres-transaction.mjs';
 export const ROOT_RECOVERY_LOGIN='sabora_root_recovery_login';
 export const ROOT_RECOVERY_ACCESS_SQL='SELECT sabora.root_recovery_access_candidate($1::text,$2::uuid,$3::text,$4::bigint,$5::bigint,$6::text) AS allowed';
 export const ROOT_RECOVERY_SQL='SELECT * FROM sabora.root_recovery_transition_candidate($1::text,$2::text,$3::uuid,$4::uuid,$5::text,$6::text,$7::text,$8::integer,$9::bigint,$10::bigint,$11::text)';
+export const ROOT_MUTATION_PROOF_SQL="SELECT pg_catalog.set_config('sabora.root_mutation_proof',$1,true)";
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HASH=/^[0-9a-f]{64}$/;
 const ALPHABET='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -78,5 +79,17 @@ export function createRootRecoveryKernelCandidate({pool,keyId,signingSecret,fact
   if(result?.rows?.length!==1||typeof result.rows[0].allowed!=='boolean')throw Error('invalid_root_recovery_access_result');
   return result.rows[0].allowed;
  }
- return Object.freeze({command,hash,allowsAccess});
+ function issueMutationProof({actorId,credentialHash,deadlineMs,scope,binding}){
+  if(!UUID.test(actorId??'')||!HASH.test(credentialHash??'')||
+    !Number.isSafeInteger(deadlineMs)||!['ownership','first-admin'].includes(scope)||
+    !/^[A-Za-z0-9_-]{8,128}$/.test(binding??''))
+   throw Object.assign(Error('invalid_root_mutation_proof'),{code:'42501'});
+  const issued=clock(),expires=Math.min(issued+15000,deadlineMs);
+  if(!Number.isSafeInteger(issued)||issued<0||expires<=issued)
+   throw Object.assign(Error('invalid_root_mutation_proof'),{code:'42501'});
+  const fields=[keyId,actorId.toLowerCase(),credentialHash,scope,binding,issued,expires];
+  const signature=createHmac('sha256',key).update(['sabora.root-mutation.v1',...fields].join('\n')).digest('hex');
+  return JSON.stringify([...fields,signature]);
+ }
+ return Object.freeze({command,hash,allowsAccess,issueMutationProof});
 }

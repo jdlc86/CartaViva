@@ -6,6 +6,8 @@ export function RootSecurityPanel({gateway}:{gateway:RootSecurityGateway}){
  const [busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
  const [code,setCode]=useState<string|null>(null),[notice,setNotice]=useState<string|null>(null);
  const [confirm,setConfirm]=useState(false);
+ const [email,setEmail]=useState('');
+ const [verifiedEmail,setVerifiedEmail]=useState(false);
  const epoch=useRef(0),inFlight=useRef(false);
  const refresh=useCallback(async()=>{
   const current=++epoch.current;
@@ -20,9 +22,28 @@ export function RootSecurityPanel({gateway}:{gateway:RootSecurityGateway}){
   try{
    const result=await gateway.mutate(action);
    if(epoch.current!==current)return;
-   setState({configured:result.configured,failures:result.failures,blockedUntil:result.blockedUntil});
+   setState({...state,configured:result.configured,failures:result.failures,blockedUntil:result.blockedUntil});
    setCode(result.code??null);setConfirm(false);
    setNotice(action==='reset'?'Contador restablecido.':'Código sustituido. El anterior ya no es válido.');
+  }catch{if(epoch.current===current){setState(null);setError('La acción no quedó confirmada. Actualiza el estado antes de repetirla.');}}
+  finally{inFlight.current=false;if(epoch.current===current)setBusy(false);}
+ }
+ async function manageEmail(verify:boolean){
+  if(inFlight.current||!state?.mailEnabled||code)return;
+  const current=++epoch.current;inFlight.current=true;setBusy(true);setError(null);setNotice(null);
+  try{
+   if(verify){
+    const initial=!state.configured;
+    const initialCode=await gateway.confirmEmail(initial);
+    if(epoch.current!==current)return;
+    setVerifiedEmail(true);setCode(initialCode);setState({...state,configured:true});
+    setNotice(initial?'Correo verificado. El enlace de recuperación está pendiente de envío.':
+     'Correo de seguridad cambiado. El enlace nuevo y el aviso al correo anterior están pendientes de envío.');
+   }else{
+    await gateway.stageEmail(email.trim());
+    if(epoch.current!==current)return;
+    setEmail('');setNotice('Verificación en cola. Abre el enlace del nuevo correo cuando llegue.');
+   }
   }catch{if(epoch.current===current){setState(null);setError('La acción no quedó confirmada. Actualiza el estado antes de repetirla.');}}
   finally{inFlight.current=false;if(epoch.current===current)setBusy(false);}
  }
@@ -33,6 +54,15 @@ export function RootSecurityPanel({gateway}:{gateway:RootSecurityGateway}){
   {notice?<p role="status">{notice}</p>:null}
   {!state&&!error?<p role="status">Comprobando estado de recuperación…</p>:null}
   {state&&!state.configured?<p role="status">Recuperación aún no configurada.</p>:null}
+  {!code&&state?.mailEnabled&&gateway.hasEmailProof&&!verifiedEmail?
+   <button type="button" className="button button--primary" disabled={busy} onClick={()=>void manageEmail(true)}>Verificar correo con passkey</button>:null}
+  {!code&&state?.mailEnabled&&(!gateway.hasEmailProof||verifiedEmail)?
+   <form className="view-stack" onSubmit={event=>{event.preventDefault();void manageEmail(false);}}>
+    <label htmlFor="root-recovery-email">{state.configured?'Nuevo correo de seguridad':'Correo de seguridad'}</label>
+    <input id="root-recovery-email" type="email" autoComplete="off" required maxLength={254}
+     value={email} disabled={busy} onChange={event=>setEmail(event.target.value)}/>
+    <button type="submit" className="button button--secondary" disabled={busy||!email.trim()}>Solicitar verificación con passkey</button>
+   </form>:null}
   {state?.configured?<dl><div><dt>Fallos acumulados</dt><dd>{state.failures}</dd></div>
    <div><dt>Último plazo de bloqueo</dt><dd>{state.blockedUntil?new Date(state.blockedUntil).toLocaleString('es-ES'):'Sin bloqueo registrado'}</dd></div></dl>:null}
   {code?<div className="staff-directory-detail" aria-label="Nuevo código de recuperación">
