@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S54-11 · H1-A.** Frontera HTTP de laboratorio para factores ROOT y fases durables de vinculación/registro/revocación antes de completar; ensayo integrado ampliado, CI pendiente. Sin montaje público operativo ni adaptador Auth real. **H1-A parcial / NO-GO.**
+
 > **S54-10 · H1-A.** Candidato de segunda passkey desde Seguridad ROOT con ceremonia reciente, registro ligado a sesión/desafío y recibo, autorización SQL y auditoría; ensayo HTTP/PG17 ampliado con proveedor fixture. CI pendiente, recuperación pública y reconciliación Auth alojada abiertas. **H1-A parcial / NO-GO.**
 
 > **S54 · H1-A.** El Draft #92 incorpora verificación del correo ROOT desde gestión, control transaccional de credenciales ROOT y despacho candidato con LOGIN separado. Falta cerrar la recuperación pública del mismo ROOT, la reconciliación Auth, la entrega ordinaria, el delta V2 y la aceptación. **H1-A parcial. NO-GO técnico y operativo.** [Informe S54](../reviews/SABORA_S54_ROOT_RECOVERY_H1_A_REVIEW_2026-11-26.md).

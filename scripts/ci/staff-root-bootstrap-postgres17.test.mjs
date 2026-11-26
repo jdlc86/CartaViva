@@ -8,6 +8,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createStaffRootSecurityCandidate} from '../../apps/api/src/staff-root-security-candidate.mjs';
+import {registerRootRecoveryFactorHttpCandidate,ROOT_RECOVERY_PATH} from '../../apps/api/src/staff-root-recovery-http-candidate.mjs';
 import {createVerifiedRootRecoveryCandidate} from '../../apps/api/src/staff-root-recovery-composition.mjs';
 import {hashRootCredentialId} from '../../apps/api/src/staff-root-credential-id.mjs';
 import {createRootRecoveryKernelCandidate,generateRootRecoveryCode,generateRootRecoveryToken,ROOT_MUTATION_PROOF_SQL,ROOT_RECOVERY_LOGIN,ROOT_RECOVERY_SQL} from '../../apps/api/src/staff-root-recovery-candidate.mjs';
@@ -191,6 +192,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   issueRootMutationProof:rootKernel.issueMutationProof});
  registerOwnershipGovernanceHttp(app,{forRoles,repository:ownership});
  passkey.register(app,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,ownership:true,staffFirstAdmin:true,rootSecurity:true},rootBootstrap:bootstrap,rootSecurity:createStaffRootSecurityCandidate({kernel:rootKernel,mail:rootMail})});
+ registerRootRecoveryFactorHttpCandidate(app,{origin,kernel:rootKernel,mail:rootMail,getRootUserId:async()=>rootId});
  let preview,browser,recoveryWorker;
  const auth='/api/v1/staff/auth';
  const post=(path,body,cookie)=>app.inject({method:'POST',url:auth+path,payload:body,
@@ -527,14 +529,23 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await attempt(rootId,grantId,code,'/verify',backupId)).statusCode,200);
    const linkToken=inbox[1].token,link=hash('link',linkToken);
    let nextLink;
-   assert.equal((await rootMail.queueChallenge(rootId,generateRootRecoveryToken())).outcome,'denied');
-   assert.equal((await rootMail.queueChallenge(rootId,linkToken)).outcome,'challenge_queued');
-   assert.equal((await rootMail.queueChallenge(rootId,linkToken)).outcome,'denied');
+   const publicRecovery=(suffix,body,headers={host:new URL(origin).host,origin})=>app.inject({
+    method:body===undefined?'GET':'POST',url:ROOT_RECOVERY_PATH+suffix,headers,...(body===undefined?{}:{payload:body})});
+   assert.equal((await publicRecovery('/begin')).statusCode,404);
+   assert.equal((await publicRecovery('/begin',{link:linkToken},{host:new URL(origin).host,origin:'https://other.invalid'})).statusCode,403);
+   assert.equal((await publicRecovery('/begin',{link:linkToken,actor:otherId})).statusCode,400);
+   const invalidLink=await publicRecovery('/begin',{link:generateRootRecoveryToken()});
+   assert.equal(invalidLink.statusCode,202);
+   assert.equal((await mail.list(rootId)).length,0);
+   const started=await publicRecovery('/begin',{link:linkToken});
+   assert.equal(started.statusCode,202);assert.deepEqual(started.json(),invalidLink.json());
+   assert.deepEqual((await publicRecovery('/begin',{link:linkToken})).json(),started.json());
+   assert.equal((await mail.list(rootId)).length,1);
    const [challengeJob]=await mail.list(rootId);
    assert.deepEqual(await mail.dispatch(rootId,challengeJob,mailSender),{outcome:'accepted'});
    assert.equal(inbox[2].purpose,'challenge');
    let challenge=hash('challenge',inbox[2].token);
-   const wrong=hash('code','000000'),grant=hash('grant',generateRootRecoveryToken());
+   const wrong=hash('code','000000');let grant=hash('grant',generateRootRecoveryToken());
    const recoveryAttempt=(b=wrong,a=challenge)=>run('attempt',{a,b,c:grant});
    assert.equal((await recoveryAttempt(wrong,hash('challenge',generateRootRecoveryToken()))).failures,'0');
    const concurrent=await Promise.all(Array.from({length:12},()=>recoveryAttempt()));
@@ -614,10 +625,20 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await run('challenge',{a:nextLink,b:renewed})).outcome,'challenge_created');
    await admin.query("UPDATE sabora.root_recovery_state_candidate SET challenge_expires_at=clock_timestamp()-interval '1 second' WHERE singleton");
    assert.equal((await recoveryAttempt(hash('code',recoveryCode),renewed)).outcome,'denied');
-   const finalChallenge=hash('challenge',generateRootRecoveryToken());
+   const finalToken=generateRootRecoveryToken(),finalChallenge=hash('challenge',finalToken);
    assert.equal((await run('challenge',{a:nextLink,b:finalChallenge})).outcome,'challenge_created');
-   const successful=await recoveryAttempt(hash('code',recoveryCode),finalChallenge);
-   assert.equal(successful.outcome,'authorized');
+   assert.equal((await publicRecovery('/authorize',{challenge:finalToken,code:recoveryCode},{host:new URL(origin).host,origin:'https://other.invalid'})).statusCode,403);
+   assert.equal((await publicRecovery('/authorize',{challenge:generateRootRecoveryToken(),code:recoveryCode})).statusCode,403);
+   const successful=await publicRecovery('/authorize',{challenge:finalToken,code:recoveryCode});
+   assert.equal(successful.statusCode,200,successful.body);
+   assert.deepEqual(successful.json(),{outcome:'registration_authorized'});
+   assert.equal(successful.headers['cache-control'],'no-store');
+   const grantCookie=successful.headers['set-cookie'];
+   assert.match(grantCookie,/^__Host-sabora-root-recovery-grant=[A-Za-z0-9_-]{43}; Path=\/; Max-Age=300; Secure; HttpOnly; SameSite=Strict$/);
+   const rawGrant=grantCookie.split(';')[0].split('=')[1];grant=hash('grant',rawGrant);
+   assert.equal((await publicRecovery('/authorize',{challenge:finalToken,code:recoveryCode})).statusCode,403);
+   assert.equal((await app.inject({method:'GET',url:auth+'/session',headers:{host:new URL(origin).host,cookie:grantCookie.split(';')[0]}})).statusCode,401);
+   assert.equal((await publicRecovery('/claim',{})).statusCode,404);
    const granted=(await admin.query('SELECT grant_expires_at FROM sabora.root_recovery_state_candidate')).rows[0];
    assert.ok(Math.abs(granted.grant_expires_at.getTime()-Date.now()-300000)<10000);
    // The verified ROOT request reaches the ownership SQL before the claim,
@@ -665,8 +686,26 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    const replacementCode=generateRootRecoveryCode(),completion={a:grant,b:hashRootCredentialId(replacementId),c:hash('code',replacementCode)};
    assert.equal((await run('complete',{...completion,a:hash('grant',generateRootRecoveryToken())})).outcome,'registration_pending');
    assert.equal((await run('complete',{...completion,b:hashRootCredentialId(genesisCredential)})).outcome,'registration_pending');
-   // Trusted provider reconciliation is simulated here, never an HTTP action.
+   // No finalization on an arbitrary credential, even from an internal
+   // signed command. Persist the expected binding before the remote step.
+   const proof=label=>createHash('sha256').update(label).digest('hex');
+   assert.equal((await run('complete',completion)).outcome,'registration_pending');
+   assert.equal((await run('record_registration',{a:grant,b:completion.b,c:proof('early')})).outcome,'registration_pending');
+   assert.equal((await run('prepare_registration',{a:grant,b:hashRootCredentialId(genesisCredential),c:proof('ceremony')})).outcome,'registration_pending');
+   assert.equal((await run('prepare_registration',{a:grant,b:completion.b,c:proof('ceremony')})).outcome,'registration_prepared');
+   assert.equal((await run('prepare_registration',{a:grant,b:hashRootCredentialId(Buffer.from('unbound').toString('base64url')),c:proof('other')})).outcome,'registration_pending');
+   assert.equal((await run('record_revocation',{a:grant,b:completion.b,c:proof('early')})).outcome,'registration_pending');
+   assert.equal((await run('record_registration',{a:grant,b:hashRootCredentialId(backupId),c:proof('wrong')})).outcome,'registration_pending');
+   // Restart preserves the pending operation and its exact binding.
+   kernel=createRootRecoveryKernelCandidate(config);
+   assert.equal((await run('record_registration',{a:grant,b:completion.b,c:proof('provider-registration-fixture')})).outcome,'registration_recorded');
+   assert.equal((await run('complete',completion)).outcome,'registration_pending');
+   assert.equal((await state()).statusCode,401);
+   assert.equal((await run('record_revocation',{a:grant,b:completion.b,c:proof('provider-revocation-fixture')})).outcome,'revocation_recorded');
+   // These receipts represent fixture evidence, not actual remote effects.
    assert.equal((await run('complete',completion)).outcome,'completed');
+   assert.deepEqual((await admin.query('SELECT pending_credential_hash,pending_ceremony_hash,pending_registration_receipt_hash,pending_revocation_receipt_hash FROM sabora.root_recovery_state_candidate')).rows[0],
+    {pending_credential_hash:null,pending_ceremony_hash:null,pending_registration_receipt_hash:null,pending_revocation_receipt_hash:null});
    assert.equal((await run('complete',completion)).outcome,'denied');
    assert.equal((await run('add_backup',{a:hashRootCredentialId(replacementId),b:hashRootCredentialId(backupId),c:evidenceHash})).outcome,'denied');
    assert.equal((await state()).statusCode,401);

@@ -304,7 +304,7 @@
         "Completar respaldo y recuperación pública del mismo ROOT, registro Auth, reconciliación y revocación; validar circuito ordinario y delta mínimo V2",
         "Obtener la aceptación del propietario"
       ],
-      "note": "S54 conecta el correo de seguridad ROOT a la PWA, incorpora un fence SQL en titularidad y primer ADMIN y compone un trabajador candidato con Resend inyectado. El ensayo usa proveedor aislado. El informe SABORA_S54_ROOT_RECOVERY_H1_A_REVIEW_2026-11-26.md delimita la recuperación pública, Auth alojado, delta y aceptación pendientes."
+      "note": "S54 conecta el correo de seguridad ROOT a la PWA, incorpora un fence SQL en titularidad y primer ADMIN y compone un trabajador candidato con Resend inyectado. El ensayo usa proveedor aislado. El informe SABORA_S54_ROOT_RECOVERY_H1_A_REVIEW_2026-11-26.md delimita la recuperación pública, Auth alojado, delta y aceptación pendientes. S54-10/11 añaden registro candidato de respaldo y frontera de factores HTTP de laboratorio, con fases durables antes de finalización; CI pendiente, no se acredita Auth alojado ni recuperación pública completa."
     }
   ]
 }
