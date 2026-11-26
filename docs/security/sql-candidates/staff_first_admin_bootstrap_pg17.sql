@@ -209,10 +209,18 @@ BEGIN
     IF NOT FOUND THEN
       RAISE EXCEPTION 'staff_lifecycle_ownership_unavailable' USING errcode = '42501';
     END IF;
-    SELECT member.role, member.state INTO v_actor_role, v_actor_state
-      FROM sabora.staff_members member
-      WHERE member.user_id = p_actor_user_id
-      FOR UPDATE;
+    IF p_database_role='sabora_staff_first_admin_login' THEN
+      -- The governance singleton already serializes staff UPDATE/DELETE,
+      -- and ROOT is immutable. The ordinary lifecycle owner's UPDATE RLS
+      -- deliberately excludes ROOT, including SELECT FOR UPDATE visibility.
+      -- Read under the singleton lock instead of granting ROOT UPDATE.
+      SELECT member.role,member.state INTO v_actor_role,v_actor_state
+       FROM sabora.staff_members member WHERE member.user_id=p_actor_user_id;
+    ELSE
+      SELECT member.role, member.state INTO v_actor_role, v_actor_state
+       FROM sabora.staff_members member
+       WHERE member.user_id=p_actor_user_id FOR UPDATE;
+    END IF;
     IF NOT FOUND OR v_actor_state IS DISTINCT FROM 'active' THEN
       RAISE EXCEPTION 'staff_lifecycle_admin_forbidden' USING errcode = '42501';
     END IF;

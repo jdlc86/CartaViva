@@ -128,7 +128,11 @@ test('PG17 + Fastify: ROOT and first ADMIN bootstrap, concurrency, revocation an
    if(result[STAFF_INVITATION_DELIVERY_TOKEN])tokens.set(result.enrollmentId,result[STAFF_INVITATION_DELIVERY_TOKEN]);
    return result;
   }catch(error){
-   if(error?.code==='42501'||error?.message==='invalid_staff_lifecycle_request')return reply.code(403).send({error:'forbidden'});
+   if(error?.code==='42501'||error?.message==='invalid_staff_lifecycle_request'){
+    // Fixture only: surface stable error identifier for CI diagnosis.
+    const detail=/^[a-z_]{1,100}$/.test(error.message??'')?error.message:undefined;
+    return reply.code(403).send({error:'forbidden',...(detail?{detail}:{})});
+   }
    if(error?.code==='22023')return reply.code(409).send({error:'invalid_transition'});
    throw error;
   }
