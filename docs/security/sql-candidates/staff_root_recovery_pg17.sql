@@ -353,7 +353,19 @@ BEGIN
   OR NOT EXISTS(SELECT 1 FROM sabora.root_recovery_keys_candidate k WHERE k.key_id=p_key_id
    AND k.purpose='control' AND k.hmac_key=v_key AND k.expires_at>clock_timestamp())
  THEN RAISE EXCEPTION 'root_recovery_access_forbidden' USING ERRCODE='42501'; END IF;
- IF NOT EXISTS(SELECT 1 FROM sabora.staff_members m WHERE m.user_id=p_actor AND m.role='root') THEN RETURN true; END IF;
+ IF NOT EXISTS(SELECT 1 FROM sabora.root_bootstrap_receipt b WHERE b.root_user_id=p_actor AND b.singleton) THEN
+  -- A prepared remote operation fails closed; after completion only the
+  -- newly verified credential is eligible. Existing unrelated staff retain
+  -- their ordinary membership/verified-provider checks.
+  IF EXISTS(SELECT 1 FROM sabora.staff_recovery_registration_candidate a WHERE a.subject_user_id=p_actor) THEN
+   RETURN coalesce((SELECT a.completed_at IS NOT NULL AND a.credential_hash=p_credential_hash
+    FROM sabora.staff_recovery_registration_candidate a
+    JOIN sabora.staff_recovery_intent_candidate i ON i.request_id=a.intent_id
+    WHERE a.subject_user_id=p_actor ORDER BY i.version DESC LIMIT 1),false);
+  END IF;
+  RETURN true;
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM sabora.staff_members m WHERE m.user_id=p_actor AND m.role='root' AND m.state='active') THEN RETURN false; END IF;
  SELECT r.credential_hash INTO v_genesis FROM sabora.root_bootstrap_receipt r WHERE r.singleton AND r.root_user_id=p_actor;
  IF NOT FOUND OR p_credential_hash IS NULL THEN RETURN false; END IF;
  SELECT * INTO s FROM sabora.root_recovery_state_candidate t WHERE t.singleton;
@@ -742,7 +754,8 @@ BEGIN
   ELSIF NOT coalesce(s.root_user_id=p_actor AND NOT s.registration_pending
    AND (p_credential=coalesce(s.primary_credential_hash,v_genesis) OR p_credential=s.backup_credential_hash),false)
   THEN RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501'; END IF;
- ELSIF v_role IS DISTINCT FROM 'admin' OR v_owner IS DISTINCT FROM p_actor THEN
+ ELSIF v_role IS DISTINCT FROM 'admin' OR v_owner IS DISTINCT FROM p_actor
+  OR EXISTS(SELECT 1 FROM sabora.staff_recovery_registration_candidate a WHERE a.subject_user_id=p_actor AND a.completed_at IS NULL) THEN
   RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501';
  END IF;
  SELECT x.id,x.auth_user_id,x.requested_role,x.state INTO e FROM sabora.staff_enrollments x
@@ -758,6 +771,8 @@ BEGIN
  IF e.state IN ('active','suspended') AND e.auth_user_id IS NOT NULL AND e.auth_user_id<>p_actor
  AND e.requested_role IN ('admin','waiter','kitchen') THEN
   SELECT m.role,m.state INTO v_member FROM sabora.staff_members m WHERE m.user_id=e.auth_user_id;
+  IF EXISTS(SELECT 1 FROM sabora.staff_recovery_registration_candidate a WHERE a.subject_user_id=e.auth_user_id AND a.completed_at IS NULL)
+  THEN RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501'; END IF;
   IF FOUND AND v_member.role=e.requested_role AND v_member.state=e.state THEN
    RETURN QUERY SELECT 'recover'::text,e.id,e.state; RETURN;
   END IF;
@@ -1040,6 +1055,124 @@ $delivery$;
 ALTER FUNCTION sabora.staff_recovery_delivery_candidate(text,text,uuid,text,bigint,bigint,text)
  OWNER TO sabora_root_recovery_fn_owner;
 REVOKE ALL ON FUNCTION sabora.staff_recovery_delivery_candidate(text,text,uuid,text,bigint,bigint,text)
+ FROM PUBLIC,anon,authenticated;
+
+
+CREATE TABLE sabora.staff_recovery_registration_candidate(
+ intent_id uuid PRIMARY KEY REFERENCES sabora.staff_recovery_intent_candidate(request_id) ON DELETE RESTRICT,
+ subject_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id) ON DELETE RESTRICT,
+ session_id uuid NOT NULL UNIQUE,
+ credential_hash text NOT NULL CHECK(credential_hash ~ '^[0-9a-f]{64}$'),
+ ceremony_hash text NOT NULL UNIQUE CHECK(ceremony_hash ~ '^[0-9a-f]{64}$'),
+ registration_receipt_hash text UNIQUE CHECK(registration_receipt_hash ~ '^[0-9a-f]{64}$'),
+ revocation_receipt_hash text UNIQUE CHECK(revocation_receipt_hash ~ '^[0-9a-f]{64}$'),
+ prepared_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ completed_at timestamptz,
+ CHECK(revocation_receipt_hash IS NULL OR registration_receipt_hash IS NOT NULL),
+ CHECK(completed_at IS NULL OR revocation_receipt_hash IS NOT NULL),
+ UNIQUE(subject_user_id,credential_hash)
+);
+CREATE UNIQUE INDEX staff_recovery_one_pending_registration ON sabora.staff_recovery_registration_candidate(subject_user_id)
+ WHERE completed_at IS NULL;
+ALTER TABLE sabora.staff_recovery_registration_candidate ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sabora.staff_recovery_registration_candidate FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON sabora.staff_recovery_registration_candidate FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT,UPDATE(registration_receipt_hash,revocation_receipt_hash,completed_at)
+ ON sabora.staff_recovery_registration_candidate TO sabora_root_recovery_fn_owner;
+CREATE POLICY staff_recovery_registration_owner ON sabora.staff_recovery_registration_candidate
+ TO sabora_root_recovery_fn_owner USING(true) WITH CHECK(true);
+
+-- Only the dedicated control login, with a short-lived signed command, can
+-- prepare or attest to a verified remote result. Browser input is not proof.
+CREATE FUNCTION sabora.staff_recovery_registration_candidate(
+ p_key_id text,p_action text,p_intent uuid,p_subject uuid,p_session uuid,
+ p_credential text,p_evidence text,p_issued bigint,p_expires bigint,p_signature text
+) RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $registration$
+DECLARE v_key bytea;v_expiry timestamptz;v_expected bytea;v_given bytea;v_diff integer:=0;v_i integer;
+ v_now timestamptz;v_owner uuid;v_role text;v_genesis text;
+ i sabora.staff_recovery_intent_candidate%ROWTYPE;d sabora.staff_recovery_delivery_candidate%ROWTYPE;
+ r sabora.staff_recovery_registration_candidate%ROWTYPE;s sabora.root_recovery_state_candidate%ROWTYPE;e record;
+BEGIN
+ IF session_user::text IS DISTINCT FROM 'sabora_root_recovery_login'
+ OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
+ OR p_action IS NULL OR p_action NOT IN ('prepare','record_registration','record_revocation','complete')
+ OR p_intent IS NULL OR p_subject IS NULL OR p_session IS NULL
+ OR p_credential IS NULL OR p_credential !~ '^[0-9a-f]{64}$'
+ OR (p_action='complete' AND p_evidence IS NOT NULL)
+ OR (p_action<>'complete' AND (p_evidence IS NULL OR p_evidence !~ '^[0-9a-f]{64}$'))
+ OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
+ OR p_issued IS NULL OR p_expires IS NULL OR p_expires::numeric-p_issued::numeric NOT BETWEEN 1 AND 15000
+ OR p_issued::numeric>floor(extract(epoch FROM clock_timestamp())*1000)::numeric+5000
+ OR p_expires<=floor(extract(epoch FROM clock_timestamp())*1000)
+ THEN RAISE EXCEPTION 'staff_recovery_registration_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT k.hmac_key,k.expires_at INTO v_key,v_expiry FROM sabora.root_recovery_keys_candidate k
+ WHERE k.key_id=p_key_id AND k.purpose='control' AND k.expires_at>clock_timestamp();
+ IF NOT FOUND THEN RAISE EXCEPTION 'staff_recovery_registration_forbidden' USING ERRCODE='42501'; END IF;
+ v_expected:=extensions.hmac(convert_to(concat_ws(chr(10),'sabora.staff-recovery-registration.v1',p_key_id,
+ session_user::text,p_action,p_intent::text,p_subject::text,p_session::text,p_credential,coalesce(p_evidence,'-'),
+ p_issued::text,p_expires::text),'UTF8'),v_key,'sha256');
+ v_given:=decode(p_signature,'hex');
+ FOR v_i IN 0..31 LOOP v_diff:=v_diff | (get_byte(v_expected,v_i)#get_byte(v_given,v_i)); END LOOP;
+ IF v_diff IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'staff_recovery_registration_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT * INTO i FROM sabora.staff_recovery_intent_candidate a WHERE a.request_id=p_intent;
+ IF NOT FOUND OR i.subject_user_id IS DISTINCT FROM p_subject THEN RETURN 'denied'; END IF;
+ SELECT o.owner_user_id INTO v_owner FROM sabora.admin_write_ownership o WHERE o.singleton FOR UPDATE;
+ SELECT x.auth_user_id,x.requested_role,x.state INTO e FROM sabora.staff_enrollments x WHERE x.id=i.enrollment_id FOR UPDATE;
+ PERFORM 1 FROM sabora.staff_members m WHERE m.user_id IN(i.actor_user_id,i.subject_user_id)
+ ORDER BY m.user_id FOR UPDATE;
+ PERFORM pg_advisory_xact_lock(17302101,52426);
+ v_now:=clock_timestamp();
+ IF p_expires<=floor(extract(epoch FROM v_now)*1000) OR v_expiry<=v_now
+ OR NOT EXISTS(SELECT 1 FROM sabora.root_recovery_keys_candidate k WHERE k.key_id=p_key_id
+ AND k.purpose='control' AND k.hmac_key=v_key AND k.expires_at>v_now)
+ THEN RAISE EXCEPTION 'staff_recovery_registration_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT * INTO d FROM sabora.staff_recovery_delivery_candidate x WHERE x.intent_id=p_intent;
+ IF d.state IS DISTINCT FROM 'consumed' OR d.consumed_session IS DISTINCT FROM p_session
+ OR e.auth_user_id IS DISTINCT FROM p_subject OR e.requested_role IS DISTINCT FROM i.subject_role
+ OR e.state IS DISTINCT FROM i.subject_state
+ OR NOT EXISTS(SELECT 1 FROM sabora.staff_members m WHERE m.user_id=p_subject AND m.role=i.subject_role AND m.state=i.subject_state)
+ OR EXISTS(SELECT 1 FROM sabora.staff_recovery_intent_candidate a WHERE a.enrollment_id=i.enrollment_id AND a.version>i.version)
+ THEN RETURN 'denied'; END IF;
+ SELECT * INTO r FROM sabora.staff_recovery_registration_candidate a WHERE a.intent_id=p_intent FOR UPDATE;
+ IF p_action='prepare' THEN
+  IF r.intent_id IS NOT NULL OR i.expires_at<=v_now OR EXISTS(SELECT 1 FROM sabora.staff_recovery_registration_candidate a
+   WHERE a.subject_user_id=p_subject AND (a.completed_at IS NULL OR a.credential_hash=p_credential))
+  THEN RETURN 'denied'; END IF;
+  SELECT m.role INTO v_role FROM sabora.staff_members m WHERE m.user_id=i.actor_user_id AND m.state='active';
+  IF v_role='root' THEN
+   SELECT b.credential_hash INTO v_genesis FROM sabora.root_bootstrap_receipt b WHERE b.singleton AND b.root_user_id=i.actor_user_id;
+   SELECT * INTO s FROM sabora.root_recovery_state_candidate WHERE singleton;
+   IF NOT coalesce(v_genesis IS NOT NULL AND NOT coalesce(s.registration_pending,false)
+    AND (i.authorizer_credential_hash=coalesce(s.primary_credential_hash,v_genesis) OR i.authorizer_credential_hash=s.backup_credential_hash),false)
+   THEN RETURN 'denied'; END IF;
+  ELSIF v_role IS DISTINCT FROM 'admin' OR v_owner IS DISTINCT FROM i.actor_user_id
+   OR EXISTS(SELECT 1 FROM sabora.staff_recovery_registration_candidate a WHERE a.subject_user_id=i.actor_user_id AND a.completed_at IS NULL)
+  THEN RETURN 'denied'; END IF;
+  INSERT INTO sabora.staff_recovery_registration_candidate(intent_id,subject_user_id,session_id,credential_hash,ceremony_hash)
+   VALUES(p_intent,p_subject,p_session,p_credential,p_evidence);
+  RETURN 'prepared';
+ END IF;
+ -- Once the remote call might have happened, do not reopen or un-fence on
+ -- expiration. Only exact receipt reconciliation can close this operation.
+ IF r.intent_id IS NULL OR r.completed_at IS NOT NULL OR r.credential_hash IS DISTINCT FROM p_credential
+ OR r.session_id IS DISTINCT FROM p_session THEN RETURN 'denied'; END IF;
+ IF p_action='record_registration' AND r.registration_receipt_hash IS NULL THEN
+  UPDATE sabora.staff_recovery_registration_candidate SET registration_receipt_hash=p_evidence WHERE intent_id=p_intent;
+  RETURN 'registration_recorded';
+ ELSIF p_action='record_revocation' AND r.registration_receipt_hash IS NOT NULL AND r.revocation_receipt_hash IS NULL
+ AND p_evidence<>r.registration_receipt_hash THEN
+  UPDATE sabora.staff_recovery_registration_candidate SET revocation_receipt_hash=p_evidence WHERE intent_id=p_intent;
+  RETURN 'revocation_recorded';
+ ELSIF p_action='complete' AND r.registration_receipt_hash IS NOT NULL AND r.revocation_receipt_hash IS NOT NULL THEN
+  UPDATE sabora.staff_recovery_registration_candidate SET completed_at=v_now WHERE intent_id=p_intent;
+  RETURN 'completed';
+ END IF;
+ RETURN 'denied';
+END;
+$registration$;
+ALTER FUNCTION sabora.staff_recovery_registration_candidate(text,text,uuid,uuid,uuid,text,text,bigint,bigint,text)
+ OWNER TO sabora_root_recovery_fn_owner;
+REVOKE ALL ON FUNCTION sabora.staff_recovery_registration_candidate(text,text,uuid,uuid,uuid,text,text,bigint,bigint,text)
  FROM PUBLIC,anon,authenticated;
 
 COMMIT;

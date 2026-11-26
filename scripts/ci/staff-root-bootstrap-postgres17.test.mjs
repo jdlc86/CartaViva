@@ -8,6 +8,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createStaffRootSecurityCandidate} from '../../apps/api/src/staff-root-security-candidate.mjs';
+import {createStaffRecoveryRegistrationCandidate} from '../../apps/api/src/staff-recovery-registration-candidate.mjs';
 import {createStaffRecoveryDeliveryCandidate} from '../../apps/api/src/staff-recovery-delivery-candidate.mjs';
 import {createStaffInvitationClassificationCandidate,createStaffRecoveryIntentCandidate} from '../../apps/api/src/staff-invitation-classification-candidate.mjs';
 import {registerRootRecoveryFactorHttpCandidate,ROOT_RECOVERY_PATH} from '../../apps/api/src/staff-root-recovery-http-candidate.mjs';
@@ -114,7 +115,7 @@ test.before(async()=>{
  dispatchPool=new Pool({connectionString:connection(dispatchLogin)});
   await admin.query("CREATE ROLE sabora_root_recovery_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+password+"'");
   await admin.query('GRANT USAGE ON SCHEMA sabora TO '+ROOT_RECOVERY_LOGIN);
-  await admin.query('GRANT EXECUTE ON FUNCTION sabora.root_recovery_transition_candidate(text,text,uuid,uuid,text,text,text,integer,bigint,bigint,text), sabora.root_recovery_access_candidate(text,uuid,text,bigint,bigint,text), sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text), sabora.classify_staff_invitation_candidate(text,uuid,text,text,uuid,bigint,bigint,text), sabora.authorize_staff_recovery_intent_candidate(text,uuid,text,uuid,uuid,integer,bigint,bigint,text), sabora.staff_recovery_delivery_candidate(text,text,uuid,text,bigint,bigint,text) TO '+ROOT_RECOVERY_LOGIN);
+  await admin.query('GRANT EXECUTE ON FUNCTION sabora.root_recovery_transition_candidate(text,text,uuid,uuid,text,text,text,integer,bigint,bigint,text), sabora.root_recovery_access_candidate(text,uuid,text,bigint,bigint,text), sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text), sabora.classify_staff_invitation_candidate(text,uuid,text,text,uuid,bigint,bigint,text), sabora.authorize_staff_recovery_intent_candidate(text,uuid,text,uuid,uuid,integer,bigint,bigint,text), sabora.staff_recovery_delivery_candidate(text,text,uuid,text,bigint,bigint,text), sabora.staff_recovery_registration_candidate(text,text,uuid,uuid,uuid,text,text,bigint,bigint,text) TO '+ROOT_RECOVERY_LOGIN);
   await admin.query("INSERT INTO sabora.root_recovery_keys_candidate(key_id,hmac_key,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour')",[recoveryKey,recoverySigning]);
   recoveryPool=new Pool({connectionString:connection(ROOT_RECOVERY_LOGIN),max:12});
   await admin.query(`CREATE ROLE ${ROOT_MAIL_LOGIN} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${password}';
@@ -490,6 +491,37 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   await assert.rejects(recoveryDelivery.consume(recoveryInput),e=>e.code==='42501');
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[otherId])).rows[0].n,1);
   assert.equal((await admin.query('SELECT owner_user_id FROM sabora.admin_write_ownership WHERE singleton')).rows[0].owner_user_id,otherId);
+  const staffRegistration=createStaffRecoveryRegistrationCandidate(recoveryConfig);
+  const consumedSession=(await admin.query('SELECT consumed_session FROM sabora.staff_recovery_delivery_candidate WHERE intent_id=$1',[latestRequest.requestId])).rows[0].consumed_session;
+  const staffNewCredential=Buffer.from('fixture-staff-replacement').toString('base64url');
+  const staffNewHash=hashRootCredentialId(staffNewCredential);
+  const staffOldHash=hashRootCredentialId(genesisCredential);
+  const evidence=label=>createHash('sha256').update(label).digest('hex');
+  const staffBinding={intentId:latestRequest.requestId,subjectId:otherId,sessionId:consumedSession,credentialHash:staffNewHash};
+  assert.equal((await staffRegistration('complete',staffBinding)).outcome,'denied');
+  assert.equal((await staffRegistration('prepare',{...staffBinding,sessionId:randomUUID(),evidenceHash:evidence('staff-ceremony')})).outcome,'denied');
+  assert.equal(await rootKernel.allowsAccess(otherId,staffOldHash),true);
+  const prepared=await Promise.all(Array.from({length:3},()=>staffRegistration('prepare',{...staffBinding,evidenceHash:evidence('staff-ceremony')})));
+  assert.equal(prepared.filter(x=>x.outcome==='prepared').length,1);
+  assert.equal(await rootKernel.allowsAccess(otherId,staffOldHash),false);
+  assert.equal(await rootKernel.allowsAccess(otherId,staffNewHash),false);
+  assert.equal((await state(adminHeaders)).statusCode,401);
+  await assert.rejects(authorizeRecovery(rootAuthority,{enrollmentId:id,requestId:randomUUID()}),e=>e.code==='42501');
+  assert.equal((await staffRegistration('record_revocation',{...staffBinding,evidenceHash:evidence('staff-revoke')})).outcome,'denied');
+  assert.equal((await staffRegistration('record_registration',{...staffBinding,credentialHash:staffOldHash,evidenceHash:evidence('staff-register')})).outcome,'denied');
+  const restartedRegistration=createStaffRecoveryRegistrationCandidate(recoveryConfig);
+  assert.equal((await restartedRegistration('record_registration',{...staffBinding,evidenceHash:evidence('staff-register')})).outcome,'registration_recorded');
+  assert.equal((await restartedRegistration('complete',staffBinding)).outcome,'denied');
+  assert.equal((await restartedRegistration('record_revocation',{...staffBinding,evidenceHash:evidence('staff-revoke')})).outcome,'revocation_recorded');
+  assert.equal((await restartedRegistration('complete',staffBinding)).outcome,'completed');
+  assert.equal((await restartedRegistration('complete',staffBinding)).outcome,'denied');
+  assert.equal(await rootKernel.allowsAccess(otherId,staffOldHash),false);
+  assert.equal(await rootKernel.allowsAccess(otherId,null),false);
+  assert.equal(await rootKernel.allowsAccess(otherId,staffNewHash),true);
+  assert.equal((await state(adminHeaders)).statusCode,401);
+  assert.equal((await attempt(otherId,grantId,code,'/verify')).statusCode,401);
+  assert.equal((await attempt(otherId,grantId,code,'/verify',staffNewCredential)).statusCode,200);
+  assert.deepEqual((await admin.query('SELECT auth_user_id,state,employee_code FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0],existing);
   // Recovery kernel uses the same disposable genesis ROOT after the full
   // browser path. No new staff identity or hosted provider is created.
   try{
@@ -606,7 +638,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await attempt(rootId,grantId,code,'/verify',backupId)).statusCode,401);
    assert.equal((await security()).json().backupConfigured,false);
    const registration=await backupCeremony();
-   assert.equal((await security('/backup/verify',adminHeaders,{credential:registration.creation})).statusCode,403);
+   assert.equal((await security('/backup/verify',adminHeaders,{credential:registration.creation})).statusCode,401);
    const malformed={...registration.creation,response:{...registration.creation.response,
     clientDataJSON:enc({type:'webauthn.create',origin,challenge:'wrong'})}};
    assert.equal((await security('/backup/verify',registration.headers,{credential:malformed})).statusCode,401);
@@ -784,7 +816,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await run('reset')).outcome,'registration_pending');
    assert.equal((await state()).statusCode,401);
    assert.equal((await attempt(rootId,grantId,code,'/verify',backupId)).statusCode,401);
-   assert.equal((await attempt(otherId,grantId,code,'/verify')).statusCode,200);
+   assert.equal((await attempt(otherId,grantId,code,'/verify',staffNewCredential)).statusCode,200);
    const durable=(await admin.query('SELECT failures,registration_pending,grant_hash FROM sabora.root_recovery_state_candidate')).rows[0];
    assert.deepEqual(durable,{failures:'0',registration_pending:true,grant_hash:null});
    assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.root_recovery_audit_candidate WHERE action='attempt' AND outcome='code_mismatch'")).rows[0].n,11);

@@ -162,7 +162,7 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
         request.verifiedIdentity = identity;
         await authorizeMembership(request, reply);
         if (reply.sent) return;
-        const credentialHash=rootAccess&&request.verifiedStaff.role==='root'?hashRootCredentialId(credential.id):null;
+        const credentialHash=rootAccess?hashRootCredentialId(credential.id):null;
         if(rootAccess&&await rootAccess(identity.userId,credentialHash)!==true)return unauthorized(reply);
         const maxAge = identity.expiresAt - clock();
         if (maxAge <= 0) return unauthorized(reply);
