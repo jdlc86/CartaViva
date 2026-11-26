@@ -107,7 +107,7 @@ un GET o un registro fallido. No reabrir genesis ni alterar las 103
 migraciones originales.
 
 El intervalo N, vigencias exactas, almacenamiento temporal de material de
-correo, retención, parámetros antiabuso y resolución de fallo total (pérdida
+correo, retención, parámetros antiabuso restantes y resolución de fallo total (pérdida
 del correo y del código y de todas las passkeys) siguen pendientes de
 concreción. No existe bypass por correo solo ni procedimiento de emergencia
 inventado. La recuperación de roles no ROOT, la modalidad de generación y
@@ -117,3 +117,35 @@ La aprobación es de diseño para implementar en el PR #92. No acredita
 implementación, prueba alojada, aceptación visual, aprovisionamiento,
 modificación de usuarios, envío real, SQL operativo, integración en main
 ni despliegue. No afecta a Fleetia.
+
+
+### Adenda aprobada — protección contra fuerza bruta (26-11-2026)
+
+El propietario aprueba expresamente los siguientes requisitos para la
+recuperación excepcional de ROOT:
+
+- Código generado mediante CSPRNG con 128 bits de entropía, representado
+  en 26 caracteres Base32 canónicos (agrupación visual permitida).
+  No admitir PIN, código elegido por el usuario ni reducción de entropía.
+- Bloqueos progresivos por intentos fallidos acumulados: 3 intentos,
+  15 minutos; 5 intentos, 1 hora; 10 intentos, 24 horas. Nunca bloqueo
+  permanente automático.
+- Contador y plazo de bloqueo durables en PostgreSQL, vinculados al ROOT
+  existente, independientes de IP, navegador, sesión, desafío o generación
+  del enlace. No reiniciar por pedir otro enlace, rotar, cambiar IP,
+  reiniciar procesos o concurrencia. Comprobar y actualizar de forma
+  atómica; no extender el bloqueo por solicitudes rechazadas durante el
+  mismo. No registrar código, desafío ni verificadores en auditoría.
+- Bloqueo exclusivamente del flujo excepcional: las passkeys vigentes
+  siguen permitiendo autenticarse. Auditar los intentos y alertar sobre
+  abuso, sin revelar factores ni facilitar enumeración. No crear un
+  bypass por correo o ADMIN.
+
+La semántica exacta del contador después del último umbral (sin bloqueo
+permanente), la recuperación del contador mediante una passkey vigente,
+el control de solicitudes de desafíos, la agrupación de alertas y los
+plazos restantes se concretarán en el diseño técnico antes de activar.
+No se reduce ninguna garantía del contrato anterior. La aceptación
+integrada debe cubrir los umbrales y sus vencimientos, concurrencia,
+persistencia, rotación y acceso ordinario durante bloqueo. Este acuerdo
+no autoriza operaciones reales ni acredita implementación.

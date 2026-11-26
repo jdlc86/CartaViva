@@ -235,3 +235,8 @@ concretar N, caducidades, retención, antiabuso y pérdida total de factores.
 No se aprueban por inferencia recuperación de otros roles, modalidad de
 invitación ordinaria, delta V2 o operaciones reales. Bloque documental;
 no se implementa recuperación todavía. H1-A parcial/NO-GO.
+
+
+## S52-24 — Protección contra fuerza bruta de recuperación ROOT aprobada
+
+El propietario aprueba 128 bits aleatorios (26 caracteres Base32), bloqueo temporal a 3/5/10 fallos acumulados durante 15 min/1 h/24 h, persistencia por ROOT en PostgreSQL independiente de IP, enlace, sesión y reinicio, auditoría/alertas y conservación del acceso ordinario por passkey durante bloqueo. Nunca bloqueo permanente. Se incorpora al contrato normativo ROOT; no se presupone el comportamiento tras el último umbral ni los parámetros de desafío o retención aún pendientes. Cambio solo documental, sin implementación, provisión o activación. H1-A parcial/NO-GO.
