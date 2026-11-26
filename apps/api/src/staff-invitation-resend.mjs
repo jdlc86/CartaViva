@@ -51,6 +51,11 @@ export function createStaffInvitationResendSender(config){
 export function createRootRecoveryResendSender(config){
  const send=createStaffResendTransport(config);
  return async ({jobId,recipient,purpose,token})=>{
+  if(purpose==='recovered'){
+   if(token!==null)throw Error('invalid_root_recovery_delivery');
+   return send({jobId,recipient,kind:'root-recovery',subject:'Recuperación ROOT completada en Sabora',
+    text:'Se ha completado una recuperación de ROOT. Las credenciales anteriores ya no autorizan el acceso a Sabora. Si no reconoces esta operación, revisa la seguridad de tu cuenta.'});
+  }
   if(purpose==='notice'){
    if(token!==null)throw Error('invalid_root_recovery_delivery');
    return send({jobId,recipient,kind:'root-recovery',subject:'Cambio de correo de seguridad de Sabora',

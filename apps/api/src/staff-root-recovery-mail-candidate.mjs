@@ -110,13 +110,14 @@ export function createRootRecoveryMailCandidate({pool,keyId,signingSecret,hash,k
    const promotion=await promote(actor,jobId);
    return promotion.outcome==='link_confirmed'?{outcome:'accepted',promotion:promotion.outcome}:job;
   }
-  if(job.jobId!==jobId||!UUID.test(job.fence??'')||!['verify','link','challenge','notice'].includes(job.purpose))throw Error('invalid_root_mail_claim');
+  if(job.jobId!==jobId||!UUID.test(job.fence??'')||!['verify','link','challenge','notice','recovered'].includes(job.purpose))throw Error('invalid_root_mail_claim');
   let result='unknown',providerId=null;
   try{
    const recipient=normalizeStaffInviteeEmail(await open(actor,'recipient',job.emailHash,job.recipientEnvelope));
    if(!hashMatches(hash('email',recipient),job.emailHash))throw forbidden();
-   const token=job.purpose==='notice'?null:await open(actor,'token:'+job.purpose,jobId,job.tokenEnvelope);
-   if(job.purpose!=='notice'&&(!tokenValid(token)||!hashMatches(hash(job.purpose==='verify'?'email-verification':job.purpose,token),job.tokenHash)))throw forbidden();
+   const notice=['notice','recovered'].includes(job.purpose);
+   const token=notice?null:await open(actor,'token:'+job.purpose,jobId,job.tokenEnvelope);
+   if(!notice&&(!tokenValid(token)||!hashMatches(hash(job.purpose==='verify'?'email-verification':job.purpose,token),job.tokenHash)))throw forbidden();
    const receipt=await send({jobId,recipient,purpose:job.purpose,token});
    if(receipt?.outcome==='accepted'&&UUID.test(receipt.providerId??'')){result='accepted';providerId=receipt.providerId;}
    else if(receipt?.outcome==='permanent_failure')result='rejected';

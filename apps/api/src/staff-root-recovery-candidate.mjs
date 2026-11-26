@@ -10,8 +10,8 @@ export const ROOT_MUTATION_PROOF_SQL="SELECT pg_catalog.set_config('sabora.root_
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HASH=/^[0-9a-f]{64}$/;
 const ALPHABET='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-const ACTIONS=new Set(['configure','prepare_link','confirm_link','reject_link','challenge','attempt','claim','reset','add_backup','backup_status','prepare_registration','record_registration','record_revocation','complete','security_status','security_reset','replace_code']);
-const OUTCOMES=new Set(['configured','unconfigured','code_replaced','link_prepared','link_confirmed','link_rejected','challenge_created','authorized','claimed','reset','backup_added','backup_missing','backup_present','registration_prepared','registration_recorded','revocation_recorded','completed','denied','blocked','registration_pending']);
+const ACTIONS=new Set(['configure','prepare_link','confirm_link','reject_link','challenge','attempt','claim','reset','add_backup','backup_status','expire_unprepared','prepare_registration','record_registration','record_revocation','complete','security_status','security_reset','replace_code']);
+const OUTCOMES=new Set(['configured','unconfigured','code_replaced','link_prepared','link_confirmed','link_rejected','challenge_created','authorized','claimed','reset','backup_added','backup_missing','backup_present','registration_expired','registration_prepared','registration_recorded','revocation_recorded','completed','denied','blocked','registration_pending']);
 export function generateRootRecoveryCode(){
  const bytes=randomBytes(16);let buffer=0,bits=0,code='';
  for(const byte of bytes){

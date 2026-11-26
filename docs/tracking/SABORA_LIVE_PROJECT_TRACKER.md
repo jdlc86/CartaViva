@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S54-12 · H1-A.** Candidato conserva plazo original de registro tras claim, libera solo operación caducada sin preparación y encola aviso de recuperación atómico sin secretos; prueba integrada ampliada, CI pendiente. Frontera Auth real sigue abierta. **H1-A parcial / NO-GO.**
+
 > **S54-11 · H1-A.** Frontera HTTP de laboratorio para factores ROOT y fases durables de vinculación/registro/revocación antes de completar; ensayo integrado ampliado, CI pendiente. Sin montaje público operativo ni adaptador Auth real. **H1-A parcial / NO-GO.**
 
 > **S54-10 · H1-A.** Candidato de segunda passkey desde Seguridad ROOT con ceremonia reciente, registro ligado a sesión/desafío y recibo, autorización SQL y auditoría; ensayo HTTP/PG17 ampliado con proveedor fixture. CI pendiente, recuperación pública y reconciliación Auth alojada abiertas. **H1-A parcial / NO-GO.**

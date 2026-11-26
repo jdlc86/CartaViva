@@ -23,6 +23,7 @@ CREATE TABLE sabora.root_recovery_state_candidate(
  grant_hash text,grant_expires_at timestamptz,
  registration_pending boolean NOT NULL DEFAULT false,
  pending_operation_hash text CHECK(pending_operation_hash ~ '^[0-9a-f]{64}$'),
+ pending_registration_deadline timestamptz,
  pending_credential_hash text CHECK(pending_credential_hash ~ '^[0-9a-f]{64}$'),
  pending_ceremony_hash text CHECK(pending_ceremony_hash ~ '^[0-9a-f]{64}$'),
  pending_registration_receipt_hash text CHECK(pending_registration_receipt_hash ~ '^[0-9a-f]{64}$'),
@@ -31,6 +32,7 @@ CREATE TABLE sabora.root_recovery_state_candidate(
  backup_credential_hash text CHECK(backup_credential_hash ~ '^[0-9a-f]{64}$'),
  retired_credential_hashes text[] NOT NULL DEFAULT ARRAY[]::text[],
  CHECK(registration_pending=(pending_operation_hash IS NOT NULL)),
+ CHECK(registration_pending=(pending_registration_deadline IS NOT NULL)),
  CHECK((pending_credential_hash IS NULL)=(pending_ceremony_hash IS NULL)),
  CHECK(registration_pending OR pending_credential_hash IS NULL),
  CHECK(pending_registration_receipt_hash IS NULL OR pending_credential_hash IS NOT NULL),
@@ -88,6 +90,7 @@ DECLARE s sabora.root_recovery_state_candidate%ROWTYPE;
  v_key bytea;v_key_expiry timestamptz;v_now timestamptz;
  v_expected bytea;v_given bytea;v_diff integer:=0;v_i integer;
  v_result text;v_fails bigint:=0;v_block timestamptz;v_genesis_hash text;v_counted boolean:=false;
+ v_notice_job uuid;
 BEGIN
  IF session_user::text<>'sabora_root_recovery_login' OR p_actor IS NULL OR p_request IS NULL
   OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
@@ -109,6 +112,7 @@ BEGIN
    WHEN 'claim' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
    WHEN 'add_backup' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NOT NULL AND p_days IS NULL
    WHEN 'backup_status' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
+   WHEN 'expire_unprepared' THEN p_a IS NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
    WHEN 'prepare_registration' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NOT NULL AND p_days IS NULL
    WHEN 'record_registration' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NOT NULL AND p_days IS NULL
    WHEN 'record_revocation' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NOT NULL AND p_days IS NULL
@@ -153,7 +157,20 @@ BEGIN
   v_fails:=s.failures;v_block:=s.blocked_until;
   IF s.root_user_id IS DISTINCT FROM p_actor THEN RAISE EXCEPTION 'root_recovery_forbidden' USING ERRCODE='42501'; END IF;
   v_result:='denied';
-  IF p_action IN ('security_status','backup_status','security_reset','replace_code','add_backup') AND
+  IF p_action='expire_unprepared' THEN
+   -- The trusted adapter MUST persist prepare_registration before any
+   -- provider registration mutation. Only an unprepared expired operation
+   -- can be released; an uncertain external effect stays fenced.
+   IF s.registration_pending AND s.pending_registration_deadline<=v_now
+    AND s.pending_credential_hash IS NULL THEN
+    UPDATE sabora.root_recovery_state_candidate SET registration_pending=false,
+     pending_operation_hash=NULL,pending_registration_deadline=NULL WHERE singleton;
+    v_result:='registration_expired';
+   ELSE
+    RETURN QUERY SELECT CASE WHEN s.registration_pending THEN 'registration_pending' ELSE 'denied' END,v_fails,v_block;
+    RETURN;
+   END IF;
+  ELSIF p_action IN ('security_status','backup_status','security_reset','replace_code','add_backup') AND
    (s.registration_pending OR NOT coalesce(p_a=coalesce(s.primary_credential_hash,v_genesis_hash) OR p_a=s.backup_credential_hash,false))
   THEN RETURN QUERY SELECT 'denied'::text,0::bigint,NULL::timestamptz; RETURN;
   ELSIF p_action='security_status' THEN RETURN QUERY SELECT 'configured'::text,s.failures,s.blocked_until; RETURN;
@@ -170,7 +187,7 @@ BEGIN
    -- registration. Positive registration and revocation evidence must
    -- refer to that same binding, never a difference between listings.
    IF p_action='prepare_registration' AND p_a=s.pending_operation_hash
-    AND s.pending_credential_hash IS NULL
+    AND s.pending_registration_deadline>v_now AND s.pending_credential_hash IS NULL
     AND p_b IS DISTINCT FROM coalesce(s.primary_credential_hash,v_genesis_hash)
     AND p_b IS DISTINCT FROM s.backup_credential_hash AND p_b IS DISTINCT FROM v_genesis_hash
     AND NOT (p_b=ANY(s.retired_credential_hashes)) THEN
@@ -193,8 +210,25 @@ BEGIN
     AND p_b IS DISTINCT FROM coalesce(s.primary_credential_hash,v_genesis_hash)
     AND p_b IS DISTINCT FROM s.backup_credential_hash AND p_b IS DISTINCT FROM v_genesis_hash
     AND NOT (p_b=ANY(s.retired_credential_hashes))
-    AND p_c IS DISTINCT FROM s.code_hash THEN
+    AND p_c IS DISTINCT FROM s.code_hash
+    AND EXISTS(SELECT 1 FROM sabora.root_recovery_mail_contact_candidate
+      WHERE singleton AND root_user_id=p_actor AND email_hash=s.email_hash) THEN
+    -- The success notification and factor replacement commit together.
+    -- No code, link or grant enters this notice. Invalidate outstanding
+    -- recipient proofs and queued obsolete factor mail as well.
+    v_notice_job:=gen_random_uuid();
+    INSERT INTO sabora.root_recovery_mail_job_candidate
+     (id,root_user_id,purpose,email_hash,recipient_envelope,expires_at,dispatch_until)
+     SELECT v_notice_job,p_actor,'recovered',email_hash,recipient_envelope,
+      v_now+interval '1 day',v_now+interval '1 hour'
+     FROM sabora.root_recovery_mail_contact_candidate
+     WHERE singleton AND root_user_id=p_actor AND email_hash=s.email_hash;
+    DELETE FROM sabora.root_recovery_mail_pending_candidate WHERE singleton;
+    UPDATE sabora.root_recovery_mail_job_candidate
+     SET state='cancelled',recipient_envelope=NULL,token_envelope=NULL,finished_at=v_now
+     WHERE root_user_id=p_actor AND state='queued' AND purpose IN ('verify','link','challenge');
     UPDATE sabora.root_recovery_state_candidate SET registration_pending=false,pending_operation_hash=NULL,
+     pending_registration_deadline=NULL,
      pending_credential_hash=NULL,pending_ceremony_hash=NULL,pending_registration_receipt_hash=NULL,pending_revocation_receipt_hash=NULL,
      retired_credential_hashes=array_remove(s.retired_credential_hashes||ARRAY[coalesce(s.primary_credential_hash,v_genesis_hash),s.backup_credential_hash],NULL),
      primary_credential_hash=p_b,backup_credential_hash=NULL,code_hash=p_c,failures=0,blocked_until=NULL,
@@ -273,14 +307,14 @@ BEGIN
   ELSIF p_action='claim' THEN
    IF s.grant_hash=p_a AND s.grant_expires_at>v_now THEN
     UPDATE sabora.root_recovery_state_candidate SET grant_hash=NULL,grant_expires_at=NULL,
-     registration_pending=true,pending_operation_hash=p_a WHERE singleton;
+     registration_pending=true,pending_operation_hash=p_a,pending_registration_deadline=s.grant_expires_at WHERE singleton;
     v_result:='claimed';
    END IF;
   END IF;
  END IF;
- INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures,credential_evidence_hash)
+ INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures,credential_evidence_hash,mail_job_id)
  VALUES(p_request,p_actor,p_action,CASE WHEN v_counted THEN 'code_mismatch' ELSE v_result END,v_fails,
-  CASE WHEN v_result IN ('backup_added','registration_prepared','registration_recorded','revocation_recorded') THEN p_c ELSE NULL END);
+  CASE WHEN v_result IN ('backup_added','registration_prepared','registration_recorded','revocation_recorded') THEN p_c ELSE NULL END,v_notice_job);
  RETURN QUERY SELECT v_result,v_fails,v_block;
 END;
 $recovery$;
@@ -416,7 +450,7 @@ CREATE TABLE sabora.root_recovery_mail_pending_candidate(
 );
 CREATE TABLE sabora.root_recovery_mail_job_candidate(
  id uuid PRIMARY KEY,root_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id),
- purpose text NOT NULL CHECK(purpose IN ('verify','link','challenge','notice')),
+ purpose text NOT NULL CHECK(purpose IN ('verify','link','challenge','notice','recovered')),
  email_hash text NOT NULL CHECK(email_hash ~ '^[0-9a-f]{64}$'),
  recipient_envelope text,
  token_hash text CHECK(token_hash ~ '^[0-9a-f]{64}$'),
@@ -426,9 +460,9 @@ CREATE TABLE sabora.root_recovery_mail_job_candidate(
  state text NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','dispatching','accepted','rejected','unknown','cancelled')),
  fence uuid,provider_id uuid,finished_at timestamptz,
  CHECK(dispatch_until<=expires_at),
- CHECK((purpose='notice')=(token_hash IS NULL)),
+ CHECK((purpose IN ('notice','recovered'))=(token_hash IS NULL)),
  CHECK((state IN ('queued','dispatching'))=(recipient_envelope IS NOT NULL)),
- CHECK((state IN ('queued','dispatching') AND purpose<>'notice')=(token_envelope IS NOT NULL)),
+ CHECK((state IN ('queued','dispatching') AND purpose NOT IN ('notice','recovered'))=(token_envelope IS NOT NULL)),
  CHECK((state='accepted')=(provider_id IS NOT NULL)),
  CHECK((state IN ('dispatching','accepted','rejected','unknown'))=(fence IS NOT NULL))
 );
@@ -541,7 +575,7 @@ BEGIN
     VALUES((v->>'noticeId')::uuid,p_actor,'notice',c.email_hash,c.recipient_envelope,v_now+interval '1 day',v_now+interval '1 hour');
    END IF;
    UPDATE sabora.root_recovery_mail_job_candidate SET state='cancelled',recipient_envelope=NULL,token_envelope=NULL,finished_at=v_now
-    WHERE state='queued' AND purpose<>'notice';
+    WHERE state='queued' AND purpose IN ('verify','link','challenge');
    INSERT INTO sabora.root_recovery_mail_contact_candidate(root_user_id,email_hash,recipient_envelope)
     VALUES(p_actor,p.email_hash,p.recipient_envelope)
     ON CONFLICT(singleton) DO UPDATE SET email_hash=EXCLUDED.email_hash,recipient_envelope=EXCLUDED.recipient_envelope;
@@ -605,7 +639,7 @@ BEGIN
   SELECT * INTO j FROM sabora.root_recovery_mail_job_candidate WHERE id=(v->>'jobId')::uuid AND root_user_id=p_actor;
   IF FOUND THEN
    IF p_action='claim' AND j.state='queued' THEN
-    IF j.dispatch_until>v_now AND (j.purpose='notice' OR
+    IF j.dispatch_until>v_now AND (j.purpose IN ('notice','recovered') OR
      (NOT coalesce(s.registration_pending,false) AND
      ((j.purpose='verify' AND p.proof_hash=j.token_hash AND p.email_hash=j.email_hash)
       OR (j.purpose='link' AND s.pending_link_hash=j.token_hash AND c.email_hash=j.email_hash)

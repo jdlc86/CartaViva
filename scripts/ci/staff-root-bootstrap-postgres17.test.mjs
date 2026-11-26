@@ -431,7 +431,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
      if(sendMode==='rejected')return new Response('',{status:422});
      if(sendMode==='unknown')throw Error('fixture_lost_response');
      const fields=body.text.includes('\n\n')?new URLSearchParams(new URL(body.text.split('\n\n').at(-1)).hash.split('?')[1]):null;
-     inbox.push({email:body.to[0],purpose:fields?.get('purpose')??'notice',token:fields?.get('token')??null});
+     inbox.push({email:body.to[0],purpose:fields?.get('purpose')??(body.subject==='Recuperación ROOT completada en Sabora'?'recovered':'notice'),token:fields?.get('token')??null});
      return Response.json({id:randomUUID()});
     }};
    const mailSender=createRootRecoveryResendSender(resend);
@@ -625,6 +625,22 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await run('challenge',{a:nextLink,b:renewed})).outcome,'challenge_created');
    await admin.query("UPDATE sabora.root_recovery_state_candidate SET challenge_expires_at=clock_timestamp()-interval '1 second' WHERE singleton");
    assert.equal((await recoveryAttempt(hash('code',recoveryCode),renewed)).outcome,'denied');
+   // Expiry of an unprepared claim must not destroy the original code or
+   // reopen an external effect. Only the disposable DBA advances the clock.
+   const expiredToken=generateRootRecoveryToken(),expiredChallenge=hash('challenge',expiredToken);
+   const expiredGrant=hash('grant',generateRootRecoveryToken());
+   assert.equal((await run('challenge',{a:nextLink,b:expiredChallenge})).outcome,'challenge_created');
+   assert.equal((await run('attempt',{a:expiredChallenge,b:hash('code',recoveryCode),c:expiredGrant})).outcome,'authorized');
+   assert.equal((await run('claim',{a:expiredGrant})).outcome,'claimed');
+   assert.equal((await state()).statusCode,401);
+   assert.equal((await run('expire_unprepared')).outcome,'registration_pending');
+   await admin.query("UPDATE sabora.root_recovery_state_candidate SET pending_registration_deadline=clock_timestamp()-interval '1 second' WHERE singleton");
+   const neverPrepared=hashRootCredentialId(Buffer.from('expired-registration').toString('base64url'));
+   assert.equal((await run('prepare_registration',{a:expiredGrant,b:neverPrepared,c:createHash('sha256').update('expired').digest('hex')})).outcome,'registration_pending');
+   assert.equal((await run('expire_unprepared')).outcome,'registration_expired');
+   assert.equal((await state()).statusCode,200);
+   assert.equal((await run('claim',{a:expiredGrant})).outcome,'denied');
+   assert.equal((await admin.query('SELECT code_hash,failures FROM sabora.root_recovery_state_candidate')).rows[0].code_hash,hash('code',recoveryCode));
    const finalToken=generateRootRecoveryToken(),finalChallenge=hash('challenge',finalToken);
    assert.equal((await run('challenge',{a:nextLink,b:finalChallenge})).outcome,'challenge_created');
    assert.equal((await publicRecovery('/authorize',{challenge:finalToken,code:recoveryCode},{host:new URL(origin).host,origin:'https://other.invalid'})).statusCode,403);
@@ -693,6 +709,9 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await run('record_registration',{a:grant,b:completion.b,c:proof('early')})).outcome,'registration_pending');
    assert.equal((await run('prepare_registration',{a:grant,b:hashRootCredentialId(genesisCredential),c:proof('ceremony')})).outcome,'registration_pending');
    assert.equal((await run('prepare_registration',{a:grant,b:completion.b,c:proof('ceremony')})).outcome,'registration_prepared');
+   await admin.query("UPDATE sabora.root_recovery_state_candidate SET pending_registration_deadline=clock_timestamp()-interval '1 second' WHERE singleton");
+   assert.equal((await run('expire_unprepared')).outcome,'registration_pending');
+   assert.equal((await state()).statusCode,401);
    assert.equal((await run('prepare_registration',{a:grant,b:hashRootCredentialId(Buffer.from('unbound').toString('base64url')),c:proof('other')})).outcome,'registration_pending');
    assert.equal((await run('record_revocation',{a:grant,b:completion.b,c:proof('early')})).outcome,'registration_pending');
    assert.equal((await run('record_registration',{a:grant,b:hashRootCredentialId(backupId),c:proof('wrong')})).outcome,'registration_pending');
@@ -704,6 +723,13 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await run('record_revocation',{a:grant,b:completion.b,c:proof('provider-revocation-fixture')})).outcome,'revocation_recorded');
    // These receipts represent fixture evidence, not actual remote effects.
    assert.equal((await run('complete',completion)).outcome,'completed');
+   const recoveryNotice=(await admin.query("SELECT id,purpose,token_hash,token_envelope FROM sabora.root_recovery_mail_job_candidate WHERE purpose='recovered'")).rows;
+   assert.equal(recoveryNotice.length,1);
+   assert.deepEqual({...recoveryNotice[0],id:null},{id:null,purpose:'recovered',token_hash:null,token_envelope:null});
+   assert.equal((await admin.query("SELECT mail_job_id FROM sabora.root_recovery_audit_candidate WHERE action='complete' AND outcome='completed'")).rows[0].mail_job_id,recoveryNotice[0].id);
+   assert.equal((await mail.dispatch(rootId,recoveryNotice[0].id,mailSender)).outcome,'accepted');
+   assert.equal((await mail.dispatch(rootId,recoveryNotice[0].id,mailSender)).outcome,'denied');
+   assert.deepEqual((await admin.query('SELECT recipient_envelope,token_envelope,state FROM sabora.root_recovery_mail_job_candidate WHERE id=$1',[recoveryNotice[0].id])).rows[0],{recipient_envelope:null,token_envelope:null,state:'accepted'});
    assert.deepEqual((await admin.query('SELECT pending_credential_hash,pending_ceremony_hash,pending_registration_receipt_hash,pending_revocation_receipt_hash FROM sabora.root_recovery_state_candidate')).rows[0],
     {pending_credential_hash:null,pending_ceremony_hash:null,pending_registration_receipt_hash:null,pending_revocation_receipt_hash:null});
    assert.equal((await run('complete',completion)).outcome,'denied');
@@ -727,6 +753,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.deepEqual(afterChange,{code_hash:hash('code',replacementCode),email_hash:hash('email','new-security@demo.invalid'),failures:'0'});
    for(const job of await mail.list(rootId))assert.equal((await mail.dispatch(rootId,job,mailSender)).outcome,'accepted');
    assert.equal((await mail.queueLink(rootId)).outcome,'denied');
+   assert.ok(inbox.some(m=>m.email==='security@demo.invalid'&&m.purpose==='recovered'&&m.token===null));
    assert.ok(inbox.some(m=>m.email==='security@demo.invalid'&&m.purpose==='notice'&&m.token===null));
    assert.ok(inbox.some(m=>m.email==='new-security@demo.invalid'&&m.purpose==='link'));
   }finally{/* pool owned by test.after */}
