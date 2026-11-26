@@ -8,6 +8,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CORRELATION = /^[A-Za-z0-9_-]{8,128}$/;
 const ROLES = new Set(['admin', 'waiter', 'kitchen']);
 const ADMIN_ACTIONS = new Set(['invite', 'activate', 'resend', 'suspend', 'revoke']);
+const FIRST_ADMIN_ACTIONS = new Set(['invite','activate','resend','revoke']);
+export const FIRST_ADMIN_BOOTSTRAP_LOGIN='sabora_staff_first_admin_login';
 
 export const STAFF_INVITATION_DELIVERY_TOKEN = Symbol('staffInvitationDeliveryToken');
 
@@ -26,7 +28,7 @@ function exactDataRecord(value, keys) {
   });
 }
 
-function verifiedActor(context, adminRequired) {
+function verifiedActor(context, adminRequired, requiredRole='admin') {
   if (!context || typeof context !== 'object' || Array.isArray(context) ||
       !context.verifiedIdentity || typeof context.verifiedIdentity !== 'object' ||
       Array.isArray(context.verifiedIdentity) ||
@@ -37,7 +39,7 @@ function verifiedActor(context, adminRequired) {
   if (!adminRequired) return actorId;
   const staff = context.verifiedStaff;
   if (!staff || typeof staff !== 'object' || Array.isArray(staff) ||
-      staff.role !== 'admin' || !UUID.test(staff.userId) ||
+      staff.role !== requiredRole || !UUID.test(staff.userId) ||
       staff.userId.toLowerCase() !== actorId) {
     throw Error('staff_lifecycle_admin_forbidden');
   }
@@ -74,11 +76,13 @@ export function createStaffLifecycleCoordinator({
   verifyCredentialRegistration,
   uuid,
   revocationOnly = false,
+  firstAdminBootstrapOnly = false,
 } = {}) {
   if (typeof withTransaction !== 'function' ||
       !repository || typeof repository.transition !== 'function' ||
       typeof issueCapability !== 'function' ||
-      typeof revocationOnly !== 'boolean' || (!revocationOnly && (
+      typeof revocationOnly !== 'boolean' || typeof firstAdminBootstrapOnly !== 'boolean' ||
+      (revocationOnly && firstAdminBootstrapOnly) || (!revocationOnly && (
       typeof issueInvitationToken !== 'function' ||
       typeof hashInviteeEmail !== 'function' ||
       typeof verifyCredentialRegistration !== 'function' ||
@@ -99,7 +103,9 @@ export function createStaffLifecycleCoordinator({
       const action = actionDescriptor.value;
       if (revocationOnly && action !== 'revoke') throw Error('invalid_staff_lifecycle_request');
       const adminRequired = ADMIN_ACTIONS.has(action);
-      const actorId = verifiedActor(context, adminRequired);
+      if(firstAdminBootstrapOnly&&!FIRST_ADMIN_ACTIONS.has(action))
+        throw Error('invalid_staff_lifecycle_request');
+      const actorId = verifiedActor(context, adminRequired, firstAdminBootstrapOnly?'root':'admin');
       let enrollmentId;
       let subjectUserId = null;
       let requestedRole = null;
@@ -115,7 +121,8 @@ export function createStaffLifecycleCoordinator({
 
       if (action === 'invite') {
         if (!exactDataRecord(input, ['action', 'email', 'givenName', 'familyName', 'requestedRole', 'correlationId']) ||
-            !ROLES.has(input.requestedRole)) throw Error('invalid_staff_lifecycle_request');
+            !ROLES.has(input.requestedRole) ||
+            (firstAdminBootstrapOnly && input.requestedRole!=='admin')) throw Error('invalid_staff_lifecycle_request');
         enrollmentId = uuid();
         if (!UUID.test(enrollmentId)) throw Error('invalid_staff_lifecycle_uuid');
         try { inviteeEmail = normalizeStaffInviteeEmail(input.email); }

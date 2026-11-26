@@ -1,5 +1,5 @@
 import {createPostgresTransaction} from './postgres-transaction.mjs';
-import {createStaffLifecycleCoordinator} from './staff-lifecycle-coordinator.mjs';
+import {createStaffLifecycleCoordinator,FIRST_ADMIN_BOOTSTRAP_LOGIN} from './staff-lifecycle-coordinator.mjs';
 import {createStaffLifecycleRepository} from './staff-lifecycle-repository.mjs';
 import {preflightStaffLifecycleIdentity} from './staff-lifecycle-identity-preflight.mjs';
 
@@ -8,9 +8,10 @@ import {preflightStaffLifecycleIdentity} from './staff-lifecycle-identity-prefli
 // The caller must provide a separately verified HTTP identity and staff context.
 export async function createVerifiedStaffLifecycleFromPool({
   pool, role, issueCapability, issueInvitationToken, hashInviteeEmail,
-  verifyCredentialRegistration, uuid, revocationOnly,
+  verifyCredentialRegistration, uuid, revocationOnly, firstAdminBootstrapOnly=false,
 } = {}) {
-  if (typeof issueCapability !== 'function' || (!revocationOnly && (
+  if ((role===FIRST_ADMIN_BOOTSTRAP_LOGIN)!==firstAdminBootstrapOnly ||
+      typeof issueCapability !== 'function' || (!revocationOnly && (
       typeof issueInvitationToken !== 'function' || typeof hashInviteeEmail !== 'function' ||
       typeof verifyCredentialRegistration !== 'function' || typeof uuid !== 'function'))) {
     throw Error('invalid_staff_lifecycle_composition');
@@ -20,7 +21,7 @@ export async function createVerifiedStaffLifecycleFromPool({
     withTransaction: createPostgresTransaction({pool}),
     repository: createStaffLifecycleRepository(),
     issueCapability, issueInvitationToken, hashInviteeEmail,
-    verifyCredentialRegistration, uuid, revocationOnly,
+    verifyCredentialRegistration, uuid, revocationOnly, firstAdminBootstrapOnly,
   });
   await preflightStaffLifecycleIdentity({pool, role});
   return coordinator;
