@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash, randomBytes} from 'node:crypto';
+import {createHash, randomBytes,generateKeyPairSync,sign,randomUUID} from 'node:crypto';
 import {sealStaffInvitationToken,openStaffInvitationToken} from '../../apps/api/src/staff-invitation-envelope-candidate.mjs';
 import {createStaffInvitationCustodyCoordinatorCandidate} from '../../apps/api/src/staff-invitation-custody-coordinator-candidate.mjs';
 import {createStaffDispatchEnvelopeReaderCandidate} from '../../apps/api/src/staff-invitation-dispatch-envelope-reader-candidate.mjs';
@@ -17,6 +17,7 @@ import {createStaffLifecycleCoordinator,STAFF_INVITATION_DELIVERY_TOKEN} from '.
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createDurableStaffLifecycleRepositoryCandidate,createStaffDirectoryDispatchReaderCandidate,DIRECTORY_OUTBOX_SQL} from '../../apps/api/src/staff-invitation-durable-lifecycle-candidate.mjs';
 import {createStaffInvitationResendSender} from '../../apps/api/src/staff-invitation-resend.mjs';
+import {createStaffVerifiedEnrollmentCandidate,STAFF_ENROLLMENT_LOGIN,VERIFIED_ACCEPT_SQL} from '../../apps/api/src/staff-verified-enrollment-candidate.mjs';
 import {preflightStaffInvitationEnqueueIdentity} from '../../apps/api/src/staff-invitation-enqueue-identity-preflight.mjs';
 import {claimCurrentStaffInvitation} from '../../apps/api/src/staff-invitation-claim-candidate.mjs';
 import {authorizeStaffInvitationDispatch,dispatchStaffInvitation} from '../../apps/api/src/staff-invitation-dispatch-guard.mjs';
@@ -1337,15 +1338,17 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
  await admin.query(overlay);
  const role='sabora_ci_directory_durable',dispatchRole='sabora_ci_directory_dispatch';
  const password='sabora_ci_directory_durable_ephemeral';
- for(const login of [role,dispatchRole]){
+ for(const login of [role,dispatchRole,STAFF_ENROLLMENT_LOGIN]){
   await admin.query(`CREATE ROLE ${login} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${password}'; GRANT USAGE ON SCHEMA sabora TO ${login}`);
  }
  await admin.query(`GRANT EXECUTE ON FUNCTION sabora.transition_staff_lifecycle_with_directory_outbox_candidate(
  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text) TO ${role};
  GRANT EXECUTE ON FUNCTION sabora.store_staff_invitation_custody_restricted_candidate(uuid,uuid,integer,text,text,text,text,text) TO ${role};
- GRANT EXECUTE ON FUNCTION sabora.read_staff_invitation_directory_dispatch_candidate(uuid,uuid) TO ${dispatchRole}`);
+ GRANT EXECUTE ON FUNCTION sabora.read_staff_invitation_directory_dispatch_candidate(uuid,uuid) TO ${dispatchRole};
+ GRANT EXECUTE ON FUNCTION sabora.accept_staff_invitation_verified_candidate(text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,text) TO ${STAFF_ENROLLMENT_LOGIN}`);
  const writer=new Pool({connectionString:connectionString({role,value:password}),max:4});
  const deliveryPool=new Pool({connectionString:connectionString({role:dispatchRole,value:password})});
+ const enrollmentPool=new Pool({connectionString:connectionString({role:STAFF_ENROLLMENT_LOGIN,value:password})});
  const key=randomBytes(32),keyId='directory_durable_custody_001',keyring={
   active:()=>({keyId,key}),resolveKey:id=>id===keyId?key:null};
  const issue=createStaffLifecycleDirectoryCapabilityIssuer({keyId:lifecycleKeyId,secret:lifecycleSecret,databaseRole:role});
@@ -1398,10 +1401,12 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
   const jobId=(await admin.query('SELECT id FROM sabora.staff_invitation_outbox WHERE enrollment_id=$1 AND invite_version=2',[id])).rows[0].id;
   const claim=await claimCurrentStaffInvitation({withTransaction,repository,jobId});
   const origin='https://gestion-sabora.example.test',providerId='dbec97f1-e3ad-464c-aacf-2c4cddd9b272';
+  let receivedToken;
   const readDelivery=createStaffDirectoryDispatchReaderCandidate({query:(...args)=>deliveryPool.query(...args),keyring,
    // Explicit test link, not an Auth provider implementation.
    createEnrollmentUrl:async({token,enrollmentId,recipient})=>{
     assert.equal(recipient,request.email);assert.equal(enrollmentId,id);
+    receivedToken=token;
     return origin+'/#enrolamiento?token='+token;
    }});
   assert.deepEqual(await readDelivery({jobId,fence:claim.fence}),{authorized:false});
@@ -1421,8 +1426,65 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
   const result=(await admin.query('SELECT provider_message_id,provider_outcome,state FROM sabora.staff_invitation_outbox WHERE id=$1',[jobId])).rows[0];
   assert.deepEqual(result,{provider_message_id:providerId,provider_outcome:'accepted',state:'delivered'});
   assert.equal((await admin.query('SELECT state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0].state,'invited');
+
+  // Extend the very same delivered invitation into verified acceptance.
+  // Provider fixture supplies a real signed JWT and a live user projection;
+  // no hosted Auth exchange or actual passkey ceremony is claimed.
+  const authIssuer='https://enrollment-ci.example.test/auth/v1';
+  const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
+  const jwk={...publicKey.export({format:'jwk'}),alg:'RS256',use:'sig',kid:'enrollment-ci'};
+  const invitedUser=randomUUID(),otherUser=randomUUID(),sessionId=randomUUID();
+  const jwt=(user,anonymous=false,expires=120)=>{
+   const now=Math.floor(Date.now()/1000);
+   const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
+   const data=enc({alg:'RS256',typ:'JWT',kid:jwk.kid})+'.'+enc({
+    iss:authIssuer,aud:'authenticated',sub:user,role:'authenticated',iat:now,
+    exp:now+expires,is_anonymous:anonymous,session_id:sessionId,
+    amr:[{method:'otp',timestamp:now}]});
+   return data+'.'+sign('RSA-SHA256',Buffer.from(data),privateKey).toString('base64url');
+  };
+  const acceptedJwt=jwt(invitedUser),wrongJwt=jwt(otherUser);
+  const users=new Map([[acceptedJwt,{id:invitedUser,email:request.email,is_anonymous:false,
+   email_confirmed_at:new Date(Date.now()-1000).toISOString()}],
+   [wrongJwt,{id:otherUser,email:'different-recipient@example.invalid',is_anonymous:false,
+   email_confirmed_at:new Date(Date.now()-1000).toISOString()}]]);
+  const accept=createStaffVerifiedEnrollmentCandidate({pool:enrollmentPool,issuer:authIssuer,
+   getTrustedKeys:async()=>[jwk],provider:{user:async token=>users.get(token)},
+   keyId:lifecycleKeyId,secret:lifecycleSecret,hashInviteeEmail:digest});
+  const input={accessToken:acceptedJwt,enrollmentId:id,inviteToken:receivedToken,
+   correlationId:'directory_verified_accept_001'};
+  await assert.rejects(accept.accept({...input,accessToken:wrongJwt}),e=>e.code==='42501');
+  const correctUser=users.get(acceptedJwt);
+  users.set(acceptedJwt,{...correctUser,email_confirmed_at:null});
+  await assert.rejects(accept.accept(input),e=>e.code==='42501');
+  users.set(acceptedJwt,{...correctUser,id:otherUser});
+  await assert.rejects(accept.accept(input),e=>e.code==='42501');
+  users.set(acceptedJwt,correctUser);
+  await assert.rejects(accept.accept({...input,accessToken:jwt(invitedUser,true)}),e=>e.code==='42501');
+  await assert.rejects(accept.accept({...input,accessToken:jwt(invitedUser,false,-1)}),e=>e.code==='42501');
+  await assert.rejects(accept.accept({...input,inviteToken:randomBytes(32).toString('base64url')}),e=>e.code==='42501');
+  const forged=issue({actorId:invitedUser,action:'accept',enrollmentId:id,subjectUserId:invitedUser,
+   requestedRole:null,inviteeEmailHashHex:null,inviteTokenHashHex:digest(receivedToken),
+   credentialEvidenceHashHex:null,reason:null,givenName:null,familyName:null,inviteeEmail:null,
+   correlationId:'directory_accept_bypass_001'});
+  await assert.rejects(createStaffLifecycleRepository().transition(
+   (_sql,args)=>writer.query(DIRECTORY_OUTBOX_SQL,args),forged),e=>e.code==='42501');
+  await assert.rejects(createStaffLifecycleRepository().transition(
+   (_sql,args)=>enrollmentPool.query(DIRECTORY_OUTBOX_SQL,args),forged),e=>e.code==='42501');
+  await assert.rejects(enrollmentPool.query('SELECT * FROM sabora.staff_enrollments'),e=>e.code==='42501');
+  await assert.rejects(enrollmentPool.query(VERIFIED_ACCEPT_SQL,[lifecycleKeyId,invitedUser,id,
+   digest(receivedToken),'directory_forged_accept_001',Date.now(),Date.now()+10000,'0'.repeat(64),
+   digest(request.email),sessionId,'0'.repeat(64)]),e=>e.code==='42501');
+  assert.equal((await admin.query('SELECT state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0].state,'invited');
+  const accepted=await accept.accept(input);
+  assert.deepEqual(accepted,{enrollmentId:id,state:'accepted',repeated:false});
+  assert.deepEqual(await accept.accept(input),{enrollmentId:id,state:'accepted',repeated:true});
+  const acceptedRow=(await admin.query('SELECT auth_user_id,state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0];
+  assert.deepEqual(acceptedRow,{auth_user_id:invitedUser,state:'accepted'});
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[invitedUser])).rows[0].n,0);
   await lifecycle.transition(verified,{action:'revoke',enrollmentId:id,subjectUserId:null,reason:'Revocación de prueba',
    correlationId:'directory_durable_revoke_001'});
   assert.equal((await readDelivery({jobId,fence:claim.fence})).authorized,false);
- }finally{await Promise.all([writer.end(),deliveryPool.end()]);}
+  await assert.rejects(accept.accept(input),e=>e.code==='42501');
+ }finally{await Promise.all([writer.end(),deliveryPool.end(),enrollmentPool.end()]);}
 });

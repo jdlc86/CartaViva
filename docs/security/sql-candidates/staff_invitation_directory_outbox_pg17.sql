@@ -84,6 +84,13 @@ AS $staff_lifecycle_outbox$
 DECLARE
   v_transition record;
 BEGIN
+  -- The directory-aware route cannot accept an invitation using a normal
+  -- lifecycle writer. The dedicated enrollment LOGIN has no EXECUTE here;
+  -- its only entry is the verified acceptance wrapper below.
+  IF (p_action='accept' AND session_user::text<>'sabora_staff_enrollment_login')
+     OR (session_user::text='sabora_staff_enrollment_login' AND p_action IS DISTINCT FROM 'accept') THEN
+    RAISE EXCEPTION 'staff_enrollment_route_forbidden' USING ERRCODE='42501';
+  END IF;
   SELECT transition.* INTO STRICT v_transition
     FROM sabora.transition_staff_lifecycle_with_directory_candidate(
       p_key_id,p_database_role,p_actor_user_id,p_action,p_enrollment_id,
@@ -174,4 +181,98 @@ ALTER FUNCTION sabora.read_staff_invitation_directory_dispatch_candidate(uuid,uu
  OWNER TO sabora_staff_custody_reader_fn_owner;
 REVOKE ALL ON FUNCTION sabora.read_staff_invitation_directory_dispatch_candidate(uuid,uuid)
  FROM PUBLIC,anon,authenticated;
+-- Verified-recipient acceptance: distinct from operational session issuance.
+-- Only a dedicated, sealed owner can invoke the directory+outbox wrapper
+-- from the enrollment LOGIN. The LOGIN itself has no table access or
+-- execution of any general transition routine.
+CREATE ROLE sabora_staff_enrollment_fn_owner NOLOGIN NOINHERIT NOSUPERUSER
+ NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+GRANT USAGE ON SCHEMA sabora,extensions TO sabora_staff_enrollment_fn_owner;
+GRANT EXECUTE ON FUNCTION extensions.hmac(bytea,bytea,text) TO sabora_staff_enrollment_fn_owner;
+GRANT SELECT(key_id,hmac_key,not_before,expires_at,disabled_at)
+ ON sabora.staff_lifecycle_signing_keys TO sabora_staff_enrollment_fn_owner;
+GRANT SELECT(id,invitee_email_hash) ON sabora.staff_enrollments TO sabora_staff_enrollment_fn_owner;
+CREATE POLICY staff_enrollment_owner_key ON sabora.staff_lifecycle_signing_keys FOR SELECT
+ TO sabora_staff_enrollment_fn_owner USING(true);
+CREATE POLICY staff_enrollment_owner_hash ON sabora.staff_enrollments FOR SELECT
+ TO sabora_staff_enrollment_fn_owner USING(true);
+GRANT EXECUTE ON FUNCTION sabora.transition_staff_lifecycle_with_directory_outbox_candidate(
+ text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text)
+ TO sabora_staff_enrollment_fn_owner;
+
+CREATE FUNCTION sabora.accept_staff_invitation_verified_candidate(
+ p_key_id text,p_actor_user_id uuid,p_enrollment_id uuid,p_invite_token_hash_hex text,
+ p_correlation_id text,p_issued_at_ms bigint,p_expires_at_ms bigint,p_signature_hex text,
+ p_confirmed_email_hash_hex text,p_session_id uuid,p_proof_hex text)
+ RETURNS TABLE(result_enrollment_id uuid,result_subject_user_id uuid,result_requested_role text,
+ previous_state text,current_state text,repeated boolean,result_invite_version integer,
+ event_id uuid,result_given_name text,result_family_name text,result_employee_code text,
+ result_operational_display_id text)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $verified_accept$
+DECLARE
+ v_key bytea;v_key_expires timestamptz;v_now timestamptz;v_ms bigint;
+ v_expected bytea;v_provided bytea;v_diff integer:=0;v_i integer;
+ v_transition record;v_email_hash bytea;
+BEGIN
+ IF session_user::text<>'sabora_staff_enrollment_login'
+  OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}
+  OR p_actor_user_id IS NULL OR p_enrollment_id IS NULL OR p_session_id IS NULL
+  OR p_issued_at_ms IS NULL OR p_expires_at_ms IS NULL
+  OR p_expires_at_ms::numeric-p_issued_at_ms::numeric NOT BETWEEN 1 AND 30000
+  OR p_signature_hex IS NULL OR p_signature_hex !~ '^[0-9a-f]{64}
+  OR p_confirmed_email_hash_hex IS NULL OR p_confirmed_email_hash_hex !~ '^[0-9a-f]{64}
+  OR p_proof_hex IS NULL OR p_proof_hex !~ '^[0-9a-f]{64} THEN
+  RAISE EXCEPTION 'staff_enrollment_identity_forbidden' USING ERRCODE='42501';
+ END IF;
+ v_now:=clock_timestamp();v_ms:=floor(extract(epoch FROM v_now)*1000)::bigint;
+ SELECT hmac_key,expires_at INTO v_key,v_key_expires FROM sabora.staff_lifecycle_signing_keys
+  WHERE key_id=p_key_id AND disabled_at IS NULL AND not_before<=v_now AND expires_at>v_now;
+ IF NOT FOUND OR p_issued_at_ms::numeric>v_ms::numeric+5000 OR p_expires_at_ms<=v_ms THEN
+  RAISE EXCEPTION 'staff_enrollment_identity_forbidden' USING ERRCODE='42501';
+ END IF;
+ v_expected:=extensions.hmac(convert_to('sabora.staff-enrollment-accept.v1'||chr(10)||
+  p_key_id||chr(10)||session_user::text||chr(10)||p_actor_user_id::text||chr(10)||
+  p_enrollment_id::text||chr(10)||p_session_id::text||chr(10)||
+  p_confirmed_email_hash_hex||chr(10)||p_signature_hex,'UTF8'),v_key,'sha256');
+ v_provided:=decode(p_proof_hex,'hex');
+ FOR v_i IN 0..31 LOOP
+  v_diff:=v_diff | (get_byte(v_expected,v_i)#get_byte(v_provided,v_i));
+ END LOOP;
+ IF v_diff IS DISTINCT FROM 0 THEN
+  RAISE EXCEPTION 'staff_enrollment_identity_forbidden' USING ERRCODE='42501';
+ END IF;
+ -- Precheck without reversing the lifecycle lock order. The existing
+ -- wrapper then locks and revalidates the token/state. Check the exact
+ -- enrollment hash again under its retained lock before returning.
+ SELECT invitee_email_hash INTO v_email_hash FROM sabora.staff_enrollments WHERE id=p_enrollment_id;
+ IF v_email_hash IS DISTINCT FROM decode(p_confirmed_email_hash_hex,'hex') THEN
+  RAISE EXCEPTION 'staff_enrollment_identity_forbidden' USING ERRCODE='42501';
+ END IF;
+ SELECT t.* INTO STRICT v_transition FROM sabora.transition_staff_lifecycle_with_directory_outbox_candidate(
+  p_key_id,session_user::text,p_actor_user_id,'accept',p_enrollment_id,p_actor_user_id,
+  NULL,NULL,p_invite_token_hash_hex,NULL,NULL,p_correlation_id,p_issued_at_ms,p_expires_at_ms,
+  NULL,NULL,NULL,p_signature_hex) t;
+ SELECT invitee_email_hash INTO v_email_hash FROM sabora.staff_enrollments WHERE id=v_transition.result_enrollment_id;
+ v_now:=clock_timestamp();v_ms:=floor(extract(epoch FROM v_now)*1000)::bigint;
+ IF v_email_hash IS DISTINCT FROM decode(p_confirmed_email_hash_hex,'hex')
+  OR v_transition.result_enrollment_id IS DISTINCT FROM p_enrollment_id
+  OR v_transition.result_subject_user_id IS DISTINCT FROM p_actor_user_id
+  OR p_expires_at_ms<=v_ms OR v_key_expires<=v_now THEN
+  RAISE EXCEPTION 'staff_enrollment_identity_forbidden' USING ERRCODE='42501';
+ END IF;
+ RETURN QUERY SELECT v_transition.result_enrollment_id,v_transition.result_subject_user_id,
+  v_transition.result_requested_role,v_transition.previous_state,v_transition.current_state,
+  v_transition.repeated,v_transition.result_invite_version,v_transition.event_id,
+  v_transition.result_given_name,v_transition.result_family_name,v_transition.result_employee_code,
+  v_transition.result_operational_display_id;
+END;
+$verified_accept$;
+ALTER FUNCTION sabora.accept_staff_invitation_verified_candidate(
+ text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,text)
+ OWNER TO sabora_staff_enrollment_fn_owner;
+REVOKE ALL ON FUNCTION sabora.accept_staff_invitation_verified_candidate(
+ text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,text)
+ FROM PUBLIC,anon,authenticated,sabora_staff_reader,sabora_admin_writer;
+-- No LOGIN is created or granted by this overlay.
+
 COMMIT;

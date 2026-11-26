@@ -10,7 +10,7 @@ const decodeJson = (part) => {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function verifySupabaseAccessToken(token, { issuer, audience = 'authenticated', keys,
-  now = () => Date.now(), requirePasskey = false } = {}) {
+  now = () => Date.now(), requirePasskey = false, requireEnrollmentSession = false } = {}) {
   if (typeof token !== 'string' || token.length > 16384) throw new Error('invalid_token');
   if (typeof issuer !== 'string' || !/^https:\/\/[^/]+\/auth\/v1$/.test(issuer)) throw new Error('invalid_verifier_config');
   if (!Array.isArray(keys) || keys.length === 0) throw new Error('invalid_verifier_config');
@@ -42,6 +42,11 @@ export function verifySupabaseAccessToken(token, { issuer, audience = 'authentic
       throw new Error('invalid_token');
     }
     return Object.freeze({ userId: payload.sub, sessionId: payload.session_id, expiresAt: payload.exp });
+  }
+  if (requireEnrollmentSession) {
+    if (payload.is_anonymous !== false || !UUID.test(payload.session_id ?? ''))
+      throw new Error('invalid_token');
+    return Object.freeze({userId:payload.sub,sessionId:payload.session_id,expiresAt:payload.exp});
   }
   return Object.freeze({ userId: payload.sub });
 }
