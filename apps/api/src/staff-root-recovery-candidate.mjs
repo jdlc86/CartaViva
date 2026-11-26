@@ -50,12 +50,12 @@ export function createRootRecoveryKernelCandidate({pool,keyId,signingSecret,fact
  const key=Buffer.from(signingSecret),hash=createRootRecoveryFactorHasher(factorSecret);
  const tx=createPostgresTransaction({pool});
  // No direct use from browser body. This is a signed internal capability.
- async function command(action,actor,{requestId=randomUUID(),a=null,b=null,c=null,days=null}={}){
+ async function command(action,actor,{requestId=randomUUID(),a=null,b=null,c=null,days=null,deadlineMs=null}={}){
   if(!ACTIONS.has(action)||!UUID.test(actor??'')||!UUID.test(requestId??'')||
-    ![a,b,c].every(v=>v===null||HASH.test(v))||(days!==null&&!Number.isSafeInteger(days)))
+    ![a,b,c].every(v=>v===null||HASH.test(v))||(days!==null&&!Number.isSafeInteger(days))||(deadlineMs!==null&&!Number.isSafeInteger(deadlineMs)))
    throw Error('invalid_root_recovery_command');
-  const issued=clock(),expires=issued+15000;
-  if(!Number.isSafeInteger(issued)||issued<0||!Number.isSafeInteger(expires))throw Error('invalid_root_recovery_clock');
+  const issued=clock(),expires=Math.min(issued+15000,deadlineMs??Number.MAX_SAFE_INTEGER);
+  if(!Number.isSafeInteger(issued)||issued<0||!Number.isSafeInteger(expires)||expires<=issued)throw Object.assign(Error('invalid_root_recovery_clock'),{code:'42501'});
   const args=[keyId,action,actor.toLowerCase(),requestId.toLowerCase(),a,b,c,days,issued,expires];
   const signature=createHmac('sha256',key).update(['sabora.root-recovery.v1',keyId,ROOT_RECOVERY_LOGIN,
    ...args.slice(1).map(v=>v===null?'-':String(v))].join('\n'),'utf8').digest('hex');

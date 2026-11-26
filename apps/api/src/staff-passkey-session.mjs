@@ -230,7 +230,8 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
             Number(expires)<=clock()||identity.expiresAt<=clock())return unauthorized(reply);
           const credentialHash=hashRootCredentialId(credential.id);
           if(await rootAccess(identity.userId,credentialHash)!==true)return unauthorized(reply);
-          return await rootSecurity.mutate({identity,credentialHash,action,requestId:challenge});
+          return await rootSecurity.mutate({identity,credentialHash,action,requestId:challenge,
+            deadlineMs:Math.min(Number(expires),identity.expiresAt,fresh.expiresAt)*1000});
         }catch(error){return responseError(error,reply);}
       });
     }

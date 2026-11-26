@@ -388,6 +388,9 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await run('configure',{...configFields,requestId:configRequest})).outcome,'configured');
    await assert.rejects(run('configure',{...configFields,requestId:configRequest}),e=>e.code==='42501');
    assert.equal((await run('configure',configFields)).outcome,'denied');
+   // A sensitive capability must never outlive its authenticated ceremony.
+   await assert.rejects(run('security_reset',{a:hashRootCredentialId(genesisCredential),deadlineMs:Date.now()-1}),e=>e.code==='42501');
+   assert.equal((await security()).json().failures,'0');
    const backupId=Buffer.from('fixture-root-backup').toString('base64url');
    assert.equal((await run('add_backup',{a:hashRootCredentialId(backupId)})).outcome,'backup_added');
    assert.equal((await attempt(rootId,grantId,code,'/verify',backupId)).statusCode,200);
@@ -459,6 +462,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    await securityPanel.getByRole('button',{name:'Restablecer contador con passkey'}).click();
    const reset=await resetResponse;assert.equal(reset.status(),200,await reset.text());assert.deepEqual(await reset.json(),{configured:true,failures:'0',blockedUntil:null});
    assert.equal((await security()).json().failures,'0');
+   await securityPanel.getByText('Contador restablecido.',{exact:true}).waitFor();
    assert.equal((await run('challenge',{a:link,b:challenge})).outcome,'denied');
    const renewed=hash('challenge',generateRootRecoveryToken());
    assert.equal((await run('challenge',{a:nextLink,b:renewed})).outcome,'challenge_created');
