@@ -19,6 +19,8 @@ import {createDurableStaffLifecycleRepositoryCandidate,createStaffDirectoryDispa
 import {createStaffInvitationResendSender} from '../../apps/api/src/staff-invitation-resend.mjs';
 import {createStaffVerifiedEnrollmentCandidate,STAFF_ENROLLMENT_LOGIN,VERIFIED_ACCEPT_SQL} from '../../apps/api/src/staff-verified-enrollment-candidate.mjs';
 import {registerStaffEnrollmentHttpCandidate} from '../../apps/api/src/staff-enrollment-http-candidate.mjs';
+import {pathToFileURL} from 'node:url';
+import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {preflightStaffInvitationEnqueueIdentity} from '../../apps/api/src/staff-invitation-enqueue-identity-preflight.mjs';
 import {claimCurrentStaffInvitation} from '../../apps/api/src/staff-invitation-claim-candidate.mjs';
 import {authorizeStaffInvitationDispatch,dispatchStaffInvitation} from '../../apps/api/src/staff-invitation-dispatch-guard.mjs';
@@ -1334,7 +1336,7 @@ test('PG17 signed maintenance grant is consumed once and purges only terminal ci
   authority.close();
 });
 
-test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are atomic',async()=>{
+test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and passkey registration', {timeout:180_000},async()=>{
  const overlay=await readFile(new URL('../../docs/security/sql-candidates/staff_invitation_directory_outbox_pg17.sql',import.meta.url),'utf8');
  await admin.query(overlay);
  const role='sabora_ci_directory_durable',dispatchRole='sabora_ci_directory_dispatch';
@@ -1354,6 +1356,7 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
  const enrollmentPool=new Pool({connectionString:connectionString({role:STAFF_ENROLLMENT_LOGIN,value:password})});
  const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
  const http=Fastify({logger:false});
+ let preview,browser;
  const key=randomBytes(32),keyId='directory_durable_custody_001',keyring={
   active:()=>({keyId,key}),resolveKey:id=>id===keyId?key:null};
  const issue=createStaffLifecycleDirectoryCapabilityIssuer({keyId:lifecycleKeyId,secret:lifecycleSecret,databaseRole:role});
@@ -1405,21 +1408,24 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
   assert.equal((await authorizeStaffInvitationDispatch({withTransaction,repository,jobId:oldJob,fence:oldClaim.fence})).authorized,false);
   const jobId=(await admin.query('SELECT id FROM sabora.staff_invitation_outbox WHERE enrollment_id=$1 AND invite_version=2',[id])).rows[0].id;
   const claim=await claimCurrentStaffInvitation({withTransaction,repository,jobId});
-  const origin='https://gestion-sabora.example.test',providerId='dbec97f1-e3ad-464c-aacf-2c4cddd9b272';
-  let receivedToken;
+  const origin='https://localhost:4188',providerId='dbec97f1-e3ad-464c-aacf-2c4cddd9b272';
+  const authProof=randomBytes(32).toString('base64url');
+  let receivedToken,deliveredUrl;
   const readDelivery=createStaffDirectoryDispatchReaderCandidate({query:(...args)=>deliveryPool.query(...args),keyring,
    // Explicit test link, not an Auth provider implementation.
    createEnrollmentUrl:async({token,enrollmentId,recipient})=>{
     assert.equal(recipient,request.email);assert.equal(enrollmentId,id);
     receivedToken=token;
-    return origin+'/#enrolamiento?token='+token;
+    return origin+'/#enrolamiento?'+new URLSearchParams({enrollmentId,token,proof:authProof});
    }});
   assert.deepEqual(await readDelivery({jobId,fence:claim.fence}),{authorized:false});
   let sends=0;
   const send=createStaffInvitationResendSender({managementOrigin:origin,from:'sab@example.test',
    apiKey:'re_only_isolated_fixture',fetchImpl:async(url,options)=>{
     sends++;assert.equal(url,'https://api.resend.com/emails');
-    assert.equal(JSON.parse(options.body).to[0],request.email);
+    const body=JSON.parse(options.body);
+    assert.equal(body.to[0],request.email);
+    deliveredUrl=body.text.split('\n\n').at(-1);
     assert.equal(options.headers['Idempotency-Key'],'sabora-staff-invitation/'+jobId);
     return Response.json({id:providerId});
    }});
@@ -1439,7 +1445,7 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
   const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
   const jwk={...publicKey.export({format:'jwk'}),alg:'RS256',use:'sig',kid:'enrollment-ci'};
   const invitedUser=randomUUID(),otherUser=randomUUID(),sessionId=randomUUID();
-  const jwt=(user,anonymous=false,expires=120)=>{
+  const jwt=(user,anonymous=false,expires=300)=>{
    const now=Math.floor(Date.now()/1000);
    const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
    const data=enc({alg:'RS256',typ:'JWT',kid:jwk.kid})+'.'+enc({
@@ -1460,16 +1466,22 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
     registrationOptions:async token=>{
      assert.equal(token,acceptedJwt);
      return {challenge_id:registrationChallenge,expires_at:Math.floor(Date.now()/1000)+60,
-      options:{rp:{id:new URL(origin).hostname},challenge:registrationNonce,
-       authenticatorSelection:{userVerification:'required'}}};
+      options:{rp:{id:new URL(origin).hostname,name:'Sabora CI'},challenge:registrationNonce,
+       user:{id:Buffer.from(invitedUser).toString('base64url'),name:request.email,displayName:'Equipo Durable'},
+       pubKeyCredParams:[{type:'public-key',alg:-7}],timeout:60000,attestation:'none',
+       authenticatorSelection:{userVerification:'required',residentKey:'required'}}};
     },
     verifyRegistration:async(token,challenge,credential)=>{
      assert.equal(token,acceptedJwt);assert.equal(challenge,registrationChallenge);
-     assert.equal(credential.type,'public-key');providerRegistrations++;
+     assert.equal(credential.type,'public-key');
+     const client=JSON.parse(Buffer.from(credential.response.clientDataJSON,'base64url').toString('utf8'));
+     assert.equal(client.type,'webauthn.create');assert.equal(client.origin,origin);assert.equal(client.challenge,registrationNonce);
+     assert.ok(Buffer.from(credential.response.attestationObject,'base64url').length>40);
+     providerRegistrations++;
      return {id:registeredCredential};
     }},
    keyId:lifecycleKeyId,secret:lifecycleSecret,hashInviteeEmail:digest});
-  const input={accessToken:acceptedJwt,enrollmentId:id,inviteToken:receivedToken,
+  let input={accessToken:acceptedJwt,enrollmentId:id,inviteToken:receivedToken,
    correlationId:'directory_verified_accept_001'};
   await assert.rejects(accept.accept({...input,accessToken:wrongJwt}),e=>e.code==='42501');
   const correctUser=users.get(acceptedJwt);
@@ -1495,7 +1507,7 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
    digest(request.email),sessionId,'0'.repeat(64)]),e=>e.code==='42501');
   assert.equal((await admin.query('SELECT state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0].state,'invited');
   await assert.rejects(accept.registrationOptions({accessToken:acceptedJwt,enrollmentId:id}),e=>e.code==='42501');
-  const authProof=randomBytes(32).toString('base64url');let exchanges=0;
+  let exchanges=0;
   registerStaffEnrollmentHttpCandidate(http,{origin,secret:randomBytes(32),enrollment:accept,
    exchangeInvitation:async supplied=>{
     exchanges++;assert.deepEqual(supplied,{enrollmentId:id,authProof});
@@ -1508,15 +1520,29 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
   assert.equal((await post('accept',{...acceptBody,accessToken:acceptedJwt})).statusCode,400);
   assert.equal(exchanges,0);
   assert.equal((await post('options',{})).statusCode,403);
-  const accepted=await post('accept',acceptBody);
-  assert.equal(accepted.statusCode,200,accepted.body);
-  assert.deepEqual(accepted.json(),{enrollmentId:id,state:'accepted'});
-  assert.equal(accepted.headers['cache-control'],'no-store');
-  const header=accepted.headers['set-cookie'];
+  const apiOrigin=await http.listen({host:'127.0.0.1',port:0});
+  preview=await startPublishedManagementPwa({apiOrigin,port:4188,tls:true});
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true});
+  const context=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
+  const page=await context.newPage();
+  await page.goto(deliveredUrl);
+  await page.getByRole('heading',{name:'Alta de personal en Sabora Gestión'}).waitFor();
+  assert.equal(new URL(page.url()).hash,'#enrolamiento');
+  assert.ok(!page.url().includes(receivedToken));
+  const acceptResponse=page.waitForResponse(response=>response.url().endsWith('/api/v1/staff/enrollment/accept'));
+  await page.getByRole('button',{name:'Aceptar invitación'}).click();
+  const accepted=await acceptResponse;
+  assert.equal(accepted.status(),200,await accepted.text());
+  assert.deepEqual(await accepted.json(),{enrollmentId:id,state:'accepted'});
+  assert.equal(await accepted.headerValue('cache-control'),'no-store');
+  input={...input,correlationId:accepted.request().postDataJSON().correlationId};
+  await page.getByRole('button',{name:'Registrar passkey'}).waitFor();
+  const header=await accepted.headerValue('set-cookie');
   assert.match(header,/^__Host-sabora-enrollment=/);
   assert.match(header,/Secure; HttpOnly; SameSite=Strict/);
   assert.ok(!header.includes(acceptedJwt));
-  assert.ok(!accepted.body.includes(receivedToken));
+  assert.ok(!(await accepted.text()).includes(receivedToken));
   assert.equal(exchanges,1);
   const sessionCookie=header.split(';')[0],enrollmentHeaders={...baseHeaders,cookie:sessionCookie};
   const tamperedCookie=sessionCookie.slice(0,-2)+(sessionCookie.at(-2)==='A'?'B':'A')+sessionCookie.at(-1);
@@ -1540,10 +1566,21 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
   await assert.rejects(accept.register({...regInput,credential:{...credential,
    response:{...credential.response,clientDataJSON:encodeClient('wrong')}}}),e=>e.code==='42501');
   assert.equal(providerRegistrations,0);
-  const registrationResponse=await post('register',{ticket:regInput.ticket,credential,correlationId:regInput.correlationId},enrollmentHeaders);
-  assert.equal(registrationResponse.statusCode,200,registrationResponse.body);
-  assert.deepEqual(registrationResponse.json(),{enrollmentId:id,state:'registered'});
-  assert.match(registrationResponse.headers['set-cookie'],/Max-Age=0/);
+  const cdp=await context.newCDPSession(page);
+  await cdp.send('WebAuthn.enable');
+  const {authenticatorId}=await cdp.send('WebAuthn.addVirtualAuthenticator',{options:{
+   protocol:'ctap2',transport:'internal',hasResidentKey:true,hasUserVerification:true,
+   isUserVerified:true,automaticPresenceSimulation:true}});
+  const registerResponse=page.waitForResponse(response=>response.url().endsWith('/api/v1/staff/enrollment/register'));
+  await page.getByRole('button',{name:'Registrar passkey'}).click();
+  const registrationResponse=await registerResponse;
+  assert.equal(registrationResponse.status(),200,await registrationResponse.text());
+  assert.deepEqual(await registrationResponse.json(),{enrollmentId:id,state:'registered'});
+  assert.match(await registrationResponse.headerValue('set-cookie'),/Max-Age=0/);
+  await page.getByText('Passkey registrada. Tu cuenta está pendiente de activación administrativa.',{exact:true}).waitFor();
+  const {credentials}=await cdp.send('WebAuthn.getCredentials',{authenticatorId});
+  assert.equal(credentials.length,1);
+  assert.equal((await context.cookies(origin)).some(cookie=>cookie.name==='__Host-sabora-enrollment'),false);
   assert.equal((await post('options',{},enrollmentHeaders)).statusCode,403);
   assert.equal(providerRegistrations,1);
   const receipt=(await admin.query('SELECT auth_user_id,auth_session_id,challenge_id,provider_credential_id FROM sabora.staff_registration_receipts_candidate WHERE enrollment_id=$1',[id])).rows[0];
@@ -1556,5 +1593,5 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
    correlationId:'directory_durable_revoke_001'});
   assert.equal((await readDelivery({jobId,fence:claim.fence})).authorized,false);
   await assert.rejects(accept.accept(input),e=>e.code==='42501');
- }finally{await Promise.all([writer.end(),deliveryPool.end(),enrollmentPool.end(),http.close()]);}
+ }finally{await browser?.close();await preview?.close();await Promise.all([writer.end(),deliveryPool.end(),enrollmentPool.end(),http.close()]);}
 });
