@@ -150,6 +150,10 @@ fi
 # clone the freshly migrated disposable DB before other suites seed identities.
 docker exec -e PGPASSWORD=sabora_ci_ephemeral_only "$container" psql -X -h 127.0.0.1 -v ON_ERROR_STOP=1 -U postgres -d postgres -c 'CREATE DATABASE sabora_root_bootstrap_ci TEMPLATE postgres' >/dev/null
 node --test scripts/ci/staff-root-bootstrap-postgres17.test.mjs
+# The cloned disposable genesis DB has its own outbox overlays. Release only
+# its fixture-created cluster roles before installing the ordinary outbox suite.
+docker exec -e PGPASSWORD=sabora_ci_ephemeral_only "$container" psql -X -h 127.0.0.1 -v ON_ERROR_STOP=1 -U postgres -d postgres -c 'DROP DATABASE sabora_root_bootstrap_ci' >/dev/null
+docker exec -e PGPASSWORD=sabora_ci_ephemeral_only "$container" psql -X -h 127.0.0.1 -v ON_ERROR_STOP=1 -U postgres -d postgres -c 'DROP ROLE sabora_staff_custody_fn_owner,sabora_staff_custody_reader_fn_owner,sabora_staff_enrollment_fn_owner,sabora_staff_enrollment_login' >/dev/null
 node --test scripts/ci/catalog-postgres17-driver-integration.test.mjs
 node --test scripts/ci/order-operations-postgres17-integration.test.mjs
 node --test scripts/ci/order-operations-identity-postgres17.test.mjs

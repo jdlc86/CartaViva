@@ -7,21 +7,27 @@ import {validateStaffLifecycleHttpInput} from './staff-lifecycle-http-candidate.
 const ACTIONS=new Set(['invite','resend','activate','suspend','revoke']);
 const EXPECTED_STATE={invite:'invited',resend:'invited',activate:'active',suspend:'suspended',revoke:'revoked'};
 
-export function registerDurableStaffAdminHttpCandidate(app,{forRoles,keyring,lifecycleConfig,resolveSubject}={}){
+export function registerDurableStaffAdminHttpCandidate(app,config){
+ return registerLifecycle(app,config,false);
+}
+export function registerDurableFirstAdminHttpCandidate(app,config){
+ return registerLifecycle(app,config,true);
+}
+function registerLifecycle(app,{forRoles,keyring,lifecycleConfig,resolveSubject}={},first){
  if(typeof forRoles!=='function'||typeof resolveSubject!=='function'||!lifecycleConfig||typeof lifecycleConfig!=='object')
   throw Error('invalid_staff_durable_admin_http_config');
- // Callers cannot substitute the historical token-returning repository or
- // enable the exceptional ROOT path. SQL still rechecks current ownership.
+ // Distinct fixed route/role, same durable repository. The caller cannot
+ // select the exceptional path through HTTP. SQL independently rechecks authority.
  const coordinator=createStaffLifecycleCoordinator({...lifecycleConfig,
   repository:createDurableStaffLifecycleRepositoryCandidate({keyring}),
-  revocationOnly:false,firstAdminBootstrapOnly:false});
- app.post('/api/v1/staff/lifecycle',{preHandler:forRoles(['admin']),bodyLimit:4096},async(request,reply)=>{
+  revocationOnly:false,firstAdminBootstrapOnly:first});
+ app.post(first?'/api/v1/staff/bootstrap/first-admin':'/api/v1/staff/lifecycle',{preHandler:forRoles([first?'root':'admin']),bodyLimit:4096},async(request,reply)=>{
   reply.header('Cache-Control','no-store');
   reply.header('X-Content-Type-Options','nosniff');
   let parsed;
   try{
    parsed=validateStaffLifecycleHttpInput(request.body);
-   if(!ACTIONS.has(parsed.action)||
+   if(!ACTIONS.has(parsed.action)||(first&&(parsed.action==='suspend'||(parsed.action==='invite'&&parsed.input.requestedRole!=='admin')))||
       (['revoke','activate','suspend'].includes(parsed.action)&&parsed.input.subjectUserId!==null))
     throw Error('invalid_staff_lifecycle_request');
   }catch{return reply.code(400).send({error:'invalid_staff_lifecycle_request'});}

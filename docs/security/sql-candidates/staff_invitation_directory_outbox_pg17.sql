@@ -92,6 +92,12 @@ BEGIN
          (p_action IS NULL OR p_action NOT IN ('accept','register'))) THEN
     RAISE EXCEPTION 'staff_enrollment_route_forbidden' USING ERRCODE='42501';
   END IF;
+  IF p_action='activate' AND NOT EXISTS(
+    SELECT 1 FROM sabora.staff_registration_receipts_candidate receipt
+    WHERE receipt.enrollment_id=p_enrollment_id AND receipt.auth_user_id=p_subject_user_id
+  ) THEN
+    RAISE EXCEPTION 'staff_registration_receipt_required' USING ERRCODE='42501';
+  END IF;
   SELECT transition.* INTO STRICT v_transition
     FROM sabora.transition_staff_lifecycle_with_directory_candidate(
       p_key_id,p_database_role,p_actor_user_id,p_action,p_enrollment_id,
@@ -296,6 +302,10 @@ GRANT SELECT(enrollment_id,auth_user_id,auth_session_id,challenge_id,provider_cr
  ON sabora.staff_registration_receipts_candidate TO sabora_staff_enrollment_fn_owner;
 CREATE POLICY staff_registration_receipt_read ON sabora.staff_registration_receipts_candidate
  FOR SELECT TO sabora_staff_enrollment_fn_owner USING(true);
+GRANT SELECT(enrollment_id,auth_user_id) ON sabora.staff_registration_receipts_candidate
+ TO sabora_staff_invitation_enqueue_fn_owner;
+CREATE POLICY staff_registration_receipt_activation ON sabora.staff_registration_receipts_candidate
+ FOR SELECT TO sabora_staff_invitation_enqueue_fn_owner USING(true);
 CREATE POLICY staff_registration_receipt_insert ON sabora.staff_registration_receipts_candidate
  FOR INSERT TO sabora_staff_enrollment_fn_owner WITH CHECK(true);
 CREATE TRIGGER staff_registration_receipt_immutable BEFORE UPDATE OR DELETE ON sabora.staff_registration_receipts_candidate

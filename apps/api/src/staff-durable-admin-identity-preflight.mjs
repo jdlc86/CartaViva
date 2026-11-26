@@ -8,14 +8,18 @@ const ROUTINES=Object.freeze([
 ]);
 const TABLES=['staff_enrollments','staff_lifecycle_requests','staff_lifecycle_audit','staff_lifecycle_signing_keys',
  'staff_employee_code_pool','staff_employee_code_events','staff_identity_requests','staff_code_maintenance_requests',
- 'staff_directory_contacts','staff_invitation_outbox','staff_invitation_custody_candidate','staff_members','admin_write_ownership'];
+ 'staff_directory_contacts','staff_invitation_outbox','staff_invitation_custody_candidate','staff_members','admin_write_ownership','staff_registration_receipts_candidate'];
+const FIRST_LOGIN='sabora_staff_first_admin_login';
 const rejected=()=>Error('staff_durable_admin_sql_identity_rejected');
 
 // The physical login can execute exactly the three fenced routines, not
 // the underlying directory writer or legacy token/custody entry points.
-export async function preflightStaffDurableAdminIdentity({pool,role}={}){
- if(!ROLE.test(role??'')||['postgres','anon','authenticated','service_role','public','sabora_staff_first_admin_login','sabora_staff_enrollment_login'].includes(role)||
+export async function preflightStaffDurableAdminIdentity({pool,role,firstAdminBootstrapOnly=false}={}){
+ if(typeof firstAdminBootstrapOnly!=='boolean'||(role===FIRST_LOGIN)!==firstAdminBootstrapOnly||
+    !ROLE.test(role??'')||['postgres','anon','authenticated','service_role','public','sabora_staff_enrollment_login'].includes(role)||
     typeof pool?.connect!=='function')throw rejected();
+ const routines=firstAdminBootstrapOnly?ROUTINES.map(([signature,owner])=>[signature.replace('resolve_staff_admin_subject_candidate','resolve_staff_first_admin_subject_candidate'),owner]):ROUTINES;
+ const tables=firstAdminBootstrapOnly?[...TABLES,'root_bootstrap_receipt','admin_ownership_audit']:TABLES;
  let client,discard;
  try{
   client=await pool.connect();
@@ -53,11 +57,11 @@ export async function preflightStaffDurableAdminIdentity({pool,role}={}){
     AND t.tgname='staff_invitation_custody_required' AND t.tgdeferrable AND t.tginitdeferred
     AND t.tgenabled IN ('O','A') AND NOT t.tgisinternal) AS custody_guard
    FROM pg_catalog.pg_roles r WHERE r.rolname=current_user`,
-   [ROUTINES.map(r=>r[0]),ROUTINES.map(r=>r[1]),TABLES]);
+   [routines.map(r=>r[0]),routines.map(r=>r[1]),tables]);
   const row=result?.rows?.[0];
   if(result?.rows?.length!==1||row?.effective_role!==role||row.login_role!==role||
     !['restricted','schema_safe','no_memberships','no_relations','no_sequences','custody_guard'].every(key=>row[key]===true)||
-    row.routines!==ROUTINES.length||row.safe_routines!==ROUTINES.length||row.forced_tables!==TABLES.length)throw rejected();
+    row.routines!==routines.length||row.safe_routines!==routines.length||row.forced_tables!==tables.length)throw rejected();
   return Object.freeze({role});
  }catch(error){discard=error;throw rejected();}
  finally{if(typeof client?.release==='function')client.release(discard);}
