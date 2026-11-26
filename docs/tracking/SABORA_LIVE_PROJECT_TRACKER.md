@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S54-30 · Auth alojado.** Corrección del ensayo manual de revocación, frescura de sesiones y limpieza. JWKS público RS256 y Chromium offline verificados. Aceptación del proveedor **NOT RUN / NO-GO**. Sigue pendiente una ejecución manual admitida. [Informe](../reviews/SABORA_S54_HOSTED_AUTH_PROVIDER_ACCEPTANCE_2026-11-27.md) · [Issue #93](https://github.com/jdlc86/CartaViva/issues/93).
+
 > **S54-29 · H1-A.** `93241200` 7/7 PASS; sonda Auth PASS; ensayo alojado administrativo NOT RUN. Encargo Codex documentado en `docs/assignments/CODEX_S54_HOSTED_AUTH_PROVIDER_ACCEPTANCE_2026-11-27.md`, seguimiento #93, sin autorización de activación.
 
 > **S54-28 · H1-A.** Ensayo manual Auth endurecido (entorno Chromium, reconciliación exacta, preflight vacío); pruebas focalizadas añadidas, ejecución alojada pendiente. CI ordinaria intacta; no se intenta sortear bloqueo de workflow privilegiado.

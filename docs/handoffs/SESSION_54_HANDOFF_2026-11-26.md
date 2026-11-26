@@ -213,3 +213,7 @@ Auditado `555c7e81`: propuesta CI privilegiada bloqueada antes de publicación; 
 ## S54-29 — Encargo Codex: aceptación real del proveedor Auth (27-11)
 
 CI ordinaria de `93241200` 7/7 PASS; CV005+B2 omitido. Issue #93 creado para seguimiento, sin disparo automático. Propietario pide encargo Codex; [documento](../assignments/CODEX_S54_HOSTED_AUTH_PROVIDER_ACCEPTANCE_2026-11-27.md) concreta A54-07 (proveedor únicamente), requisitos, límites, custodia, evidencias y limpieza. La operación administrativa anterior quedó bloqueada y no se reintentará por atajos; ejecución real solo en entorno expresamente admitido, de lo contrario informe de bloqueo y procedimiento manual del propietario. Secreto temporal declarado por propietario, valor no verificado. H1-A parcial; sin merge, deploy, VPS, SQL ni Fleetia.
+
+## S54-30 — Revisión de aceptación alojada
+
+El ensayo manual ahora exige una firma local válida antes de atribuir el rechazo de una credencial revocada, autentica las dos credenciales antes de revocar, comprueba sesiones frescas y distingue el resultado del JWT antiguo antes de su caducidad. Se verificaron las pruebas focalizadas, Chromium offline y el JWKS público RS256. **A54-07 sigue NOT RUN y NO-GO** por falta de un canal admitido con custodia de la clave administrativa para la ejecución manual. [Informe](../reviews/SABORA_S54_HOSTED_AUTH_PROVIDER_ACCEPTANCE_2026-11-27.md) · [Seguimiento #93](https://github.com/jdlc86/CartaViva/issues/93).
