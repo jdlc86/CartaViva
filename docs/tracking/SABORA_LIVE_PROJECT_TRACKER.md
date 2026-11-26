@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S52-27 · H1-A.** Candidato de admisión ROOT vinculada a credencial autorizada y sesión, con denegación durante recuperación pendiente y sustitución local de credenciales. Ensayo PG17/Fastify existente ampliado, CI pendiente. No acredita registro/revocación Auth real ni PWA de recuperación; composición y fence de mutación pendientes. **H1-A parcial / NO-GO.**
+
 > **S52-26 · H1-A.** Contrato ROOT S52-25 aprobado; kernel candidato de recuperación transaccional en #92 (factores, rotación, desafío, concesión y bloqueo durable). El ensayo genesis amplía PG17; CI pendiente. Faltan PWA, integración real Auth/Resend, reconciliación y revocación efectiva; no se monta la recuperación ni se aplican migraciones. **H1-A parcial / NO-GO.** [Continuidad](../handoffs/SESSION_52_HANDOFF_2026-11-25.md#s52-26--núcleo-transaccional-candidato-de-recuperación-root).
 
 > **S52 · H1-A.** El [Draft #92](https://github.com/jdlc86/CartaViva/pull/92) integra el directorio, la ficha propia y la revocación sobre passkeys con dos identidades SQL separadas. Incluye el transporte candidato Resend y mantiene las 103 migraciones. El alta inicial, enrolamiento, activación, suspensión, recuperación, despacho durable y la prueba de proveedores siguen pendientes. **H1-A parcial / NO-GO operativo.** [Informe S52](../reviews/SABORA_S52_H1_A_STAFF_IDENTITY_REVIEW_2026-11-25.md).

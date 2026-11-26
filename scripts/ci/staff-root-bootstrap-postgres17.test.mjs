@@ -6,6 +6,7 @@ import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
+import {hashRootCredentialId} from '../../apps/api/src/staff-root-credential-id.mjs';
 import {createRootRecoveryKernelCandidate,generateRootRecoveryCode,generateRootRecoveryToken,ROOT_RECOVERY_LOGIN,ROOT_RECOVERY_SQL} from '../../apps/api/src/staff-root-recovery-candidate.mjs';
 import {createStaffRootBootstrapCandidate,ROOT_BOOTSTRAP_SQL} from '../../apps/api/src/staff-root-bootstrap-candidate.mjs';
 import {createStaffPasskeySession} from '../../apps/api/src/staff-passkey-session.mjs';
@@ -45,7 +46,9 @@ const firstSecret=randomBytes(32),normalSecret=randomBytes(32),ownershipSecret=r
 const emailHashSecret=randomBytes(32),hashEmail=createStaffInviteeEmailHasher({secret:emailHashSecret});
 const dispatchLogin='sabora_ci_first_admin_dispatch',custodyKey=randomBytes(32),custodyKeyId='first_admin_custody_ci';
 const keyring={active:()=>({keyId:custodyKeyId,key:custodyKey}),resolveKey:id=>id===custodyKeyId?custodyKey:null};
-let pool,staffPool,firstPool,normalPool,ownershipPool,enrollmentPool,dispatchPool;
+const recoverySigning=randomBytes(32),recoveryFactors=randomBytes(32),recoveryKey='ci_root_recovery_key';
+const genesisCredential=Buffer.from('fixture-root-primary').toString('base64url');
+let pool,staffPool,firstPool,normalPool,ownershipPool,enrollmentPool,dispatchPool,recoveryPool;
 const connection=role=>{const u=new URL(url);u.username=role;u.password=password;return u.href;};
 
 test.before(async()=>{
@@ -54,12 +57,12 @@ test.before(async()=>{
  await admin.query(await readFile(new URL('../../docs/security/sql-candidates/staff_first_admin_bootstrap_pg17.sql',import.meta.url),'utf8'));
  for(const filename of ['staff_invitation_outbox_schema_pg17.sql','staff_invitation_custody_pg17.sql',
   'staff_invitation_custody_restricted_pg17.sql','staff_invitation_dispatch_envelope_pg17.sql',
-  'staff_invitation_directory_outbox_pg17.sql','staff_first_admin_durable_pg17.sql'])
+  'staff_invitation_directory_outbox_pg17.sql','staff_first_admin_durable_pg17.sql','staff_root_recovery_pg17.sql'])
   await admin.query(await readFile(new URL('../../docs/security/sql-candidates/'+filename,import.meta.url),'utf8'));
  await admin.query(`CREATE ROLE ${login} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${password}';
  CREATE ROLE ${reader} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${password}';
  GRANT USAGE ON SCHEMA sabora TO ${login},${reader};
- GRANT EXECUTE ON FUNCTION sabora.consume_root_bootstrap_candidate(uuid,uuid,uuid,text,bigint,bigint,text) TO ${login};
+ GRANT EXECUTE ON FUNCTION sabora.consume_root_bootstrap_candidate(uuid,uuid,uuid,text,bigint,bigint,text,text) TO ${login};
  GRANT SELECT(user_id,role,state) ON sabora.staff_members TO ${reader};
  CREATE POLICY ci_root_bootstrap_reader ON sabora.staff_members FOR SELECT TO ${reader} USING(true)`);
  await admin.query(`INSERT INTO sabora.root_bootstrap_grants(id,expected_user_id,verifier,issued_at,expires_at)
@@ -95,8 +98,14 @@ test.before(async()=>{
  ownershipPool=new Pool({connectionString:connection(ownershipLogin)});
  enrollmentPool=new Pool({connectionString:connection(STAFF_ENROLLMENT_LOGIN)});
  dispatchPool=new Pool({connectionString:connection(dispatchLogin)});
+  await admin.query("CREATE ROLE sabora_root_recovery_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+password+"'");
+  await admin.query('GRANT USAGE ON SCHEMA sabora TO '+ROOT_RECOVERY_LOGIN);
+  await admin.query('GRANT EXECUTE ON FUNCTION sabora.root_recovery_transition_candidate(text,text,uuid,uuid,text,text,text,integer,bigint,bigint,text), sabora.root_recovery_access_candidate(text,uuid,text,bigint,bigint,text) TO '+ROOT_RECOVERY_LOGIN);
+  await admin.query("INSERT INTO sabora.root_recovery_keys_candidate(key_id,hmac_key,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour')",[recoveryKey,recoverySigning]);
+  recoveryPool=new Pool({connectionString:connection(ROOT_RECOVERY_LOGIN),max:12});
+
 });
-test.after(async()=>{await Promise.allSettled([pool?.end(),staffPool?.end(),firstPool?.end(),normalPool?.end(),ownershipPool?.end(),enrollmentPool?.end(),dispatchPool?.end()]);await admin.end();});
+test.after(async()=>{await Promise.allSettled([pool?.end(),staffPool?.end(),firstPool?.end(),normalPool?.end(),ownershipPool?.end(),enrollmentPool?.end(),dispatchPool?.end(),recoveryPool?.end()]);await admin.end();});
 
 test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, revocation and ownership closure',{timeout:180_000},async()=>{
  const bootstrap=createStaffRootBootstrapCandidate({pool,databaseRole:login});
@@ -128,7 +137,9 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   async user(token){return sessions.has(token)?{id:sessions.get(token)}:null;},
   async logout(token){return sessions.delete(token);}
  };
- const app=Fastify(),passkey=createStaffPasskeySession({issuer,origin,provider,getTrustedKeys:async()=>[jwk],secret:randomBytes(32)});
+ const recoveryConfig={pool:recoveryPool,keyId:recoveryKey,signingSecret:recoverySigning,factorSecret:recoveryFactors};
+ const rootKernel=createRootRecoveryKernelCandidate(recoveryConfig);
+ const app=Fastify(),passkey=createStaffPasskeySession({issuer,origin,provider,getTrustedKeys:async()=>[jwk],secret:randomBytes(32),rootAccess:rootKernel.allowsAccess});
  const forRoles=createStaffProtectedHooksFromPool({pool:staffPool,issuer,
   getTrustedKeys:async()=>[jwk],authenticate:passkey.authenticate});
  const issueFirst=createStaffLifecycleDirectoryCapabilityIssuer({keyId:firstKey,secret:firstSecret,databaseRole:FIRST_ADMIN_BOOTSTRAP_LOGIN});
@@ -147,12 +158,12 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
  const auth='/api/v1/staff/auth';
  const post=(path,body,cookie)=>app.inject({method:'POST',url:auth+path,payload:body,
   headers:{host:new URL(origin).host,origin,...(cookie?{cookie}:{})}});
- async function attempt(userId,id,authorizationCode,endpoint='/bootstrap/root'){
+ async function attempt(userId,id,authorizationCode,endpoint='/bootstrap/root',credentialId=genesisCredential){
   const start=await post('/options');
   assert.equal(start.statusCode,200);
   const cookie=start.headers['set-cookie'].split(';')[0];
   const data=Buffer.alloc(37);data[32]=5;
-  const credential={type:'public-key',id:'fixture',rawId:'fixture',response:{
+  const credential={type:'public-key',id:credentialId,rawId:credentialId,response:{
    clientDataJSON:enc({type:'webauthn.get',origin,challenge:start.json().options.challenge}),
    authenticatorData:data.toString('base64url'),signature:'fixture',userHandle:Buffer.from(userId).toString('base64url')
   }};
@@ -168,7 +179,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.equal((await attempt(rootId,grantId,randomBytes(32).toString('base64url'))).statusCode,401);
   await assert.rejects(pool.query('SELECT verifier FROM sabora.root_bootstrap_grants'),e=>e.code==='42501');
   await assert.rejects(pool.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'root','active')",[rootId]),e=>e.code==='42501');
-  await assert.rejects(pool.query(ROOT_BOOTSTRAP_SQL,[grantId,rootId,randomUUID(),login,Date.now(),Date.now()+10000,'0'.repeat(64)]),e=>e.code==='42501');
+  await assert.rejects(pool.query(ROOT_BOOTSTRAP_SQL,[grantId,rootId,randomUUID(),login,Date.now(),Date.now()+10000,hashRootCredentialId(genesisCredential),'0'.repeat(64)]),e=>e.code==='42501');
   const attempts=await Promise.all([attempt(rootId,grantId,code),attempt(rootId,grantId,code)]);
   assert.deepEqual(attempts.map(r=>r.statusCode).sort((a,b)=>a-b),[200,401],attempts.map(r=>r.body).join(' | '));
   const success=attempts.find(r=>r.statusCode===200);
@@ -178,23 +189,30 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    [{user_id:rootId,role:'root',state:'active'}]);
   const receipt=(await admin.query('SELECT grant_id,root_user_id,session_id FROM sabora.root_bootstrap_receipt')).rows;
   assert.deepEqual(receipt,[{grant_id:grantId,root_user_id:rootId,session_id:success.json().sessionId}]);
+  assert.equal((await admin.query('SELECT credential_hash FROM sabora.root_bootstrap_receipt')).rows[0].credential_hash,hashRootCredentialId(genesisCredential));
   assert.equal((await admin.query('SELECT verifier IS NULL AS erased FROM sabora.root_bootstrap_grants WHERE id=$1',[grantId])).rows[0].erased,true);
   assert.equal((await admin.query('SELECT owner_user_id FROM sabora.admin_write_ownership WHERE singleton')).rows[0].owner_user_id,null);
   await assert.rejects(admin.query('DELETE FROM sabora.root_bootstrap_receipt'),e=>e.code==='42501');
   await assert.rejects(admin.query("UPDATE sabora.staff_members SET role='admin' WHERE user_id=$1",[rootId]),e=>e.code==='42501');
   assert.equal((await attempt(rootId,grantId,code,'/verify')).statusCode,200);
+  assert.equal((await attempt(rootId,grantId,code,'/verify',Buffer.from('unapproved').toString('base64url'))).statusCode,401);
   const rootCookie=success.headers['set-cookie'].find(value=>value.startsWith('__Host-sabora-staff=')).split(';')[0];
-  const rootHeaders={host:new URL(origin).host,origin,cookie:rootCookie,'x-sabora-staff-session':success.json().sessionId};
+  const rootProof=success.headers['set-cookie'].find(value=>value.startsWith('__Host-sabora-root-proof=')).split(';')[0];
+  const rootHeaders={host:new URL(origin).host,origin,cookie:rootCookie+'; '+rootProof,'x-sabora-staff-session':success.json().sessionId};
   const rootPost=(payload)=>app.inject({method:'POST',url:'/api/v1/staff/bootstrap/first-admin',headers:rootHeaders,payload});
   const state=async(headers=rootHeaders)=>app.inject({method:'GET',url:'/api/v1/staff/bootstrap/first-admin',headers});
   assert.deepEqual((await state()).json(),{phase:'empty',member:null});
+  assert.equal((await state({...rootHeaders,cookie:rootCookie})).statusCode,401);
+  const another=await attempt(rootId,grantId,code,'/verify');
+  const otherCookie=another.headers['set-cookie'].find(value=>value.startsWith('__Host-sabora-staff=')).split(';')[0];
+  assert.equal((await state({...rootHeaders,cookie:otherCookie+'; '+rootProof,'x-sabora-staff-session':another.json().sessionId})).statusCode,401);
   preview=await startPublishedManagementPwa({apiOrigin,port:4189,tls:true});
   const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
   browser=await chromium.launch({headless:true});
   const rootContext=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
   const sessionCookie=(cookie)=>({name:cookie.slice(0,cookie.indexOf('=')),value:cookie.slice(cookie.indexOf('=')+1),
    url:origin,secure:true,httpOnly:true,sameSite:'Strict'});
-  await rootContext.addCookies([sessionCookie(rootCookie)]);
+  await rootContext.addCookies([sessionCookie(rootCookie),sessionCookie(rootProof)]);
   const rootPage=await rootContext.newPage();
   await rootPage.goto(origin+'/#equipo');
   const panel=rootPage.getByRole('region',{name:'Primer ADMIN'});
@@ -335,15 +353,8 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.equal((await ordinary(inviteBody('ordinary-waiter@demo.invalid','waiter'),adminHeaders)).statusCode,201);
   // Recovery kernel uses the same disposable genesis ROOT after the full
   // browser path. No new staff identity or hosted provider is created.
-  await admin.query(await readFile(new URL('../../docs/security/sql-candidates/staff_root_recovery_pg17.sql',import.meta.url),'utf8'));
-  await admin.query("CREATE ROLE sabora_root_recovery_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+password+"'");
-  await admin.query('GRANT USAGE ON SCHEMA sabora TO '+ROOT_RECOVERY_LOGIN);
-  await admin.query('GRANT EXECUTE ON FUNCTION sabora.root_recovery_transition_candidate(text,text,uuid,uuid,text,text,text,integer,bigint,bigint,text) TO '+ROOT_RECOVERY_LOGIN);
-  const recoverySigning=randomBytes(32),recoveryFactors=randomBytes(32),recoveryKey='ci_root_recovery_key';
-  await admin.query("INSERT INTO sabora.root_recovery_keys_candidate(key_id,hmac_key,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour')",[recoveryKey,recoverySigning]);
-  const recoveryPool=new Pool({connectionString:connection(ROOT_RECOVERY_LOGIN),max:12});
   try{
-   const config={pool:recoveryPool,keyId:recoveryKey,signingSecret:recoverySigning,factorSecret:recoveryFactors};
+   const config=recoveryConfig;
    let kernel=createRootRecoveryKernelCandidate(config);
    const run=(action,fields={})=>kernel.command(action,rootId,fields);
    const hash=(kind,value)=>kernel.hash(kind,value);
@@ -358,6 +369,9 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await run('configure',{...configFields,requestId:configRequest})).outcome,'configured');
    await assert.rejects(run('configure',{...configFields,requestId:configRequest}),e=>e.code==='42501');
    assert.equal((await run('configure',configFields)).outcome,'denied');
+   const backupId=Buffer.from('fixture-root-backup').toString('base64url');
+   assert.equal((await run('add_backup',{a:hashRootCredentialId(backupId)})).outcome,'backup_added');
+   assert.equal((await attempt(rootId,grantId,code,'/verify',backupId)).statusCode,200);
    const link=hash('link',generateRootRecoveryToken()),nextLink=hash('link',generateRootRecoveryToken());
    assert.equal((await run('prepare_link',{a:link})).outcome,'link_prepared');
    const challenge=hash('challenge',generateRootRecoveryToken());
@@ -414,11 +428,28 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal(contenders.filter(r=>r.outcome==='claimed').length,1);
    assert.equal(contenders.filter(r=>r.outcome==='registration_pending').length,7);
    assert.equal((await run('reset')).outcome,'registration_pending');
+   assert.equal((await state()).statusCode,401);
+   assert.equal((await attempt(rootId,grantId,code,'/verify',backupId)).statusCode,401);
+   assert.equal((await attempt(otherId,grantId,code,'/verify')).statusCode,200);
    const durable=(await admin.query('SELECT failures,registration_pending,grant_hash FROM sabora.root_recovery_state_candidate')).rows[0];
    assert.deepEqual(durable,{failures:'0',registration_pending:true,grant_hash:null});
    assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.root_recovery_audit_candidate WHERE action='attempt' AND outcome='denied' AND failures>0")).rows[0].n,11);
    await assert.rejects(recoveryPool.query('DELETE FROM sabora.root_recovery_audit_candidate'),e=>e.code==='42501');
-  }finally{await recoveryPool.end();}
+   const replacementId=Buffer.from('fixture-root-replacement').toString('base64url');
+   const replacementCode=generateRootRecoveryCode(),completion={a:grant,b:hashRootCredentialId(replacementId),c:hash('code',replacementCode)};
+   assert.equal((await run('complete',{...completion,a:hash('grant',generateRootRecoveryToken())})).outcome,'registration_pending');
+   assert.equal((await run('complete',{...completion,b:hashRootCredentialId(genesisCredential)})).outcome,'registration_pending');
+   // Trusted provider reconciliation is simulated here, never an HTTP action.
+   assert.equal((await run('complete',completion)).outcome,'completed');
+   assert.equal((await run('complete',completion)).outcome,'denied');
+   assert.equal((await run('add_backup',{a:hashRootCredentialId(backupId)})).outcome,'denied');
+   assert.equal((await state()).statusCode,401);
+   assert.equal((await attempt(rootId,grantId,code,'/verify',backupId)).statusCode,401);
+   assert.equal((await attempt(rootId,grantId,code,'/verify')).statusCode,401);
+   const restored=await attempt(rootId,grantId,code,'/verify',replacementId);
+   assert.equal(restored.statusCode,200,restored.body);assert.equal(restored.json().role,'root');
+   assert.equal((await run('challenge',{a:nextLink,b:finalChallenge})).outcome,'denied');
+  }finally{/* pool owned by test.after */}
   const audit=(await admin.query(`SELECT action,actor_kind FROM sabora.staff_lifecycle_audit
     WHERE enrollment_id=$1 ORDER BY occurred_at`,[id])).rows;
   assert.deepEqual(audit,[{action:'invite',actor_kind:'root'},{action:'resend',actor_kind:'root'},

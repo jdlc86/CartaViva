@@ -1,8 +1,10 @@
 import {createHmac, timingSafeEqual} from 'node:crypto';
 import {verifySupabaseAccessToken} from './auth.mjs';
+import {hashRootCredentialId} from './staff-root-credential-id.mjs';
 
 const SESSION = '__Host-sabora-staff';
 const CHALLENGE = '__Host-sabora-staff-challenge';
+const ROOT_PROOF = '__Host-sabora-root-proof';
 const PATH = '/api/v1/staff/auth';
 const ROLES = ['root', 'admin', 'waiter', 'kitchen'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -39,7 +41,8 @@ function verifiedAssertion(credential, origin) {
 }
 
 export function createStaffPasskeySession({origin, issuer, provider, getTrustedKeys, secret,
-  now = Date.now}) {
+  now = Date.now, rootAccess}) {
+  if(rootAccess!==undefined&&typeof rootAccess!=='function')throw Error('invalid_root_access_config');
   const {host, hostname} = new URL(origin);
   const clock = () => Math.floor(now() / 1000);
   const allowed = request => request.headers.host === host &&
@@ -71,7 +74,13 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
     const identity = await verify(token);
     if (!identity) return null;
     const user = await provider.user(token);
-    return user?.id === identity.userId && identity.expiresAt > clock() ? identity : null;
+    if(user?.id!==identity.userId||identity.expiresAt<=clock())return null;
+    if(rootAccess){
+      const [sid,hash,extra]=(open(request,ROOT_PROOF)??'').split('.');
+      const credentialHash=sid===identity.sessionId&&/^[0-9a-f]{64}$/.test(hash??'')&&extra===undefined?hash:null;
+      if(await rootAccess(identity.userId,credentialHash)!==true)return null;
+    }
+    return identity;
   };
   const unavailable = reply => reply.code(503).send({error: 'staff_auth_unavailable'});
   const unauthorized = reply => reply.code(401).send({error: 'unauthorized'});
@@ -136,7 +145,7 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
           if((await provider.user(token))?.id!==identity.userId)return unauthorized(reply);
           try{
             if(await rootBootstrap({identity,grantId:request.body.grantId,
-              authorizationCode:request.body.authorizationCode})!==true)return unauthorized(reply);
+              authorizationCode:request.body.authorizationCode,credentialId:credential.id})!==true)return unauthorized(reply);
           }catch(error){
             if(error?.code==='42501'||error?.message==='invalid_root_bootstrap_request')return unauthorized(reply);
             return unavailable(reply);
@@ -145,9 +154,12 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
         request.verifiedIdentity = identity;
         await authorizeMembership(request, reply);
         if (reply.sent) return;
+        const credentialHash=rootAccess&&request.verifiedStaff.role==='root'?hashRootCredentialId(credential.id):null;
+        if(rootAccess&&await rootAccess(identity.userId,credentialHash)!==true)return unauthorized(reply);
         const maxAge = identity.expiresAt - clock();
         if (maxAge <= 0) return unauthorized(reply);
         reply.header('Set-Cookie', cookie(SESSION, signed(SESSION, token), maxAge));
+        if(rootAccess)reply.header('Set-Cookie',cookie(ROOT_PROOF,credentialHash?signed(ROOT_PROOF,identity.sessionId+'.'+credentialHash):'',credentialHash?maxAge:0));
         return describeSession(request);
       } catch {
         return unavailable(reply);
@@ -168,7 +180,7 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
           if (await provider.logout(token) !== true && (await provider.user(token))?.id === identity.userId)
             return unavailable(reply);
         }
-        return reply.header('Set-Cookie', [cookie(SESSION, '', 0), cookie(CHALLENGE, '', 0)])
+        return reply.header('Set-Cookie', [cookie(SESSION, '', 0), cookie(CHALLENGE, '', 0),...(rootAccess?[cookie(ROOT_PROOF,'',0)]:[])])
           .code(204).send();
       } catch {
         return unavailable(reply);

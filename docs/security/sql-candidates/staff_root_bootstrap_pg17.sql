@@ -17,6 +17,7 @@ CREATE TABLE sabora.root_bootstrap_receipt (
  grant_id uuid NOT NULL UNIQUE REFERENCES sabora.root_bootstrap_grants(id) ON DELETE RESTRICT,
  root_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id) ON DELETE RESTRICT,
  session_id uuid NOT NULL,
+ credential_hash text NOT NULL CHECK(credential_hash ~ '^[0-9a-f]{64}$'),
  consumed_at timestamptz NOT NULL
 );
 ALTER TABLE sabora.root_bootstrap_grants ENABLE ROW LEVEL SECURITY;
@@ -34,7 +35,7 @@ GRANT USAGE ON SCHEMA sabora,extensions TO sabora_root_bootstrap_fn_owner;
 GRANT EXECUTE ON FUNCTION extensions.hmac(bytea,bytea,text) TO sabora_root_bootstrap_fn_owner;
 GRANT SELECT(id,expected_user_id,verifier,issued_at,expires_at),UPDATE(verifier)
  ON sabora.root_bootstrap_grants TO sabora_root_bootstrap_fn_owner;
-GRANT SELECT(singleton),INSERT(singleton,grant_id,root_user_id,session_id,consumed_at)
+GRANT SELECT(singleton),INSERT(singleton,grant_id,root_user_id,session_id,credential_hash,consumed_at)
  ON sabora.root_bootstrap_receipt TO sabora_root_bootstrap_fn_owner;
 GRANT SELECT(user_id,role,state),INSERT(user_id,role,state) ON sabora.staff_members TO sabora_root_bootstrap_fn_owner;
 GRANT SELECT(singleton,owner_user_id),UPDATE(owner_user_id)
@@ -58,7 +59,7 @@ CREATE POLICY root_bootstrap_ownership_lock ON sabora.admin_write_ownership FOR 
 
 CREATE FUNCTION sabora.consume_root_bootstrap_candidate(
  p_grant_id uuid,p_user_id uuid,p_session_id uuid,p_database_role text,
- p_issued_ms bigint,p_expires_ms bigint,p_proof text
+ p_issued_ms bigint,p_expires_ms bigint,p_credential_hash text,p_proof text
 ) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
  SET search_path=pg_catalog,pg_temp AS $bootstrap$
 DECLARE
@@ -69,6 +70,7 @@ BEGIN
   OR p_database_role IS DISTINCT FROM session_user::text
   OR p_issued_ms IS NULL OR p_expires_ms IS NULL
   OR p_expires_ms::numeric-p_issued_ms::numeric NOT BETWEEN 1 AND 30000
+  OR p_credential_hash IS NULL OR p_credential_hash !~ '^[0-9a-f]{64}$'
   OR p_proof IS NULL OR p_proof !~ '^[0-9a-f]{64}$' THEN
   RAISE EXCEPTION 'root_bootstrap_forbidden' USING ERRCODE='42501';
  END IF;
@@ -89,9 +91,9 @@ BEGIN
   OR p_issued_ms::numeric>v_ms::numeric+5000 OR p_expires_ms<=v_ms THEN
   RAISE EXCEPTION 'root_bootstrap_forbidden' USING ERRCODE='42501';
  END IF;
- v_expected:=extensions.hmac(convert_to('sabora.root-bootstrap.v1'||chr(10)||
+ v_expected:=extensions.hmac(convert_to('sabora.root-bootstrap.v2'||chr(10)||
   p_database_role||chr(10)||p_grant_id::text||chr(10)||p_user_id::text||chr(10)||
-  p_session_id::text||chr(10)||p_issued_ms::text||chr(10)||p_expires_ms::text,'UTF8'),
+  p_session_id::text||chr(10)||p_issued_ms::text||chr(10)||p_expires_ms::text||chr(10)||p_credential_hash,'UTF8'),
   v_grant.verifier,'sha256');
  v_provided:=decode(p_proof,'hex');
  FOR v_i IN 0..31 LOOP
@@ -101,16 +103,16 @@ BEGIN
   RAISE EXCEPTION 'root_bootstrap_forbidden' USING ERRCODE='42501';
  END IF;
  INSERT INTO sabora.staff_members(user_id,role,state) VALUES(p_user_id,'root','active');
- INSERT INTO sabora.root_bootstrap_receipt(singleton,grant_id,root_user_id,session_id,consumed_at)
- VALUES(true,p_grant_id,p_user_id,p_session_id,v_now);
+ INSERT INTO sabora.root_bootstrap_receipt(singleton,grant_id,root_user_id,session_id,credential_hash,consumed_at)
+ VALUES(true,p_grant_id,p_user_id,p_session_id,p_credential_hash,v_now);
  UPDATE sabora.root_bootstrap_grants SET verifier=NULL WHERE id=p_grant_id;
  RETURN true;
 END;
 $bootstrap$;
 -- Candidate is installed only by disposable superuser. The production delta
 -- must additionally implement and test CV005 DBA ownership transfer/cleanup.
-ALTER FUNCTION sabora.consume_root_bootstrap_candidate(uuid,uuid,uuid,text,bigint,bigint,text)
+ALTER FUNCTION sabora.consume_root_bootstrap_candidate(uuid,uuid,uuid,text,bigint,bigint,text,text)
  OWNER TO sabora_root_bootstrap_fn_owner;
-REVOKE ALL ON FUNCTION sabora.consume_root_bootstrap_candidate(uuid,uuid,uuid,text,bigint,bigint,text)
+REVOKE ALL ON FUNCTION sabora.consume_root_bootstrap_candidate(uuid,uuid,uuid,text,bigint,bigint,text,text)
  FROM PUBLIC,anon,authenticated;
 COMMIT;

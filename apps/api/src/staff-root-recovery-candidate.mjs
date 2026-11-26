@@ -4,12 +4,13 @@
 import {createHmac,randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 import {createPostgresTransaction} from './postgres-transaction.mjs';
 export const ROOT_RECOVERY_LOGIN='sabora_root_recovery_login';
+export const ROOT_RECOVERY_ACCESS_SQL='SELECT sabora.root_recovery_access_candidate($1::text,$2::uuid,$3::text,$4::bigint,$5::bigint,$6::text) AS allowed';
 export const ROOT_RECOVERY_SQL='SELECT * FROM sabora.root_recovery_transition_candidate($1::text,$2::text,$3::uuid,$4::uuid,$5::text,$6::text,$7::text,$8::integer,$9::bigint,$10::bigint,$11::text)';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HASH=/^[0-9a-f]{64}$/;
 const ALPHABET='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-const ACTIONS=new Set(['configure','prepare_link','confirm_link','reject_link','challenge','attempt','claim','reset']);
-const OUTCOMES=new Set(['configured','link_prepared','link_confirmed','link_rejected','challenge_created','authorized','claimed','reset','denied','blocked','registration_pending']);
+const ACTIONS=new Set(['configure','prepare_link','confirm_link','reject_link','challenge','attempt','claim','reset','add_backup','complete']);
+const OUTCOMES=new Set(['configured','link_prepared','link_confirmed','link_rejected','challenge_created','authorized','claimed','reset','backup_added','completed','denied','blocked','registration_pending']);
 export function generateRootRecoveryCode(){
  const bytes=randomBytes(16);let buffer=0,bits=0,code='';
  for(const byte of bytes){
@@ -66,5 +67,16 @@ export function createRootRecoveryKernelCandidate({pool,keyId,signingSecret,fact
    throw Error('invalid_root_recovery_result');
   return Object.freeze({outcome:row.outcome,failures:row.failures,blockedUntil:row.blocked_until?.toISOString()??null});
  }
- return Object.freeze({command,hash});
+ async function allowsAccess(actor,credentialHash){
+  if(!UUID.test(actor??'')||(credentialHash!==null&&!HASH.test(credentialHash??'')))return false;
+  const issued=clock(),expires=issued+15000;
+  if(!Number.isSafeInteger(issued)||issued<0||!Number.isSafeInteger(expires))throw Error('invalid_root_recovery_clock');
+  const args=[keyId,actor.toLowerCase(),credentialHash,issued,expires];
+  const signature=createHmac('sha256',key).update(['sabora.root-recovery-access.v1',keyId,ROOT_RECOVERY_LOGIN,
+   ...args.slice(1).map(v=>v===null?'-':String(v))].join('\n'),'utf8').digest('hex');
+  const result=await tx(query=>query(ROOT_RECOVERY_ACCESS_SQL,[...args,signature]));
+  if(result?.rows?.length!==1||typeof result.rows[0].allowed!=='boolean')throw Error('invalid_root_recovery_access_result');
+  return result.rows[0].allowed;
+ }
+ return Object.freeze({command,hash,allowsAccess});
 }

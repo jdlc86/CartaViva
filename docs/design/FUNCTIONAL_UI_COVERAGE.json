@@ -269,6 +269,11 @@
           "kind": "browser-management",
           "path": "scripts/ci/staff-directory-postgres17.test.mjs",
           "marker": "PG17 + Chromium passkey connects own profile, administrative directory and durable revocation"
+        },
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/staff-root-bootstrap-postgres17.test.mjs",
+          "marker": "PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, revocation and ownership closure"
         }
       ],
       "blockers": [
@@ -276,7 +281,7 @@
         "Cerrar arranque ROOT desde navegador y recuperación excepcional (kernel candidato; faltan UI, proveedor, revocación y reconciliación); composición de entrega durable real",
         "Obtener la aceptación del propietario"
       ],
-      "note": "Entrada para personal activo, directorio y revocación conectados mediante passkey. Sigue pendiente el ciclo completo con proveedor autorizado. Véase SABORA_S52_H1_A_STAFF_IDENTITY_REVIEW_2026-11-25.md. El contrato ROOT S52-25 cierra el diseño; S52-26 aporta el kernel transaccional no montado. No acredita recuperación operativa."
+      "note": "Entrada para personal activo, directorio y revocación conectados mediante passkey. Sigue pendiente el ciclo completo con proveedor autorizado. Véase SABORA_S52_H1_A_STAFF_IDENTITY_REVIEW_2026-11-25.md. El contrato ROOT S52-25 cierra el diseño; S52-26 aporta el kernel transaccional no montado. No acredita recuperación operativa. S52-27 añade admisión ROOT ligada a la credencial genesis/permitida y revocación local durante y después del registro pendiente; no acredita proveedor real ni la interfaz de recuperación."
     }
   ]
 }
