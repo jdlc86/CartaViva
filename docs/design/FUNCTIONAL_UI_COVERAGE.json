@@ -229,14 +229,30 @@
     {
       "id": "H1-identidad-personal",
       "status": "PENDIENTE",
-      "surfaces": ["management"],
+      "surfaces": [
+        "management"
+      ],
       "ui": [
-        {"surface": "management", "path": "apps/management/src/main.tsx", "marker": "Entrar con passkey"},
-        {"surface": "management", "path": "apps/management/src/views/TeamView.tsx", "marker": "Revocar acceso"}
+        {
+          "surface": "management",
+          "path": "apps/management/src/main.tsx",
+          "marker": "Entrar con passkey"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/views/TeamView.tsx",
+          "marker": "Revocar acceso"
+        }
       ],
       "api": [
-        {"path": "apps/api/src/staff-passkey-session.mjs", "marker": "createStaffPasskeySession"},
-        {"path": "apps/api/src/m2-restaurant-candidate.mjs", "marker": "registerStaffRevocationHttp"}
+        {
+          "path": "apps/api/src/staff-passkey-session.mjs",
+          "marker": "createStaffPasskeySession"
+        },
+        {
+          "path": "apps/api/src/m2-restaurant-candidate.mjs",
+          "marker": "registerStaffRevocationHttp"
+        }
       ],
       "evidence": [
         {
@@ -257,10 +273,10 @@
       ],
       "blockers": [
         "Verificar el flujo con Supabase Auth alojado y una identidad ficticia",
-        "Completar el enrolamiento y entrega durable con Resend, la recuperación y el alta inicial de ROOT",
+        "Cerrar arranque ROOT desde navegador y recuperación excepcional (kernel candidato; faltan UI, proveedor, revocación y reconciliación); composición de entrega durable real",
         "Obtener la aceptación del propietario"
       ],
-      "note": "Entrada para personal activo, directorio y revocación conectados mediante passkey. Sigue pendiente el ciclo completo con proveedor autorizado. Véase SABORA_S52_H1_A_STAFF_IDENTITY_REVIEW_2026-11-25.md."
+      "note": "Entrada para personal activo, directorio y revocación conectados mediante passkey. Sigue pendiente el ciclo completo con proveedor autorizado. Véase SABORA_S52_H1_A_STAFF_IDENTITY_REVIEW_2026-11-25.md. El contrato ROOT S52-25 cierra el diseño; S52-26 aporta el kernel transaccional no montado. No acredita recuperación operativa."
     }
   ]
 }

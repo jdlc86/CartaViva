@@ -6,6 +6,7 @@ import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
+import {createRootRecoveryKernelCandidate,generateRootRecoveryCode,generateRootRecoveryToken,ROOT_RECOVERY_LOGIN,ROOT_RECOVERY_SQL} from '../../apps/api/src/staff-root-recovery-candidate.mjs';
 import {createStaffRootBootstrapCandidate,ROOT_BOOTSTRAP_SQL} from '../../apps/api/src/staff-root-bootstrap-candidate.mjs';
 import {createStaffPasskeySession} from '../../apps/api/src/staff-passkey-session.mjs';
 import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
@@ -332,6 +333,92 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   await adminPage.getByRole('button',{name:'Cerrar sesión'}).waitFor();
   assert.equal(await adminPage.getByRole('region',{name:'Primer ADMIN'}).count(),0);
   assert.equal((await ordinary(inviteBody('ordinary-waiter@demo.invalid','waiter'),adminHeaders)).statusCode,201);
+  // Recovery kernel uses the same disposable genesis ROOT after the full
+  // browser path. No new staff identity or hosted provider is created.
+  await admin.query(await readFile(new URL('../../docs/security/sql-candidates/staff_root_recovery_pg17.sql',import.meta.url),'utf8'));
+  await admin.query("CREATE ROLE sabora_root_recovery_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+password+"'");
+  await admin.query('GRANT USAGE ON SCHEMA sabora TO '+ROOT_RECOVERY_LOGIN);
+  await admin.query('GRANT EXECUTE ON FUNCTION sabora.root_recovery_transition_candidate(text,text,uuid,uuid,text,text,text,integer,bigint,bigint,text) TO '+ROOT_RECOVERY_LOGIN);
+  const recoverySigning=randomBytes(32),recoveryFactors=randomBytes(32),recoveryKey='ci_root_recovery_key';
+  await admin.query("INSERT INTO sabora.root_recovery_keys_candidate(key_id,hmac_key,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour')",[recoveryKey,recoverySigning]);
+  const recoveryPool=new Pool({connectionString:connection(ROOT_RECOVERY_LOGIN),max:12});
+  try{
+   const config={pool:recoveryPool,keyId:recoveryKey,signingSecret:recoverySigning,factorSecret:recoveryFactors};
+   let kernel=createRootRecoveryKernelCandidate(config);
+   const run=(action,fields={})=>kernel.command(action,rootId,fields);
+   const hash=(kind,value)=>kernel.hash(kind,value);
+   const recoveryCode=generateRootRecoveryCode();
+   assert.match(recoveryCode,/^[A-Z2-7]{25}[AEIMQUY4]$/);
+   assert.notEqual(recoveryCode,generateRootRecoveryCode());
+   const configFields={a:hash('email','security@demo.invalid'),b:hash('code',recoveryCode),days:28};
+   await assert.rejects(kernel.command('configure',otherId,configFields),e=>e.code==='42501');
+   await assert.rejects(recoveryPool.query('SELECT * FROM sabora.root_recovery_state_candidate'),e=>e.code==='42501');
+   await assert.rejects(recoveryPool.query(ROOT_RECOVERY_SQL,[recoveryKey,'reset',rootId,randomUUID(),null,null,null,null,Date.now(),Date.now()+10000,'0'.repeat(64)]),e=>e.code==='42501');
+   const configRequest=randomUUID();
+   assert.equal((await run('configure',{...configFields,requestId:configRequest})).outcome,'configured');
+   await assert.rejects(run('configure',{...configFields,requestId:configRequest}),e=>e.code==='42501');
+   assert.equal((await run('configure',configFields)).outcome,'denied');
+   const link=hash('link',generateRootRecoveryToken()),nextLink=hash('link',generateRootRecoveryToken());
+   assert.equal((await run('prepare_link',{a:link})).outcome,'link_prepared');
+   const challenge=hash('challenge',generateRootRecoveryToken());
+   assert.equal((await run('challenge',{a:link,b:challenge})).outcome,'denied');
+   assert.equal((await run('confirm_link',{a:link})).outcome,'link_confirmed');
+   assert.equal((await run('challenge',{a:link,b:challenge})).outcome,'challenge_created');
+   const wrong=hash('code','000000'),grant=hash('grant',generateRootRecoveryToken());
+   const attempt=(b=wrong,a=challenge)=>run('attempt',{a,b,c:grant});
+   assert.equal((await attempt(wrong,hash('challenge',generateRootRecoveryToken()))).failures,'0');
+   const concurrent=await Promise.all(Array.from({length:12},()=>attempt()));
+   assert.equal(concurrent.filter(r=>r.outcome==='denied').length,3);
+   assert.equal(concurrent.filter(r=>r.outcome==='blocked').length,9);
+   const third=concurrent.find(r=>r.failures==='3'&&r.outcome==='denied');
+   assert.ok(Math.abs(Date.parse(third.blockedUntil)-Date.now()-900000)<10000);
+   kernel=createRootRecoveryKernelCandidate(config); // restart does not reset
+   const blocked=await attempt();assert.deepEqual(blocked,{...third,outcome:'blocked'});
+   assert.equal((await state()).statusCode,200); // existing ROOT session unaffected
+   // Only the disposable DBA advances timestamps, never the restricted login.
+   const expireBlock=()=>admin.query("UPDATE sabora.root_recovery_state_candidate SET blocked_until=clock_timestamp()-interval '1 second' WHERE singleton");
+   await expireBlock();
+   assert.equal((await attempt()).failures,'4');
+   const fifth=await attempt();assert.equal(fifth.failures,'5');
+   assert.ok(Math.abs(Date.parse(fifth.blockedUntil)-Date.now()-3600000)<10000);
+   await expireBlock();
+   for(let n=6;n<=10;n++)assert.equal((await attempt()).failures,String(n));
+   const tenth=await attempt();assert.equal(tenth.outcome,'blocked');
+   assert.ok(Math.abs(Date.parse(tenth.blockedUntil)-Date.now()-86400000)<10000);
+   await expireBlock();
+   const eleventh=await attempt();assert.equal(eleventh.failures,'11');
+   assert.ok(Math.abs(Date.parse(eleventh.blockedUntil)-Date.now()-86400000)<10000);
+   await admin.query("UPDATE sabora.root_recovery_state_candidate SET link_expires_at=clock_timestamp()+interval '1 hour' WHERE singleton");
+   const failedLink=hash('link',generateRootRecoveryToken());
+   assert.equal((await run('prepare_link',{a:failedLink})).outcome,'link_prepared');
+   assert.equal((await run('reject_link',{a:failedLink})).outcome,'link_rejected');
+   const preserved=(await admin.query('SELECT link_hash,pending_link_hash,failures FROM sabora.root_recovery_state_candidate')).rows[0];
+   assert.deepEqual(preserved,{link_hash:link,pending_link_hash:null,failures:'11'});
+   assert.equal((await run('prepare_link',{a:nextLink})).outcome,'link_prepared');
+   assert.equal((await run('confirm_link',{a:failedLink})).outcome,'denied');
+   assert.equal((await run('confirm_link',{a:nextLink})).failures,'11');
+   assert.equal((await attempt()).outcome,'blocked');
+   assert.equal((await run('reset')).outcome,'reset');
+   assert.equal((await run('challenge',{a:link,b:challenge})).outcome,'denied');
+   const renewed=hash('challenge',generateRootRecoveryToken());
+   assert.equal((await run('challenge',{a:nextLink,b:renewed})).outcome,'challenge_created');
+   await admin.query("UPDATE sabora.root_recovery_state_candidate SET challenge_expires_at=clock_timestamp()-interval '1 second' WHERE singleton");
+   assert.equal((await attempt(hash('code',recoveryCode),renewed)).outcome,'denied');
+   const finalChallenge=hash('challenge',generateRootRecoveryToken());
+   assert.equal((await run('challenge',{a:nextLink,b:finalChallenge})).outcome,'challenge_created');
+   const successful=await attempt(hash('code',recoveryCode),finalChallenge);
+   assert.equal(successful.outcome,'authorized');
+   const granted=(await admin.query('SELECT grant_expires_at FROM sabora.root_recovery_state_candidate')).rows[0];
+   assert.ok(Math.abs(granted.grant_expires_at.getTime()-Date.now()-300000)<10000);
+   const contenders=await Promise.all(Array.from({length:8},()=>run('claim',{a:grant})));
+   assert.equal(contenders.filter(r=>r.outcome==='claimed').length,1);
+   assert.equal(contenders.filter(r=>r.outcome==='registration_pending').length,7);
+   assert.equal((await run('reset')).outcome,'registration_pending');
+   const durable=(await admin.query('SELECT failures,registration_pending,grant_hash FROM sabora.root_recovery_state_candidate')).rows[0];
+   assert.deepEqual(durable,{failures:'0',registration_pending:true,grant_hash:null});
+   assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.root_recovery_audit_candidate WHERE action='attempt' AND outcome='denied' AND failures>0")).rows[0].n,11);
+   await assert.rejects(recoveryPool.query('DELETE FROM sabora.root_recovery_audit_candidate'),e=>e.code==='42501');
+  }finally{await recoveryPool.end();}
   const audit=(await admin.query(`SELECT action,actor_kind FROM sabora.staff_lifecycle_audit
     WHERE enrollment_id=$1 ORDER BY occurred_at`,[id])).rows;
   assert.deepEqual(audit,[{action:'invite',actor_kind:'root'},{action:'resend',actor_kind:'root'},
