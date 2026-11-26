@@ -14,6 +14,20 @@ export function createStaffRootSecurityCandidate({kernel,mail,rotationDays=28}={
  const project=result=>({configured:result.outcome==='configured',failures:result.failures,blockedUntil:result.blockedUntil});
  return Object.freeze({
   mailEnabled:Boolean(mail),
+  async backupStatus(input){
+   const result=await kernel.command('backup_status',context(input),{a:input.credentialHash});
+   if(!['unconfigured','backup_missing','backup_present'].includes(result.outcome))throw forbidden();
+   return result.outcome;
+  },
+  async addBackup(input){
+   const actor=context(input);
+   if(!HASH.test(input.newCredentialHash??'')||!HASH.test(input.evidenceHash??'')||
+     !Number.isSafeInteger(input.deadlineMs)||input.deadlineMs<=Date.now())throw forbidden();
+   const result=await kernel.command('add_backup',actor,{a:input.credentialHash,b:input.newCredentialHash,c:input.evidenceHash,
+    requestId:input.requestId,deadlineMs:input.deadlineMs});
+   if(result.outcome!=='backup_added')throw forbidden();
+   return {outcome:'backup_added'};
+  },
   async read(input){
    const result=await kernel.command('security_status',context(input),{a:input.credentialHash});
    if(!['configured','unconfigured'].includes(result.outcome))throw forbidden();

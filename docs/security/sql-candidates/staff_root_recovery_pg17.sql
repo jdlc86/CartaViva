@@ -36,6 +36,7 @@ CREATE TABLE sabora.root_recovery_audit_candidate(
  request_id uuid PRIMARY KEY,root_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id),
  action text NOT NULL,outcome text NOT NULL,failures bigint NOT NULL,
  mail_job_id uuid,
+ credential_evidence_hash text CHECK(credential_evidence_hash ~ '^[0-9a-f]{64}$'),
  occurred_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 ALTER TABLE sabora.root_recovery_keys_candidate ENABLE ROW LEVEL SECURITY;
@@ -54,7 +55,7 @@ GRANT USAGE ON SCHEMA sabora,extensions TO sabora_root_recovery_fn_owner;
 GRANT EXECUTE ON FUNCTION extensions.hmac(bytea,bytea,text) TO sabora_root_recovery_fn_owner;
 GRANT SELECT(key_id,hmac_key,expires_at,purpose) ON sabora.root_recovery_keys_candidate TO sabora_root_recovery_fn_owner;
 GRANT SELECT,INSERT,UPDATE ON sabora.root_recovery_state_candidate TO sabora_root_recovery_fn_owner;
-GRANT SELECT(request_id),INSERT(request_id,root_user_id,action,outcome,failures,mail_job_id)
+GRANT SELECT(request_id),INSERT(request_id,root_user_id,action,outcome,failures,mail_job_id,credential_evidence_hash)
  ON sabora.root_recovery_audit_candidate TO sabora_root_recovery_fn_owner;
 GRANT SELECT(root_user_id,singleton,credential_hash) ON sabora.root_bootstrap_receipt TO sabora_root_recovery_fn_owner;
 GRANT SELECT(user_id,role,state) ON sabora.staff_members TO sabora_root_recovery_fn_owner;
@@ -98,7 +99,8 @@ BEGIN
    WHEN 'challenge' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NULL AND p_days IS NULL
    WHEN 'attempt' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NOT NULL AND p_days IS NULL
    WHEN 'claim' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
-   WHEN 'add_backup' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
+   WHEN 'add_backup' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NOT NULL AND p_days IS NULL
+   WHEN 'backup_status' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
    WHEN 'complete' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NOT NULL AND p_days IS NULL
    WHEN 'security_status' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
    WHEN 'security_reset' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
@@ -131,7 +133,7 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'root_recovery_forbidden' USING ERRCODE='42501'; END IF;
  SELECT * INTO s FROM sabora.root_recovery_state_candidate t WHERE t.singleton FOR UPDATE;
  IF NOT FOUND THEN
-  IF p_action='security_status' AND p_a=v_genesis_hash THEN RETURN QUERY SELECT 'unconfigured'::text,0::bigint,NULL::timestamptz; RETURN; END IF;
+  IF p_action IN ('security_status','backup_status') AND p_a=v_genesis_hash THEN RETURN QUERY SELECT 'unconfigured'::text,0::bigint,NULL::timestamptz; RETURN; END IF;
   IF p_action<>'configure' THEN RETURN QUERY SELECT 'denied'::text,0::bigint,NULL::timestamptz; RETURN; END IF;
   INSERT INTO sabora.root_recovery_state_candidate(root_user_id,email_hash,code_hash,interval_days)
    VALUES(p_actor,p_a,p_b,p_days);
@@ -140,10 +142,11 @@ BEGIN
   v_fails:=s.failures;v_block:=s.blocked_until;
   IF s.root_user_id IS DISTINCT FROM p_actor THEN RAISE EXCEPTION 'root_recovery_forbidden' USING ERRCODE='42501'; END IF;
   v_result:='denied';
-  IF p_action IN ('security_status','security_reset','replace_code') AND
+  IF p_action IN ('security_status','backup_status','security_reset','replace_code','add_backup') AND
    (s.registration_pending OR NOT coalesce(p_a=coalesce(s.primary_credential_hash,v_genesis_hash) OR p_a=s.backup_credential_hash,false))
   THEN RETURN QUERY SELECT 'denied'::text,0::bigint,NULL::timestamptz; RETURN;
   ELSIF p_action='security_status' THEN RETURN QUERY SELECT 'configured'::text,s.failures,s.blocked_until; RETURN;
+  ELSIF p_action='backup_status' THEN RETURN QUERY SELECT CASE WHEN s.backup_credential_hash IS NULL THEN 'backup_missing' ELSE 'backup_present' END,s.failures,s.blocked_until; RETURN;
   ELSIF p_action='replace_code' THEN
    IF p_b IS DISTINCT FROM s.code_hash THEN
     UPDATE sabora.root_recovery_state_candidate SET code_hash=p_b,challenge_hash=NULL,challenge_expires_at=NULL,
@@ -166,9 +169,9 @@ BEGIN
     v_fails:=0;v_block:=NULL;v_result:='completed';
    ELSE v_result:='registration_pending'; END IF;
   ELSIF p_action='add_backup' THEN
-   IF s.backup_credential_hash IS NULL AND p_a IS DISTINCT FROM coalesce(s.primary_credential_hash,v_genesis_hash)
-    AND p_a IS DISTINCT FROM v_genesis_hash AND NOT (p_a=ANY(s.retired_credential_hashes)) THEN
-    UPDATE sabora.root_recovery_state_candidate SET backup_credential_hash=p_a WHERE singleton;
+   IF s.backup_credential_hash IS NULL AND p_b IS DISTINCT FROM coalesce(s.primary_credential_hash,v_genesis_hash)
+    AND p_b IS DISTINCT FROM v_genesis_hash AND NOT (p_b=ANY(s.retired_credential_hashes)) THEN
+    UPDATE sabora.root_recovery_state_candidate SET backup_credential_hash=p_b WHERE singleton;
     v_result:='backup_added';
    END IF;
   ELSIF p_action IN ('reset','security_reset') THEN
@@ -241,8 +244,9 @@ BEGIN
    END IF;
   END IF;
  END IF;
- INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures)
- VALUES(p_request,p_actor,p_action,CASE WHEN v_counted THEN 'code_mismatch' ELSE v_result END,v_fails);
+ INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures,credential_evidence_hash)
+ VALUES(p_request,p_actor,p_action,CASE WHEN v_counted THEN 'code_mismatch' ELSE v_result END,v_fails,
+  CASE WHEN v_result='backup_added' THEN p_c ELSE NULL END);
  RETURN QUERY SELECT v_result,v_fails,v_block;
 END;
 $recovery$;

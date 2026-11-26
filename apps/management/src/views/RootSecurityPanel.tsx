@@ -28,6 +28,18 @@ export function RootSecurityPanel({gateway}:{gateway:RootSecurityGateway}){
   }catch{if(epoch.current===current){setState(null);setError('La acción no quedó confirmada. Actualiza el estado antes de repetirla.');}}
   finally{inFlight.current=false;if(epoch.current===current)setBusy(false);}
  }
+ async function registerBackup(){
+  if(inFlight.current||!state?.configured||!state.backupEnabled||state.backupConfigured||code)return;
+  const current=++epoch.current;inFlight.current=true;setBusy(true);setError(null);setNotice(null);
+  try{
+   await gateway.registerBackup();
+   const result=await gateway.read();
+   if(epoch.current!==current)return;
+   if(!result.backupConfigured)throw Error('backup_not_confirmed');
+   setState(result);setNotice('Passkey de respaldo registrada. Guárdala en un dispositivo o llave independiente.');
+  }catch{if(epoch.current===current){setState(null);setError('El registro no quedó confirmado. Actualiza el estado antes de repetirlo.');}}
+  finally{inFlight.current=false;if(epoch.current===current)setBusy(false);}
+ }
  async function manageEmail(verify:boolean){
   if(inFlight.current||!state?.mailEnabled||code)return;
   const current=++epoch.current;inFlight.current=true;setBusy(true);setError(null);setNotice(null);
@@ -68,6 +80,10 @@ export function RootSecurityPanel({gateway}:{gateway:RootSecurityGateway}){
   {code?<div className="staff-directory-detail" aria-label="Nuevo código de recuperación">
    <h3>Guarda este código fuera del correo</h3><p>Se muestra una sola vez. No se puede consultar de nuevo.</p>
    <code style={{overflowWrap:'anywhere',userSelect:'all'}}>{code}</code><button type="button" className="button button--primary" onClick={()=>setCode(null)}>He guardado el código</button>
+  </div>:null}
+  {!code&&state?.configured&&state.backupEnabled?<div className="view-stack">
+   <p role="status">{state.backupConfigured?'Passkey de respaldo registrada.':'Registra una segunda passkey en un dispositivo o llave independiente.'}</p>
+   {!state.backupConfigured?<button type="button" className="button button--secondary" disabled={busy} onClick={()=>void registerBackup()}>Registrar passkey de respaldo</button>:null}
   </div>:null}
   {!code&&state?.configured?<div className="view-stack">
    <button className="button button--secondary" type="button" disabled={busy} onClick={()=>void mutate('reset')}>Restablecer contador con passkey</button>

@@ -6,6 +6,7 @@ const SESSION = '__Host-sabora-staff';
 const CHALLENGE = '__Host-sabora-staff-challenge';
 const ROOT_PROOF = '__Host-sabora-root-proof';
 const ROOT_SECURITY_CHALLENGE = '__Host-sabora-root-security-challenge';
+const ROOT_BACKUP_CHALLENGE = '__Host-sabora-root-backup-challenge';
 const PATH = '/api/v1/staff/auth';
 const ROLES = ['root', 'admin', 'waiter', 'kitchen'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -184,9 +185,11 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
     // ROOT identity and the just-proven credential are checked under SQL lock.
     if(rootSecurity){
       const root=forRoles(['root']),securityPath=PATH+'/root-security';
+      const backupEnabled=typeof rootSecurity.backupStatus==='function'&&typeof rootSecurity.addBackup==='function'&&
+        typeof provider.registrationOptions==='function'&&typeof provider.verifyRegistration==='function';
       function parseSecurityRequest(body,assertion=false){
         const {action,parameters,credential}=body??{};
-        const basic=['reset','replace_code'].includes(action);
+        const basic=['reset','replace_code',...(backupEnabled?['add_backup']:[])].includes(action);
         const fields=basic?['action']:['action','parameters'];
         if(assertion)fields.push('credential');
         if(Object.keys(body??{}).sort().join(',')!==fields.sort().join(','))return null;
@@ -211,7 +214,13 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
         if(request.url.includes('?'))return reply.code(400).send({error:'invalid_request'});
       };
       app.get(securityPath,{preHandler:[safe,...root]},async(request,reply)=>{
-        try{return await rootSecurity.read({identity:request.verifiedIdentity,credentialHash:rootProofHash(request,request.verifiedIdentity)});}
+        try{
+          const context={identity:request.verifiedIdentity,credentialHash:rootProofHash(request,request.verifiedIdentity)};
+          const result=await rootSecurity.read(context);
+          if(!backupEnabled)return result;
+          const backupStatus=await rootSecurity.backupStatus(context);
+          return {...result,backupEnabled:true,backupConfigured:backupStatus==='backup_present'};
+        }
         catch(error){return responseError(error,reply);}
       });
       app.post(securityPath+'/options',{preHandler:[safe,...root],bodyLimit:1024},async(request,reply)=>{
@@ -250,8 +259,66 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
             Number(expires)<=clock()||identity.expiresAt<=clock())return unauthorized(reply);
           const credentialHash=hashRootCredentialId(credential.id);
           if(await rootAccess(identity.userId,credentialHash)!==true)return unauthorized(reply);
+          if(input.action==='add_backup'&&backupEnabled){
+            // Registration is authorized by this fresh assertion, but uses the
+            // original server-held Auth session. No Auth token enters JSON.
+            const context={identity,credentialHash};
+            if(await rootSecurity.backupStatus(context)!=='backup_missing')return reply.code(409).send({error:'backup_unavailable'});
+            const originalToken=open(request,SESSION);
+            if((await provider.user(originalToken))?.id!==identity.userId)return unauthorized(reply);
+            const registration=await provider.registrationOptions(originalToken),options=registration?.options;
+            const deadline=Math.min(Number(expires),identity.expiresAt,fresh.expiresAt,registration?.expires_at);
+            if(!UUID.test(registration?.challenge_id??'')||!Number.isSafeInteger(registration?.expires_at)||
+              options?.rp?.id!==hostname||typeof options.challenge!=='string'||!BASE64URL.test(options.challenge)||
+              options.challenge.length>512||options.authenticatorSelection?.userVerification!=='required'||deadline<=clock())
+              return unavailable(reply);
+            const fields=[registration.challenge_id,deadline,identity.userId,identity.sessionId,
+              rootProofHash(request,identity),credentialHash,options.challenge];
+            if(!fields[4])return unauthorized(reply);
+            const value=Buffer.from(JSON.stringify(fields)).toString('base64url');
+            reply.header('Set-Cookie',cookie(ROOT_BACKUP_CHALLENGE,signed(ROOT_BACKUP_CHALLENGE,value),deadline-clock()));
+            return {options};
+          }
           return await rootSecurity.mutate({identity,credentialHash,action:input.action,parameters:input.parameters,requestId:challenge,
             deadlineMs:Math.min(Number(expires),identity.expiresAt,fresh.expiresAt)*1000});
+        }catch(error){return responseError(error,reply);}
+      });
+      if(backupEnabled)app.post(securityPath+'/backup/verify',{preHandler:[safe,...root],bodyLimit:49152},async(request,reply)=>{
+        const ticket=open(request,ROOT_BACKUP_CHALLENGE);
+        reply.header('Set-Cookie',cookie(ROOT_BACKUP_CHALLENGE,'',0));
+        const identity=request.verifiedIdentity,credential=request.body?.credential;
+        try{
+          if(!ticket||Object.keys(request.body??{}).join(',')!=='credential')return unauthorized(reply);
+          const fields=JSON.parse(Buffer.from(ticket,'base64url').toString('utf8'));
+          if(!Array.isArray(fields)||fields.length!==7)return unauthorized(reply);
+          const [challenge,expires,actor,sessionId,originalHash,authorizingHash,webChallenge]=fields;
+          if(!UUID.test(challenge??'')||!Number.isSafeInteger(expires)||expires<=clock()||
+            actor!==identity.userId||sessionId!==identity.sessionId||originalHash!==rootProofHash(request,identity)||
+            !/^[0-9a-f]{64}$/.test(authorizingHash??'')||
+            credential?.type!=='public-key'||credential.id!==credential.rawId||
+            typeof credential.response?.clientDataJSON!=='string'||credential.response.clientDataJSON.length>4096||
+            !BASE64URL.test(credential.response.clientDataJSON)||
+            typeof credential.response?.attestationObject!=='string'||credential.response.attestationObject.length>32768||
+            !BASE64URL.test(credential.response.attestationObject))return unauthorized(reply);
+          const newHash=hashRootCredentialId(credential.id);
+          if(newHash===authorizingHash||newHash===originalHash)return unauthorized(reply);
+          const client=JSON.parse(Buffer.from(credential.response.clientDataJSON,'base64url').toString('utf8'));
+          if(client.type!=='webauthn.create'||client.origin!==origin||client.challenge!==webChallenge||
+            (client.crossOrigin!==undefined&&client.crossOrigin!==false))return unauthorized(reply);
+          const context={identity,credentialHash:authorizingHash};
+          if(await rootSecurity.backupStatus(context)!=='backup_missing')return reply.code(409).send({error:'backup_unavailable'});
+          const token=open(request,SESSION);
+          if((await provider.user(token))?.id!==actor)return unauthorized(reply);
+          // A positive receipt from this exact ceremony is required. Neither
+          // a browser ID nor a difference of provider listings is evidence.
+          const receipt=await provider.verifyRegistration(token,challenge,credential);
+          if(!UUID.test(receipt?.id??'')||(await provider.user(token))?.id!==actor||
+            expires<=clock()||identity.expiresAt<=clock())return unauthorized(reply);
+          const evidenceHash=createHash('sha256').update(JSON.stringify([
+            'sabora.root-backup-registration.v1',actor,sessionId,challenge,webChallenge,receipt.id.toLowerCase(),newHash
+          ])).digest('hex');
+          return await rootSecurity.addBackup({...context,newCredentialHash:newHash,evidenceHash,requestId:challenge,
+            deadlineMs:Math.min(expires,identity.expiresAt)*1000});
         }catch(error){return responseError(error,reply);}
       });
     }
@@ -264,7 +331,7 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
           if (await provider.logout(token) !== true && (await provider.user(token))?.id === identity.userId)
             return unavailable(reply);
         }
-        return reply.header('Set-Cookie', [cookie(SESSION, '', 0), cookie(CHALLENGE, '', 0),...(rootAccess?[cookie(ROOT_PROOF,'',0),cookie(ROOT_SECURITY_CHALLENGE,'',0)]:[])])
+        return reply.header('Set-Cookie', [cookie(SESSION, '', 0), cookie(CHALLENGE, '', 0),...(rootAccess?[cookie(ROOT_PROOF,'',0),cookie(ROOT_SECURITY_CHALLENGE,'',0),cookie(ROOT_BACKUP_CHALLENGE,'',0)]:[])])
           .code(204).send();
       } catch {
         return unavailable(reply);

@@ -122,7 +122,8 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
  const issuer='https://root-bootstrap-ci.test/auth/v1',origin='https://localhost:4189';
  const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
  const jwk={...publicKey.export({format:'jwk'}),alg:'RS256',use:'sig',kid:'ci-root'};
- const challenges=new Map(),sessions=new Map();
+ const challenges=new Map(),sessions=new Map(),registrations=new Map();
+ let loseRegistrationResponse=false;
  const rootKeys=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
  const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
  const provider={
@@ -150,6 +151,23 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
     amr:[{method:'passkey',timestamp:now}]});
    const token=msg+'.'+sign('RSA-SHA256',Buffer.from(msg),privateKey).toString('base64url');
    sessions.set(token,uid);return {access_token:token};
+  },
+  async registrationOptions(token){
+   assert.equal(sessions.get(token),rootId);
+   const id=randomUUID(),challenge=randomBytes(32).toString('base64url');
+   registrations.set(id,{token,challenge});
+   return {challenge_id:id,expires_at:Math.floor(Date.now()/1000)+60,options:{challenge,
+    rp:{id:new URL(origin).hostname,name:'Sabora CI'},user:{id:Buffer.from(rootId).toString('base64url'),name:'root',displayName:'ROOT'},
+    pubKeyCredParams:[{type:'public-key',alg:-7}],authenticatorSelection:{userVerification:'required'}}};
+  },
+  async verifyRegistration(token,id,credential){
+   const registration=registrations.get(id);registrations.delete(id);
+   assert.equal(registration?.token,token);assert.equal(sessions.get(token),rootId);
+   assert.equal(JSON.parse(Buffer.from(credential.response.clientDataJSON,'base64url').toString()).challenge,registration.challenge);
+   // Registration provider is a fixture: it does not cryptographically
+   // verify attestation or establish behavior of hosted Auth.
+   if(loseRegistrationResponse)throw Error('fixture_registration_response_lost');
+   return {id:randomUUID()};
   },
   async user(token){return sessions.has(token)?{id:sessions.get(token)}:null;},
   async logout(token){return sessions.delete(token);}
@@ -372,7 +390,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   await adminContext.addCookies([sessionCookie(adminCookie)]);
   const securityPath=auth+'/root-security';
   const security=(suffix='',headers=rootHeaders,body)=>app.inject({method:body===undefined?'GET':'POST',url:securityPath+suffix,headers,...(body===undefined?{}:{payload:body})});
-  assert.deepEqual((await security()).json(),{configured:false,failures:'0',blockedUntil:null,mailEnabled:true});
+  assert.deepEqual((await security()).json(),{configured:false,failures:'0',blockedUntil:null,mailEnabled:true,backupEnabled:true,backupConfigured:false});
   assert.equal((await security('',adminHeaders)).statusCode,403);
   assert.equal((await security('/options',adminHeaders,{action:'reset'})).statusCode,403);
   assert.equal((await security('/options',rootHeaders,{action:'configure'})).statusCode,400);
@@ -470,7 +488,42 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    await assert.rejects(run('security_reset',{a:hashRootCredentialId(genesisCredential),deadlineMs:Date.now()-1}),e=>e.code==='42501');
    assert.equal((await security()).json().failures,'0');
    const backupId=Buffer.from('fixture-root-backup').toString('base64url');
-   assert.equal((await run('add_backup',{a:hashRootCredentialId(backupId)})).outcome,'backup_added');
+   const backupHash=hashRootCredentialId(backupId),primaryHash=hashRootCredentialId(genesisCredential);
+   const evidenceHash=createHash('sha256').update('fixture-negative').digest('hex');
+   await assert.rejects(run('add_backup',{a:backupHash}),e=>e.code==='42501');
+   assert.equal((await run('add_backup',{a:'0'.repeat(64),b:backupHash,c:evidenceHash})).outcome,'denied');
+   async function backupCeremony(){
+    const options=await security('/options',rootHeaders,{action:'add_backup'});
+    assert.equal(options.statusCode,200,options.body);
+    const challengeCookie=options.headers['set-cookie'].split(';')[0];
+    const data=Buffer.alloc(37);data[32]=5;
+    const credential={type:'public-key',id:genesisCredential,rawId:genesisCredential,response:{
+     clientDataJSON:enc({type:'webauthn.get',origin,challenge:options.json().options.challenge}),
+     authenticatorData:data.toString('base64url'),signature:'fixture',userHandle:Buffer.from(rootId).toString('base64url')}};
+    const start=await security('/verify',{...rootHeaders,cookie:rootHeaders.cookie+'; '+challengeCookie},{action:'add_backup',credential});
+    assert.equal(start.statusCode,200,start.body);
+    const cookies=[start.headers['set-cookie']].flat();
+    const backupCookie=cookies.find(v=>v.startsWith('__Host-sabora-root-backup-challenge=')).split(';')[0];
+    const creation={type:'public-key',id:backupId,rawId:backupId,response:{
+     clientDataJSON:enc({type:'webauthn.create',origin,challenge:start.json().options.challenge}),
+     attestationObject:Buffer.from('fixture').toString('base64url')}};
+    return {headers:{...rootHeaders,cookie:rootHeaders.cookie+'; '+backupCookie},creation};
+   }
+   const lost=await backupCeremony();loseRegistrationResponse=true;
+   assert.equal((await security('/backup/verify',lost.headers,{credential:lost.creation})).statusCode,503);
+   loseRegistrationResponse=false;
+   assert.equal((await attempt(rootId,grantId,code,'/verify',backupId)).statusCode,401);
+   assert.equal((await security()).json().backupConfigured,false);
+   const registration=await backupCeremony();
+   assert.equal((await security('/backup/verify',adminHeaders,{credential:registration.creation})).statusCode,403);
+   const malformed={...registration.creation,response:{...registration.creation.response,
+    clientDataJSON:enc({type:'webauthn.create',origin,challenge:'wrong'})}};
+   assert.equal((await security('/backup/verify',registration.headers,{credential:malformed})).statusCode,401);
+   assert.equal((await security('/backup/verify',registration.headers,{credential:registration.creation})).statusCode,200);
+   assert.equal((await security()).json().backupConfigured,true);
+   assert.equal((await security('/backup/verify',registration.headers,{credential:registration.creation})).statusCode,409);
+   assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.root_recovery_audit_candidate WHERE action='add_backup' AND outcome='backup_added' AND credential_evidence_hash IS NOT NULL")).rows[0].n,1);
+   assert.equal((await run('add_backup',{a:primaryHash,b:backupHash,c:evidenceHash})).outcome,'denied');
    assert.equal((await attempt(rootId,grantId,code,'/verify',backupId)).statusCode,200);
    const linkToken=inbox[1].token,link=hash('link',linkToken);
    let nextLink;
@@ -615,7 +668,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    // Trusted provider reconciliation is simulated here, never an HTTP action.
    assert.equal((await run('complete',completion)).outcome,'completed');
    assert.equal((await run('complete',completion)).outcome,'denied');
-   assert.equal((await run('add_backup',{a:hashRootCredentialId(backupId)})).outcome,'denied');
+   assert.equal((await run('add_backup',{a:hashRootCredentialId(replacementId),b:hashRootCredentialId(backupId),c:evidenceHash})).outcome,'denied');
    assert.equal((await state()).statusCode,401);
    assert.equal((await attempt(rootId,grantId,code,'/verify',backupId)).statusCode,401);
    assert.equal((await attempt(rootId,grantId,code,'/verify')).statusCode,401);

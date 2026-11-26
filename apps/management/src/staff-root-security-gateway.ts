@@ -1,7 +1,7 @@
 import {StaffAuthenticationError} from './staff-passkey';
 
 const PATH='/api/v1/staff/auth/root-security';
-export type RootSecuritySnapshot={configured:boolean;failures:string;blockedUntil:string|null;mailEnabled?:boolean};
+export type RootSecuritySnapshot={configured:boolean;failures:string;blockedUntil:string|null;mailEnabled?:boolean;backupEnabled?:boolean;backupConfigured?:boolean};
 type Action='reset'|'replace_code';
 type Result=RootSecuritySnapshot & {code?:string};
 export type RootSecurityGateway={
@@ -10,6 +10,7 @@ export type RootSecurityGateway={
  mutate(action:Action):Promise<Result>;
  stageEmail(email:string):Promise<void>;
  confirmEmail(initial:boolean):Promise<string|null>;
+ registerBackup():Promise<void>;
 };
 const CODE=/^[A-Z2-7]{25}[AEIMQUY4]$/;
 export function readRootEmailVerification(){
@@ -35,9 +36,10 @@ export function createRootSecurityGateway({send,emailProof=null}:{send:typeof fe
     (allowCode?typeof row.code!=='string'||!CODE.test(row.code):row.code!==undefined))
    throw new StaffAuthenticationError(503);
   return {configured:row.configured,failures:row.failures,blockedUntil:row.blockedUntil,
-   ...(row.mailEnabled===true?{mailEnabled:true}:{}),...(allowCode?{code:row.code as string}:{})};
+   ...(row.mailEnabled===true?{mailEnabled:true}:{}),
+   ...(row.backupEnabled===true&&typeof row.backupConfigured==='boolean'?{backupEnabled:true,backupConfigured:row.backupConfigured}:{}),...(allowCode?{code:row.code as string}:{})};
  }
- async function verify(action:Action|'stage_email'|'confirm_email',parameters?:object){
+ async function verify(action:Action|'stage_email'|'confirm_email'|'add_backup',parameters?:object){
   const input={action,...(parameters?{parameters}:{})};
   const {options}=await request('/options',input);
   if(options?.rpId!==window.location.hostname)throw new StaffAuthenticationError(503);
@@ -54,6 +56,14 @@ export function createRootSecurityGateway({send,emailProof=null}:{send:typeof fe
   },
   async stageEmail(email:string){
    if((await verify('stage_email',{email}))?.outcome!=='verification_queued')throw new StaffAuthenticationError(503);
+  },
+  async registerBackup(){
+   const result=await verify('add_backup');
+   if(result?.options?.rp?.id!==window.location.hostname||result.options.authenticatorSelection?.userVerification!=='required')throw new StaffAuthenticationError(503);
+   const publicKey=PublicKeyCredential.parseCreationOptionsFromJSON(result.options);
+   const credential=await navigator.credentials.create({publicKey});
+   if(!(credential instanceof PublicKeyCredential))throw new StaffAuthenticationError(401);
+   if((await request('/backup/verify',{credential:credential.toJSON()}))?.outcome!=='backup_added')throw new StaffAuthenticationError(503);
   },
   async confirmEmail(initial:boolean){
    if(!emailProof)throw new StaffAuthenticationError(400);
