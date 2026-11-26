@@ -81,6 +81,9 @@ export function createGatewayPasskeyProvider({publishableKey,...config}){
   options:()=>call('/passkeys/authentication/options','POST',{data:{}}),
   verify:(challengeId,credential)=>call('/passkeys/authentication/verify','POST',
    {data:{challenge_id:challengeId,credential}}),
+  registrationOptions:token=>call('/passkeys/registration/options','POST',{token,data:{}}),
+  verifyRegistration:(token,challengeId,credential)=>call('/passkeys/registration/verify','POST',
+   {token,data:{challenge_id:challengeId,credential}}),
   user:token=>call('/user','GET',{token}),
   logout:token=>call('/logout?scope=local','POST',{token})
  });

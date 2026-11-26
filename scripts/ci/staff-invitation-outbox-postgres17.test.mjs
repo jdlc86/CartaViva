@@ -1345,7 +1345,9 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text) TO ${role};
  GRANT EXECUTE ON FUNCTION sabora.store_staff_invitation_custody_restricted_candidate(uuid,uuid,integer,text,text,text,text,text) TO ${role};
  GRANT EXECUTE ON FUNCTION sabora.read_staff_invitation_directory_dispatch_candidate(uuid,uuid) TO ${dispatchRole};
- GRANT EXECUTE ON FUNCTION sabora.accept_staff_invitation_verified_candidate(text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,text) TO ${STAFF_ENROLLMENT_LOGIN}`);
+ GRANT EXECUTE ON FUNCTION sabora.accept_staff_invitation_verified_candidate(text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,text) TO ${STAFF_ENROLLMENT_LOGIN};
+ GRANT EXECUTE ON FUNCTION sabora.check_staff_registration_candidate(text,uuid,uuid,uuid,text,bigint,text),
+ sabora.register_staff_passkey_verified_candidate(text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,uuid,uuid,text) TO ${STAFF_ENROLLMENT_LOGIN}`);
  const writer=new Pool({connectionString:connectionString({role,value:password}),max:4});
  const deliveryPool=new Pool({connectionString:connectionString({role:dispatchRole,value:password})});
  const enrollmentPool=new Pool({connectionString:connectionString({role:STAFF_ENROLLMENT_LOGIN,value:password})});
@@ -1448,8 +1450,21 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
    email_confirmed_at:new Date(Date.now()-1000).toISOString()}],
    [wrongJwt,{id:otherUser,email:'different-recipient@example.invalid',is_anonymous:false,
    email_confirmed_at:new Date(Date.now()-1000).toISOString()}]]);
-  const accept=createStaffVerifiedEnrollmentCandidate({pool:enrollmentPool,issuer:authIssuer,
-   getTrustedKeys:async()=>[jwk],provider:{user:async token=>users.get(token)},
+  const registrationChallenge=randomUUID(),registrationNonce=randomBytes(32).toString('base64url'),
+   registeredCredential=randomUUID();let providerRegistrations=0;
+  const accept=createStaffVerifiedEnrollmentCandidate({pool:enrollmentPool,issuer:authIssuer,managementOrigin:origin,
+   getTrustedKeys:async()=>[jwk],provider:{user:async token=>users.get(token),
+    registrationOptions:async token=>{
+     assert.equal(token,acceptedJwt);
+     return {challenge_id:registrationChallenge,expires_at:Math.floor(Date.now()/1000)+60,
+      options:{rp:{id:new URL(origin).hostname},challenge:registrationNonce,
+       authenticatorSelection:{userVerification:'required'}}};
+    },
+    verifyRegistration:async(token,challenge,credential)=>{
+     assert.equal(token,acceptedJwt);assert.equal(challenge,registrationChallenge);
+     assert.equal(credential.type,'public-key');providerRegistrations++;
+     return {id:registeredCredential};
+    }},
    keyId:lifecycleKeyId,secret:lifecycleSecret,hashInviteeEmail:digest});
   const input={accessToken:acceptedJwt,enrollmentId:id,inviteToken:receivedToken,
    correlationId:'directory_verified_accept_001'};
@@ -1476,12 +1491,35 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
    digest(receivedToken),'directory_forged_accept_001',Date.now(),Date.now()+10000,'0'.repeat(64),
    digest(request.email),sessionId,'0'.repeat(64)]),e=>e.code==='42501');
   assert.equal((await admin.query('SELECT state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0].state,'invited');
+  await assert.rejects(accept.registrationOptions({accessToken:acceptedJwt,enrollmentId:id}),e=>e.code==='42501');
   const accepted=await accept.accept(input);
   assert.deepEqual(accepted,{enrollmentId:id,state:'accepted',repeated:false});
   assert.deepEqual(await accept.accept(input),{enrollmentId:id,state:'accepted',repeated:true});
   const acceptedRow=(await admin.query('SELECT auth_user_id,state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0];
   assert.deepEqual(acceptedRow,{auth_user_id:invitedUser,state:'accepted'});
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[invitedUser])).rows[0].n,0);
+  const registration=await accept.registrationOptions({accessToken:acceptedJwt,enrollmentId:id});
+  const rawId=randomBytes(32).toString('base64url');
+  const encodeClient=challenge=>Buffer.from(JSON.stringify({type:'webauthn.create',origin,challenge})).toString('base64url');
+  // Explicit mock attestation: the external verification fixture does NOT
+  // establish real cryptographic WebAuthn verification.
+  const credential={type:'public-key',id:rawId,rawId,response:{clientDataJSON:encodeClient(registrationNonce),
+   attestationObject:Buffer.from('provider-fixture-only').toString('base64url')}};
+  const regInput={accessToken:acceptedJwt,enrollmentId:id,ticket:registration.ticket,credential,
+   correlationId:'directory_verified_register_001'};
+  await assert.rejects(accept.register({...regInput,ticket:registration.ticket.slice(0,-1)+'z'}),e=>e.code==='42501');
+  await assert.rejects(accept.register({...regInput,credential:{...credential,
+   response:{...credential.response,clientDataJSON:encodeClient('wrong')}}}),e=>e.code==='42501');
+  assert.equal(providerRegistrations,0);
+  const registrationResult=await accept.register(regInput);
+  assert.deepEqual(registrationResult,{enrollmentId:id,state:'registered',repeated:false});
+  assert.equal(providerRegistrations,1);
+  const receipt=(await admin.query('SELECT auth_user_id,auth_session_id,challenge_id,provider_credential_id FROM sabora.staff_registration_receipts_candidate WHERE enrollment_id=$1',[id])).rows[0];
+  assert.deepEqual(receipt,{auth_user_id:invitedUser,auth_session_id:sessionId,
+   challenge_id:registrationChallenge,provider_credential_id:registeredCredential});
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[invitedUser])).rows[0].n,0);
+  await assert.rejects(accept.register(regInput),e=>e.code==='42501');
+  assert.equal(providerRegistrations,1);
   await lifecycle.transition(verified,{action:'revoke',enrollmentId:id,subjectUserId:null,reason:'Revocación de prueba',
    correlationId:'directory_durable_revoke_001'});
   assert.equal((await readDelivery({jobId,fence:claim.fence})).authorized,false);

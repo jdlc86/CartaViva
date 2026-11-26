@@ -87,8 +87,9 @@ BEGIN
   -- The directory-aware route cannot accept an invitation using a normal
   -- lifecycle writer. The dedicated enrollment LOGIN has no EXECUTE here;
   -- its only entry is the verified acceptance wrapper below.
-  IF (p_action='accept' AND session_user::text<>'sabora_staff_enrollment_login')
-     OR (session_user::text='sabora_staff_enrollment_login' AND p_action IS DISTINCT FROM 'accept') THEN
+  IF (p_action IN ('accept','register') AND session_user::text<>'sabora_staff_enrollment_login')
+     OR (session_user::text='sabora_staff_enrollment_login' AND
+         (p_action IS NULL OR p_action NOT IN ('accept','register'))) THEN
     RAISE EXCEPTION 'staff_enrollment_route_forbidden' USING ERRCODE='42501';
   END IF;
   SELECT transition.* INTO STRICT v_transition
@@ -274,5 +275,138 @@ REVOKE ALL ON FUNCTION sabora.accept_staff_invitation_verified_candidate(
  text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,text)
  FROM PUBLIC,anon,authenticated,sabora_staff_reader,sabora_admin_writer;
 -- No LOGIN is created or granted by this overlay.
+
+-- Registration preflight and completion use the same dedicated LOGIN as
+-- verified acceptance, never an operational writer or a public Auth role.
+GRANT SELECT(auth_user_id,state) ON sabora.staff_enrollments TO sabora_staff_enrollment_fn_owner;
+CREATE TABLE sabora.staff_registration_receipts_candidate(
+ enrollment_id uuid PRIMARY KEY REFERENCES sabora.staff_enrollments(id) ON DELETE RESTRICT,
+ auth_user_id uuid NOT NULL UNIQUE,
+ auth_session_id uuid NOT NULL,
+ challenge_id uuid NOT NULL UNIQUE,
+ provider_credential_id uuid NOT NULL UNIQUE,
+ credential_evidence_hash bytea NOT NULL CHECK(octet_length(credential_evidence_hash)=32),
+ registered_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+ALTER TABLE sabora.staff_registration_receipts_candidate ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sabora.staff_registration_receipts_candidate FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON sabora.staff_registration_receipts_candidate FROM PUBLIC,anon,authenticated;
+GRANT SELECT(enrollment_id,auth_user_id,auth_session_id,challenge_id,provider_credential_id,credential_evidence_hash),
+ INSERT(enrollment_id,auth_user_id,auth_session_id,challenge_id,provider_credential_id,credential_evidence_hash)
+ ON sabora.staff_registration_receipts_candidate TO sabora_staff_enrollment_fn_owner;
+CREATE POLICY staff_registration_receipt_read ON sabora.staff_registration_receipts_candidate
+ FOR SELECT TO sabora_staff_enrollment_fn_owner USING(true);
+CREATE POLICY staff_registration_receipt_insert ON sabora.staff_registration_receipts_candidate
+ FOR INSERT TO sabora_staff_enrollment_fn_owner WITH CHECK(true);
+CREATE TRIGGER staff_registration_receipt_immutable BEFORE UPDATE OR DELETE ON sabora.staff_registration_receipts_candidate
+ FOR EACH ROW EXECUTE FUNCTION sabora.reject_staff_lifecycle_history_mutation();
+CREATE TRIGGER staff_registration_receipt_no_truncate BEFORE TRUNCATE ON sabora.staff_registration_receipts_candidate
+ FOR EACH STATEMENT EXECUTE FUNCTION sabora.reject_staff_lifecycle_history_mutation();
+
+CREATE FUNCTION sabora.check_staff_registration_candidate(p_key_id text,p_actor uuid,p_enrollment uuid,
+ p_session uuid,p_email_hash text,p_expires_ms bigint,p_proof text)
+ RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $registration_check$
+DECLARE v_key bytea;v_expected bytea;v_given bytea;v_diff integer:=0;v_i integer;v_now timestamptz:=clock_timestamp();v_ms bigint;
+BEGIN
+ v_ms:=floor(extract(epoch FROM v_now)*1000)::bigint;
+ IF session_user::text<>'sabora_staff_enrollment_login' OR p_actor IS NULL OR p_enrollment IS NULL
+  OR p_session IS NULL OR p_key_id IS NULL OR p_email_hash IS NULL OR p_email_hash !~ '^[0-9a-f]{64}
+  OR p_proof IS NULL OR p_proof !~ '^[0-9a-f]{64} OR p_expires_ms IS NULL
+  OR p_expires_ms<=v_ms OR p_expires_ms::numeric-v_ms::numeric>30000 THEN
+  RAISE EXCEPTION 'staff_registration_forbidden' USING ERRCODE='42501';
+ END IF;
+ SELECT hmac_key INTO v_key FROM sabora.staff_lifecycle_signing_keys WHERE key_id=p_key_id
+  AND disabled_at IS NULL AND not_before<=v_now AND expires_at>v_now;
+ IF NOT FOUND THEN RAISE EXCEPTION 'staff_registration_forbidden' USING ERRCODE='42501'; END IF;
+ v_expected:=extensions.hmac(convert_to('sabora.staff-registration-check.v1'||chr(10)||p_key_id||chr(10)||
+  session_user::text||chr(10)||p_actor::text||chr(10)||p_enrollment::text||chr(10)||p_session::text||chr(10)||
+  p_email_hash||chr(10)||p_expires_ms::text,'UTF8'),v_key,'sha256');
+ v_given:=decode(p_proof,'hex');
+ FOR v_i IN 0..31 LOOP v_diff:=v_diff | (get_byte(v_expected,v_i)#get_byte(v_given,v_i)); END LOOP;
+ IF v_diff IS DISTINCT FROM 0 OR NOT EXISTS(SELECT 1 FROM sabora.staff_enrollments
+  WHERE id=p_enrollment AND auth_user_id=p_actor AND state='accepted'
+    AND invitee_email_hash=decode(p_email_hash,'hex')) THEN
+  RAISE EXCEPTION 'staff_registration_forbidden' USING ERRCODE='42501';
+ END IF;
+ RETURN true;
+END;
+$registration_check$;
+ALTER FUNCTION sabora.check_staff_registration_candidate(text,uuid,uuid,uuid,text,bigint,text)
+ OWNER TO sabora_staff_enrollment_fn_owner;
+REVOKE ALL ON FUNCTION sabora.check_staff_registration_candidate(text,uuid,uuid,uuid,text,bigint,text)
+ FROM PUBLIC,anon,authenticated,sabora_staff_reader,sabora_admin_writer;
+
+CREATE FUNCTION sabora.register_staff_passkey_verified_candidate(
+ p_key_id text,p_actor_user_id uuid,p_enrollment_id uuid,p_evidence_hash_hex text,
+ p_correlation_id text,p_issued_at_ms bigint,p_expires_at_ms bigint,p_signature_hex text,
+ p_confirmed_email_hash_hex text,p_session_id uuid,p_challenge_id uuid,p_provider_id uuid,p_proof_hex text)
+ RETURNS TABLE(result_enrollment_id uuid,result_subject_user_id uuid,result_requested_role text,
+ previous_state text,current_state text,repeated boolean,result_invite_version integer,
+ event_id uuid,result_given_name text,result_family_name text,result_employee_code text,
+ result_operational_display_id text)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $verified_register$
+DECLARE
+ v_key bytea;v_key_expires timestamptz;v_now timestamptz;v_ms bigint;
+ v_expected bytea;v_provided bytea;v_diff integer:=0;v_i integer;v_transition record;v_enrollment record;
+BEGIN
+ IF session_user::text<>'sabora_staff_enrollment_login' OR p_key_id IS NULL
+  OR p_actor_user_id IS NULL OR p_enrollment_id IS NULL OR p_session_id IS NULL
+  OR p_challenge_id IS NULL OR p_provider_id IS NULL
+  OR p_issued_at_ms IS NULL OR p_expires_at_ms IS NULL
+  OR p_expires_at_ms::numeric-p_issued_at_ms::numeric NOT BETWEEN 1 AND 30000
+  OR p_signature_hex IS NULL OR p_signature_hex !~ '^[0-9a-f]{64}
+  OR p_confirmed_email_hash_hex IS NULL OR p_confirmed_email_hash_hex !~ '^[0-9a-f]{64}
+  OR p_evidence_hash_hex IS NULL OR p_evidence_hash_hex !~ '^[0-9a-f]{64}
+  OR p_proof_hex IS NULL OR p_proof_hex !~ '^[0-9a-f]{64} THEN
+  RAISE EXCEPTION 'staff_registration_forbidden' USING ERRCODE='42501';
+ END IF;
+ v_now:=clock_timestamp();v_ms:=floor(extract(epoch FROM v_now)*1000)::bigint;
+ SELECT hmac_key,expires_at INTO v_key,v_key_expires FROM sabora.staff_lifecycle_signing_keys
+  WHERE key_id=p_key_id AND disabled_at IS NULL AND not_before<=v_now AND expires_at>v_now;
+ IF NOT FOUND OR p_issued_at_ms::numeric>v_ms::numeric+5000 OR p_expires_at_ms<=v_ms THEN
+  RAISE EXCEPTION 'staff_registration_forbidden' USING ERRCODE='42501';
+ END IF;
+ v_expected:=extensions.hmac(convert_to('sabora.staff-registration-complete.v1'||chr(10)||p_key_id||chr(10)||
+  session_user::text||chr(10)||p_actor_user_id::text||chr(10)||p_enrollment_id::text||chr(10)||
+  p_session_id::text||chr(10)||p_confirmed_email_hash_hex||chr(10)||p_challenge_id::text||chr(10)||
+  p_provider_id::text||chr(10)||p_signature_hex,'UTF8'),v_key,'sha256');
+ v_provided:=decode(p_proof_hex,'hex');
+ FOR v_i IN 0..31 LOOP v_diff:=v_diff | (get_byte(v_expected,v_i)#get_byte(v_provided,v_i)); END LOOP;
+ IF v_diff IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'staff_registration_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT t.* INTO STRICT v_transition FROM sabora.transition_staff_lifecycle_with_directory_outbox_candidate(
+  p_key_id,session_user::text,p_actor_user_id,'register',p_enrollment_id,p_actor_user_id,
+  NULL,NULL,NULL,p_evidence_hash_hex,NULL,p_correlation_id,p_issued_at_ms,p_expires_at_ms,
+  NULL,NULL,NULL,p_signature_hex) t;
+ SELECT auth_user_id,state,invitee_email_hash INTO v_enrollment FROM sabora.staff_enrollments WHERE id=p_enrollment_id;
+ v_now:=clock_timestamp();v_ms:=floor(extract(epoch FROM v_now)*1000)::bigint;
+ IF v_enrollment.auth_user_id IS DISTINCT FROM p_actor_user_id
+  OR v_enrollment.state IS DISTINCT FROM 'registered'
+  OR v_enrollment.invitee_email_hash IS DISTINCT FROM decode(p_confirmed_email_hash_hex,'hex')
+  OR v_transition.result_enrollment_id IS DISTINCT FROM p_enrollment_id
+  OR v_transition.result_subject_user_id IS DISTINCT FROM p_actor_user_id
+  OR p_expires_at_ms<=v_ms OR v_key_expires<=v_now THEN
+  RAISE EXCEPTION 'staff_registration_forbidden' USING ERRCODE='42501';
+ END IF;
+ IF NOT v_transition.repeated THEN
+  INSERT INTO sabora.staff_registration_receipts_candidate(enrollment_id,auth_user_id,auth_session_id,
+   challenge_id,provider_credential_id,credential_evidence_hash) VALUES(p_enrollment_id,p_actor_user_id,
+   p_session_id,p_challenge_id,p_provider_id,decode(p_evidence_hash_hex,'hex'));
+ ELSIF NOT EXISTS(SELECT 1 FROM sabora.staff_registration_receipts_candidate
+  WHERE enrollment_id=p_enrollment_id AND auth_user_id=p_actor_user_id AND auth_session_id=p_session_id
+   AND challenge_id=p_challenge_id AND provider_credential_id=p_provider_id
+   AND credential_evidence_hash=decode(p_evidence_hash_hex,'hex')) THEN
+  RAISE EXCEPTION 'staff_registration_forbidden' USING ERRCODE='42501';
+ END IF;
+ RETURN QUERY SELECT v_transition.result_enrollment_id,v_transition.result_subject_user_id,
+  v_transition.result_requested_role,v_transition.previous_state,v_transition.current_state,
+  v_transition.repeated,v_transition.result_invite_version,v_transition.event_id,
+  v_transition.result_given_name,v_transition.result_family_name,v_transition.result_employee_code,
+  v_transition.result_operational_display_id;
+END;
+$verified_register$;
+ALTER FUNCTION sabora.register_staff_passkey_verified_candidate(text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,uuid,uuid,text)
+ OWNER TO sabora_staff_enrollment_fn_owner;
+REVOKE ALL ON FUNCTION sabora.register_staff_passkey_verified_candidate(text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,uuid,uuid,text)
+ FROM PUBLIC,anon,authenticated,sabora_staff_reader,sabora_admin_writer;
 
 COMMIT;
