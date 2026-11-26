@@ -25,7 +25,7 @@ export function createRootRecoveryFactorHasher(secret){
  if(!(secret instanceof Uint8Array)||secret.byteLength!==32)throw Error('invalid_root_recovery_factor_key');
  const key=Buffer.from(secret);
  return (kind,value)=>{
-  if(!['email','code','link','challenge','grant'].includes(kind)||typeof value!=='string'||value.length>512)
+  if(!['email','code','link','challenge','grant','email-verification'].includes(kind)||typeof value!=='string'||value.length>512)
    throw Error('invalid_root_recovery_factor');
   // Invalid code candidates must still reach the durable counter with an
   // unmatchable domain, rather than silently bypassing attempt accounting.

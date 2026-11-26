@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S52-31 · H1-A.** Candidato de verificación de destinatario y entrega durable ROOT (día 0, rotación, desafío, aviso de cambio), transporte Resend reutilizado y prueba PG17 ampliada. CI pendiente. Sin conexión al worker/PWA de alta ni Auth real; falta reconciliación y alertas. **H1-A parcial / NO-GO.**
+
 > **S52-29 · H1-A.** Seguridad ROOT en Configuración (estado, sustitución de código, reset con nueva passkey), candidato opt-in y ensayo PWA/PG17 ampliado; CI pendiente. Alta/cambio de correo, despacho rotatorio, recuperación de credenciales real y composición siguen abiertos. **H1-A parcial / NO-GO.**
 
 > **S52-27 · H1-A.** Candidato de admisión ROOT vinculada a credencial autorizada y sesión, con denegación durante recuperación pendiente y sustitución local de credenciales. Ensayo PG17/Fastify existente ampliado, CI pendiente. No acredita registro/revocación Auth real ni PWA de recuperación; composición y fence de mutación pendientes. **H1-A parcial / NO-GO.**

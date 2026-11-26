@@ -76,7 +76,7 @@ CREATE FUNCTION sabora.root_recovery_transition_candidate(
 DECLARE s sabora.root_recovery_state_candidate%ROWTYPE;
  v_key bytea;v_key_expiry timestamptz;v_now timestamptz;
  v_expected bytea;v_given bytea;v_diff integer:=0;v_i integer;
- v_result text;v_fails bigint:=0;v_block timestamptz;v_genesis_hash text;
+ v_result text;v_fails bigint:=0;v_block timestamptz;v_genesis_hash text;v_counted boolean:=false;
 BEGIN
  IF session_user::text<>'sabora_root_recovery_login' OR p_actor IS NULL OR p_request IS NULL
   OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
@@ -222,6 +222,7 @@ BEGIN
       grant_expires_at=v_now+interval '5 minutes',challenge_hash=NULL,challenge_expires_at=NULL WHERE singleton;
      v_result:='authorized';
     ELSE
+     v_counted:=true;
      v_fails:=least(s.failures,9223372036854775806::bigint)+1;
      v_block:=CASE WHEN v_fails>=10 THEN v_now+interval '24 hours'
       WHEN v_fails=5 THEN v_now+interval '1 hour' WHEN v_fails=3 THEN v_now+interval '15 minutes'
@@ -239,7 +240,7 @@ BEGIN
   END IF;
  END IF;
  INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures)
- VALUES(p_request,p_actor,p_action,v_result,v_fails);
+ VALUES(p_request,p_actor,p_action,CASE WHEN v_counted THEN 'code_mismatch' ELSE v_result END,v_fails);
  RETURN QUERY SELECT v_result,v_fails,v_block;
 END;
 $recovery$;
@@ -289,4 +290,240 @@ END;
 $access$;
 ALTER FUNCTION sabora.root_recovery_access_candidate(text,uuid,text,bigint,bigint,text) OWNER TO sabora_root_recovery_fn_owner;
 REVOKE ALL ON FUNCTION sabora.root_recovery_access_candidate(text,uuid,text,bigint,bigint,text) FROM PUBLIC,anon,authenticated;
+
+-- Mail custody belongs to the existing recovery candidate, never a public
+-- table or a new delivery service. The encrypted recipient survives restart;
+-- token envelopes are erased when a send result is recorded.
+CREATE TABLE sabora.root_recovery_mail_contact_candidate(
+ singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
+ root_user_id uuid NOT NULL UNIQUE REFERENCES sabora.staff_members(user_id),
+ email_hash text NOT NULL CHECK(email_hash ~ '^[0-9a-f]{64}$'),
+ recipient_envelope text NOT NULL CHECK(length(recipient_envelope) BETWEEN 32 AND 2048)
+);
+CREATE TABLE sabora.root_recovery_mail_pending_candidate(
+ singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
+ root_user_id uuid NOT NULL UNIQUE REFERENCES sabora.staff_members(user_id),
+ email_hash text NOT NULL CHECK(email_hash ~ '^[0-9a-f]{64}$'),
+ recipient_envelope text NOT NULL CHECK(length(recipient_envelope) BETWEEN 32 AND 2048),
+ proof_hash text NOT NULL CHECK(proof_hash ~ '^[0-9a-f]{64}$'),
+ interval_days integer NOT NULL CHECK(interval_days BETWEEN 1 AND 365),
+ expires_at timestamptz NOT NULL
+);
+CREATE TABLE sabora.root_recovery_mail_job_candidate(
+ id uuid PRIMARY KEY,root_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id),
+ purpose text NOT NULL CHECK(purpose IN ('verify','link','challenge','notice')),
+ email_hash text NOT NULL CHECK(email_hash ~ '^[0-9a-f]{64}$'),
+ recipient_envelope text,
+ token_hash text CHECK(token_hash ~ '^[0-9a-f]{64}$'),
+ token_envelope text,
+ expires_at timestamptz NOT NULL,
+ state text NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','dispatching','accepted','rejected','unknown','cancelled')),
+ fence uuid,provider_id uuid,finished_at timestamptz,
+ CHECK((purpose='notice')=(token_hash IS NULL)),
+ CHECK((state IN ('queued','dispatching'))=(recipient_envelope IS NOT NULL)),
+ CHECK((state IN ('queued','dispatching') AND purpose<>'notice')=(token_envelope IS NOT NULL)),
+ CHECK((state='accepted')=(provider_id IS NOT NULL)),
+ CHECK((state IN ('dispatching','accepted','rejected','unknown'))=(fence IS NOT NULL))
+);
+ALTER TABLE sabora.root_recovery_mail_contact_candidate ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sabora.root_recovery_mail_contact_candidate FORCE ROW LEVEL SECURITY;
+ALTER TABLE sabora.root_recovery_mail_pending_candidate ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sabora.root_recovery_mail_pending_candidate FORCE ROW LEVEL SECURITY;
+ALTER TABLE sabora.root_recovery_mail_job_candidate ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sabora.root_recovery_mail_job_candidate FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON sabora.root_recovery_mail_contact_candidate,sabora.root_recovery_mail_pending_candidate,
+ sabora.root_recovery_mail_job_candidate FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT,UPDATE ON sabora.root_recovery_mail_contact_candidate TO sabora_root_recovery_fn_owner;
+GRANT SELECT,INSERT,UPDATE,DELETE ON sabora.root_recovery_mail_pending_candidate TO sabora_root_recovery_fn_owner;
+GRANT SELECT,INSERT,UPDATE ON sabora.root_recovery_mail_job_candidate TO sabora_root_recovery_fn_owner;
+CREATE POLICY root_mail_contact ON sabora.root_recovery_mail_contact_candidate TO sabora_root_recovery_fn_owner USING(singleton) WITH CHECK(singleton);
+CREATE POLICY root_mail_pending ON sabora.root_recovery_mail_pending_candidate TO sabora_root_recovery_fn_owner USING(singleton) WITH CHECK(singleton);
+CREATE POLICY root_mail_job ON sabora.root_recovery_mail_job_candidate TO sabora_root_recovery_fn_owner USING(true) WITH CHECK(true);
+
+CREATE FUNCTION sabora.root_recovery_mail_candidate(
+ p_key_id text,p_actor uuid,p_request uuid,p_action text,p_payload text,p_issued bigint,p_expires bigint,p_signature text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $mail$
+DECLARE v_key bytea;v_key_expiry timestamptz;v_now timestamptz;
+ v_expected bytea;v_given bytea;v_diff integer:=0;v_i integer;
+ v jsonb;v_result text:='denied';v_genesis text;v_hash text;v_job uuid;
+ s sabora.root_recovery_state_candidate%ROWTYPE;
+ c sabora.root_recovery_mail_contact_candidate%ROWTYPE;
+ p sabora.root_recovery_mail_pending_candidate%ROWTYPE;
+ j sabora.root_recovery_mail_job_candidate%ROWTYPE;
+ v_fence uuid;v_provider uuid;v_until timestamptz;v_days integer;v_out jsonb;
+BEGIN
+ IF session_user::text<>'sabora_root_recovery_login' OR p_actor IS NULL OR p_request IS NULL
+  OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
+  OR p_action IS NULL OR p_action NOT IN ('stage','confirm','queue_link','queue_challenge','list','claim','finish','promote')
+  OR p_payload IS NULL OR octet_length(p_payload)>12000
+  OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
+  OR p_issued IS NULL OR p_expires IS NULL OR p_expires::numeric-p_issued::numeric NOT BETWEEN 1 AND 30000
+  OR p_issued::numeric>floor(extract(epoch FROM clock_timestamp())*1000)::numeric+5000
+  OR p_expires<=floor(extract(epoch FROM clock_timestamp())*1000)
+ THEN RAISE EXCEPTION 'root_mail_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT k.hmac_key,k.expires_at INTO v_key,v_key_expiry FROM sabora.root_recovery_keys_candidate k
+ WHERE k.key_id=p_key_id AND k.expires_at>clock_timestamp();
+ IF NOT FOUND THEN RAISE EXCEPTION 'root_mail_forbidden' USING ERRCODE='42501'; END IF;
+ v_expected:=extensions.hmac(convert_to('sabora.root-recovery-mail.v1'||chr(10)||p_key_id||chr(10)
+  ||session_user::text||chr(10)||p_actor::text||chr(10)||p_request::text||chr(10)||p_action||chr(10)
+  ||p_payload||chr(10)||p_issued::text||chr(10)||p_expires::text,'UTF8'),v_key,'sha256');
+ v_given:=decode(p_signature,'hex');
+ FOR v_i IN 0..31 LOOP v_diff:=v_diff | (get_byte(v_expected,v_i)#get_byte(v_given,v_i)); END LOOP;
+ IF v_diff IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'root_mail_forbidden' USING ERRCODE='42501'; END IF;
+ PERFORM pg_advisory_xact_lock(17302101,52426);
+ v_now:=clock_timestamp();
+ IF p_expires<=floor(extract(epoch FROM v_now)*1000) OR v_key_expiry<=v_now
+  OR NOT EXISTS(SELECT 1 FROM sabora.root_recovery_keys_candidate k WHERE k.key_id=p_key_id AND k.hmac_key=v_key AND k.expires_at>v_now)
+  OR EXISTS(SELECT 1 FROM sabora.root_recovery_audit_candidate a WHERE a.request_id=p_request)
+ THEN RAISE EXCEPTION 'root_mail_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT r.credential_hash INTO v_genesis FROM sabora.root_bootstrap_receipt r
+ JOIN sabora.staff_members m ON m.user_id=r.root_user_id AND m.role='root' AND m.state='active'
+ WHERE r.singleton AND r.root_user_id=p_actor;
+ IF NOT FOUND THEN RAISE EXCEPTION 'root_mail_forbidden' USING ERRCODE='42501'; END IF;
+ v:=p_payload::jsonb;
+ IF jsonb_typeof(v)<>'object' THEN RAISE EXCEPTION 'root_mail_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT * INTO s FROM sabora.root_recovery_state_candidate WHERE singleton;
+ SELECT * INTO c FROM sabora.root_recovery_mail_contact_candidate WHERE singleton;
+ -- Expired queued material can never be dispatched. Uncertain or accepted
+ -- records are retained as metadata, never automatically retried.
+ UPDATE sabora.root_recovery_mail_job_candidate SET state='cancelled',recipient_envelope=NULL,token_envelope=NULL,
+  finished_at=v_now WHERE state='queued' AND expires_at<=v_now;
+ UPDATE sabora.root_recovery_mail_job_candidate SET state='unknown',recipient_envelope=NULL,token_envelope=NULL,
+  finished_at=v_now WHERE state='dispatching' AND expires_at<=v_now;
+ DELETE FROM sabora.root_recovery_mail_pending_candidate WHERE expires_at<=v_now;
+ SELECT * INTO p FROM sabora.root_recovery_mail_pending_candidate WHERE singleton;
+ IF p_action IN ('stage','confirm') AND
+  (coalesce(s.registration_pending,false) OR NOT coalesce((v->>'credential')=coalesce(s.primary_credential_hash,v_genesis)
+   OR (v->>'credential')=s.backup_credential_hash,false))
+ THEN RETURN jsonb_build_object('outcome','denied'); END IF;
+ IF p_action='stage' THEN
+  IF p.singleton IS NULL AND (s.grant_hash IS NULL OR s.grant_expires_at<=v_now)
+   AND (v->>'emailHash') ~ '^[0-9a-f]{64}$' AND (v->>'proofHash') ~ '^[0-9a-f]{64}$'
+   AND length(v->>'recipientEnvelope') BETWEEN 32 AND 2048 AND length(v->>'tokenEnvelope') BETWEEN 32 AND 2048
+   AND (v->>'days')::integer BETWEEN 1 AND 365
+  THEN
+   v_job:=(v->>'jobId')::uuid;v_days:=(v->>'days')::integer;v_until:=v_now+interval '10 minutes';
+   INSERT INTO sabora.root_recovery_mail_pending_candidate(root_user_id,email_hash,recipient_envelope,proof_hash,interval_days,expires_at)
+   VALUES(p_actor,v->>'emailHash',v->>'recipientEnvelope',v->>'proofHash',v_days,v_until);
+   INSERT INTO sabora.root_recovery_mail_job_candidate(id,root_user_id,purpose,email_hash,recipient_envelope,token_hash,token_envelope,expires_at)
+   VALUES(v_job,p_actor,'verify',v->>'emailHash',v->>'recipientEnvelope',v->>'proofHash',v->>'tokenEnvelope',v_until);
+   v_result:='verification_queued';
+  END IF;
+ ELSIF p_action='confirm' THEN
+  IF p.root_user_id=p_actor AND p.expires_at>v_now AND p.proof_hash=v->>'proofHash'
+   AND (s.grant_hash IS NULL OR s.grant_expires_at<=v_now)
+   AND (v->>'linkHash') ~ '^[0-9a-f]{64}$' AND length(v->>'linkEnvelope') BETWEEN 32 AND 2048
+   AND ((s.singleton IS NULL AND (v->>'codeHash') ~ '^[0-9a-f]{64}$')
+      OR (s.singleton IS NOT NULL AND v->>'codeHash' IS NULL))
+  THEN
+   v_job:=(v->>'jobId')::uuid;v_until:=v_now+make_interval(days=>p.interval_days);
+   -- Notify old recipient atomically, without any code or recovery link.
+   IF c.singleton AND c.email_hash<>p.email_hash THEN
+    INSERT INTO sabora.root_recovery_mail_job_candidate(id,root_user_id,purpose,email_hash,recipient_envelope,expires_at)
+    VALUES((v->>'noticeId')::uuid,p_actor,'notice',c.email_hash,c.recipient_envelope,v_now+interval '1 day');
+   END IF;
+   UPDATE sabora.root_recovery_mail_job_candidate SET state='cancelled',recipient_envelope=NULL,token_envelope=NULL,finished_at=v_now
+    WHERE state='queued' AND purpose<>'notice';
+   INSERT INTO sabora.root_recovery_mail_contact_candidate(root_user_id,email_hash,recipient_envelope)
+    VALUES(p_actor,p.email_hash,p.recipient_envelope)
+    ON CONFLICT(singleton) DO UPDATE SET email_hash=EXCLUDED.email_hash,recipient_envelope=EXCLUDED.recipient_envelope;
+   IF s.singleton IS NULL THEN
+    INSERT INTO sabora.root_recovery_state_candidate(root_user_id,email_hash,code_hash,interval_days,pending_link_hash,pending_link_expires_at)
+    VALUES(p_actor,p.email_hash,v->>'codeHash',p.interval_days,v->>'linkHash',v_until);
+   ELSE
+    UPDATE sabora.root_recovery_state_candidate SET email_hash=p.email_hash,interval_days=p.interval_days,
+     link_hash=CASE WHEN s.email_hash=p.email_hash THEN s.link_hash ELSE NULL END,
+     link_expires_at=CASE WHEN s.email_hash=p.email_hash THEN s.link_expires_at ELSE NULL END,
+     pending_link_hash=v->>'linkHash',pending_link_expires_at=v_until,
+     challenge_hash=NULL,challenge_expires_at=NULL,grant_hash=NULL,grant_expires_at=NULL WHERE singleton;
+   END IF;
+   INSERT INTO sabora.root_recovery_mail_job_candidate(id,root_user_id,purpose,email_hash,recipient_envelope,token_hash,token_envelope,expires_at)
+    VALUES(v_job,p_actor,'link',p.email_hash,p.recipient_envelope,v->>'linkHash',v->>'linkEnvelope',v_until);
+   DELETE FROM sabora.root_recovery_mail_pending_candidate WHERE singleton;
+   v_result:=CASE WHEN s.singleton IS NULL THEN 'configured' ELSE 'email_changed' END;
+  END IF;
+ ELSIF p_action='queue_link' THEN
+  IF c.root_user_id=p_actor AND c.email_hash=s.email_hash AND NOT s.registration_pending
+   AND (s.link_hash IS NULL OR s.link_expires_at<=v_now+interval '1 day')
+   AND (s.pending_link_hash IS NULL OR s.pending_link_expires_at<=v_now)
+   AND (s.grant_hash IS NULL OR s.grant_expires_at<=v_now)
+   AND (v->>'tokenHash') ~ '^[0-9a-f]{64}$' AND length(v->>'tokenEnvelope') BETWEEN 32 AND 2048
+   AND v->>'tokenHash' IS DISTINCT FROM s.link_hash AND v->>'tokenHash' IS DISTINCT FROM s.pending_link_hash
+  THEN
+   v_job:=(v->>'jobId')::uuid;v_until:=v_now+make_interval(days=>s.interval_days);
+   UPDATE sabora.root_recovery_state_candidate SET pending_link_hash=v->>'tokenHash',pending_link_expires_at=v_until WHERE singleton;
+   INSERT INTO sabora.root_recovery_mail_job_candidate(id,root_user_id,purpose,email_hash,recipient_envelope,token_hash,token_envelope,expires_at)
+    VALUES(v_job,p_actor,'link',c.email_hash,c.recipient_envelope,v->>'tokenHash',v->>'tokenEnvelope',v_until);
+   v_result:='link_queued';
+  END IF;
+ ELSIF p_action='queue_challenge' THEN
+  IF c.root_user_id=p_actor AND c.email_hash=s.email_hash AND NOT s.registration_pending
+   AND (s.blocked_until IS NULL OR s.blocked_until<=v_now)
+   AND s.link_hash=v->>'linkHash' AND s.link_expires_at>v_now
+   AND (s.challenge_hash IS NULL OR s.challenge_expires_at<=v_now)
+   AND (s.grant_hash IS NULL OR s.grant_expires_at<=v_now)
+   AND (v->>'tokenHash') ~ '^[0-9a-f]{64}$' AND length(v->>'tokenEnvelope') BETWEEN 32 AND 2048
+  THEN
+   v_job:=(v->>'jobId')::uuid;v_until:=least(v_now+interval '10 minutes',s.link_expires_at);
+   UPDATE sabora.root_recovery_state_candidate SET challenge_hash=v->>'tokenHash',challenge_expires_at=v_until,
+    grant_hash=NULL,grant_expires_at=NULL WHERE singleton;
+   INSERT INTO sabora.root_recovery_mail_job_candidate(id,root_user_id,purpose,email_hash,recipient_envelope,token_hash,token_envelope,expires_at)
+    VALUES(v_job,p_actor,'challenge',c.email_hash,c.recipient_envelope,v->>'tokenHash',v->>'tokenEnvelope',v_until);
+   v_result:='challenge_queued';
+  END IF;
+ ELSIF p_action='list' THEN
+  RETURN jsonb_build_object('outcome','listed','jobs',coalesce((SELECT jsonb_agg(x.id) FROM
+   (SELECT id FROM sabora.root_recovery_mail_job_candidate WHERE root_user_id=p_actor AND
+    (state='queued' OR (state='accepted' AND purpose='link' AND token_hash=s.pending_link_hash))
+    AND expires_at>v_now ORDER BY expires_at,id LIMIT 20) x),'[]'::jsonb));
+ ELSIF p_action IN ('claim','finish','promote') THEN
+  SELECT * INTO j FROM sabora.root_recovery_mail_job_candidate WHERE id=(v->>'jobId')::uuid AND root_user_id=p_actor;
+  IF FOUND THEN
+   IF p_action='claim' AND j.state='queued' THEN
+    IF j.expires_at>v_now AND (j.purpose='notice' OR
+     (NOT coalesce(s.registration_pending,false) AND
+     ((j.purpose='verify' AND p.proof_hash=j.token_hash AND p.email_hash=j.email_hash)
+      OR (j.purpose='link' AND s.pending_link_hash=j.token_hash AND c.email_hash=j.email_hash)
+      OR (j.purpose='challenge' AND s.challenge_hash=j.token_hash AND c.email_hash=j.email_hash))))
+    THEN
+     v_fence:=gen_random_uuid();
+     UPDATE sabora.root_recovery_mail_job_candidate SET state='dispatching',fence=v_fence WHERE id=j.id;
+     INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures)
+      VALUES(p_request,p_actor,'mail_claim','claimed',coalesce(s.failures,0));
+     RETURN jsonb_build_object('outcome','claimed','jobId',j.id,'fence',v_fence,'purpose',j.purpose,
+      'emailHash',j.email_hash,'recipientEnvelope',j.recipient_envelope,'tokenHash',j.token_hash,'tokenEnvelope',j.token_envelope);
+    ELSE
+     UPDATE sabora.root_recovery_mail_job_candidate SET state='cancelled',recipient_envelope=NULL,token_envelope=NULL,finished_at=v_now WHERE id=j.id;
+     v_result:='cancelled';
+    END IF;
+   ELSIF p_action='finish' AND j.state='dispatching' AND j.fence=(v->>'fence')::uuid
+    AND v->>'result' IN ('accepted','rejected','unknown')
+    AND ((v->>'result'='accepted')=(v->>'providerId' IS NOT NULL)) THEN
+    v_provider:=(v->>'providerId')::uuid;
+    UPDATE sabora.root_recovery_mail_job_candidate SET state=v->>'result',provider_id=v_provider,
+     recipient_envelope=NULL,token_envelope=NULL,finished_at=v_now WHERE id=j.id;
+    IF v->>'result'='rejected' AND j.purpose='link' AND s.pending_link_hash=j.token_hash THEN
+     UPDATE sabora.root_recovery_state_candidate SET pending_link_hash=NULL,pending_link_expires_at=NULL WHERE singleton;
+    END IF;
+    IF v->>'result'='rejected' AND j.purpose='challenge' AND s.challenge_hash=j.token_hash THEN
+     UPDATE sabora.root_recovery_state_candidate SET challenge_hash=NULL,challenge_expires_at=NULL WHERE singleton;
+    END IF;
+    v_result:=v->>'result';
+   ELSIF p_action='promote' AND j.state='accepted' AND j.purpose='link' AND j.expires_at>v_now
+    AND NOT s.registration_pending AND s.pending_link_hash=j.token_hash AND s.email_hash=j.email_hash
+    AND (s.grant_hash IS NULL OR s.grant_expires_at<=v_now) THEN
+    UPDATE sabora.root_recovery_state_candidate SET link_hash=s.pending_link_hash,link_expires_at=s.pending_link_expires_at,
+     pending_link_hash=NULL,pending_link_expires_at=NULL,challenge_hash=NULL,challenge_expires_at=NULL,
+     grant_hash=NULL,grant_expires_at=NULL WHERE singleton;
+    v_result:='link_confirmed';
+   END IF;
+  END IF;
+ END IF;
+ INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures)
+  VALUES(p_request,p_actor,'mail_'||p_action,v_result,coalesce(s.failures,0));
+ RETURN jsonb_build_object('outcome',v_result);
+END;
+$mail$;
+ALTER FUNCTION sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text) OWNER TO sabora_root_recovery_fn_owner;
+REVOKE ALL ON FUNCTION sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text) FROM PUBLIC,anon,authenticated;
 COMMIT;

@@ -20,7 +20,8 @@ import {createStaffInvitationOutboxRepository} from '../../apps/api/src/staff-in
 import {claimCurrentStaffInvitation} from '../../apps/api/src/staff-invitation-claim-candidate.mjs';
 import {dispatchStaffInvitation} from '../../apps/api/src/staff-invitation-dispatch-guard.mjs';
 import {recordStaffInvitationDeliveryOutcome} from '../../apps/api/src/staff-invitation-delivery-outcome-candidate.mjs';
-import {createStaffInvitationResendSender} from '../../apps/api/src/staff-invitation-resend.mjs';
+import {createStaffInvitationResendSender,createRootRecoveryResendSender} from '../../apps/api/src/staff-invitation-resend.mjs';
+import {createRootRecoveryMailCandidate,ROOT_MAIL_SQL} from '../../apps/api/src/staff-root-recovery-mail-candidate.mjs';
 import {FIRST_ADMIN_BOOTSTRAP_LOGIN} from '../../apps/api/src/staff-lifecycle-coordinator.mjs';
 import {createStaffLifecycleRepository} from '../../apps/api/src/staff-lifecycle-repository.mjs';
 import {createOwnershipCapabilityIssuer,createOwnershipGovernanceRepository,registerOwnershipGovernanceHttp,assertOwnershipRuntimeIdentity,OWNERSHIP_ROLE,OWNERSHIP_SQL} from '../../apps/api/src/ownership-governance-candidate.mjs';
@@ -101,7 +102,7 @@ test.before(async()=>{
  dispatchPool=new Pool({connectionString:connection(dispatchLogin)});
   await admin.query("CREATE ROLE sabora_root_recovery_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+password+"'");
   await admin.query('GRANT USAGE ON SCHEMA sabora TO '+ROOT_RECOVERY_LOGIN);
-  await admin.query('GRANT EXECUTE ON FUNCTION sabora.root_recovery_transition_candidate(text,text,uuid,uuid,text,text,text,integer,bigint,bigint,text), sabora.root_recovery_access_candidate(text,uuid,text,bigint,bigint,text) TO '+ROOT_RECOVERY_LOGIN);
+  await admin.query('GRANT EXECUTE ON FUNCTION sabora.root_recovery_transition_candidate(text,text,uuid,uuid,text,text,text,integer,bigint,bigint,text), sabora.root_recovery_access_candidate(text,uuid,text,bigint,bigint,text), sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text) TO '+ROOT_RECOVERY_LOGIN);
   await admin.query("INSERT INTO sabora.root_recovery_keys_candidate(key_id,hmac_key,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour')",[recoveryKey,recoverySigning]);
   recoveryPool=new Pool({connectionString:connection(ROOT_RECOVERY_LOGIN),max:12});
 
@@ -384,22 +385,66 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    await assert.rejects(kernel.command('configure',otherId,configFields),e=>e.code==='42501');
    await assert.rejects(recoveryPool.query('SELECT * FROM sabora.root_recovery_state_candidate'),e=>e.code==='42501');
    await assert.rejects(recoveryPool.query(ROOT_RECOVERY_SQL,[recoveryKey,'reset',rootId,randomUUID(),null,null,null,null,Date.now(),Date.now()+10000,'0'.repeat(64)]),e=>e.code==='42501');
-   const configRequest=randomUUID();
-   assert.equal((await run('configure',{...configFields,requestId:configRequest})).outcome,'configured');
-   await assert.rejects(run('configure',{...configFields,requestId:configRequest}),e=>e.code==='42501');
+   const mail=createRootRecoveryMailCandidate({...config,hash,keyring});
+   const securityContext=()=>({identity:{userId:rootId},credentialHash:hashRootCredentialId(genesisCredential),
+    deadlineMs:Date.now()+30000,requestId:randomUUID()});
+   const inbox=[],providerReceipts=new Set();
+   let sendMode='accepted';
+   const mailSender=createRootRecoveryResendSender({managementOrigin:origin,from:'sab@example.test',apiKey:'re_root_mail_fixture',
+    fetchImpl:async(url,options)=>{
+     assert.equal(url,'https://api.resend.com/emails');
+     assert.match(options.headers['Idempotency-Key'],/^sabora-staff-root-recovery\//);
+     assert.ok(!providerReceipts.has(options.headers['Idempotency-Key']));
+     providerReceipts.add(options.headers['Idempotency-Key']);
+     const body=JSON.parse(options.body);
+     assert.ok(!body.text.includes(recoveryCode));
+     if(sendMode==='rejected')return new Response('',{status:422});
+     if(sendMode==='unknown')throw Error('fixture_lost_response');
+     const fields=body.text.includes('\n\n')?new URLSearchParams(new URL(body.text.split('\n\n').at(-1)).hash.split('?')[1]):null;
+     inbox.push({email:body.to[0],purpose:fields?.get('purpose')??'notice',token:fields?.get('token')??null});
+     return Response.json({id:randomUUID()});
+    }});
+   await assert.rejects(mail.stage({...securityContext(),identity:{userId:otherId},email:'security@demo.invalid'}),e=>e.code==='42501');
+   await assert.rejects(mail.stage({...securityContext(),credentialHash:'0'.repeat(64),email:'security@demo.invalid'}),e=>e.code==='42501');
+   await assert.rejects(recoveryPool.query('SELECT * FROM sabora.root_recovery_mail_contact_candidate'),e=>e.code==='42501');
+   await assert.rejects(recoveryPool.query(ROOT_MAIL_SQL,[recoveryKey,rootId,randomUUID(),'list','{}',Date.now(),Date.now()+10000,'0'.repeat(64)]),e=>e.code==='42501');
+   const stageContext=securityContext();
+   assert.deepEqual(await mail.stage({...stageContext,email:'security@demo.invalid'}),{outcome:'verification_queued'});
+   await assert.rejects(mail.stage({...stageContext,email:'security@demo.invalid'}),e=>e.code==='42501');
+   await assert.rejects(mail.confirm({...securityContext(),proof:generateRootRecoveryToken(),initial:true}),e=>e.code==='42501');
+   assert.equal((await security()).json().configured,false);
+   const [verifyJob]=await mail.list(rootId);
+   assert.ok(verifyJob);
+   const verificationDispatch=await Promise.all([mail.dispatch(rootId,verifyJob,mailSender),mail.dispatch(rootId,verifyJob,mailSender)]);
+   assert.equal(verificationDispatch.filter(x=>x.outcome==='accepted').length,1);
+   assert.equal(inbox.length,1);assert.equal(inbox[0].purpose,'verify');
+   const material=(await admin.query('SELECT recipient_envelope,token_envelope,state FROM sabora.root_recovery_mail_job_candidate WHERE id=$1',[verifyJob])).rows[0];
+   assert.deepEqual(material,{recipient_envelope:null,token_envelope:null,state:'accepted'});
+   const confirmed=await mail.confirm({...securityContext(),proof:inbox[0].token,initial:true});
+   assert.equal(confirmed.outcome,'configured');recoveryCode=confirmed.code;assert.match(recoveryCode,/^[A-Z2-7]{25}[AEIMQUY4]$/);
+   await assert.rejects(mail.confirm({...securityContext(),proof:inbox[0].token,initial:true}),e=>e.code==='42501');
    assert.equal((await run('configure',configFields)).outcome,'denied');
+   const [dayZeroJob]=await mail.list(rootId);
+   assert.deepEqual(await mail.dispatch(rootId,dayZeroJob,mailSender),{outcome:'accepted',promotion:'link_confirmed'});
+   assert.equal(inbox[1].purpose,'link');
+   assert.equal((await admin.query('SELECT email_hash FROM sabora.root_recovery_mail_contact_candidate')).rows[0].email_hash,hash('email','security@demo.invalid'));
+   assert.ok(!(await admin.query('SELECT recipient_envelope FROM sabora.root_recovery_mail_contact_candidate')).rows[0].recipient_envelope.includes('security@demo.invalid'));
+   assert.equal((await mail.queueLink(rootId)).outcome,'denied');
    // A sensitive capability must never outlive its authenticated ceremony.
    await assert.rejects(run('security_reset',{a:hashRootCredentialId(genesisCredential),deadlineMs:Date.now()-1}),e=>e.code==='42501');
    assert.equal((await security()).json().failures,'0');
    const backupId=Buffer.from('fixture-root-backup').toString('base64url');
    assert.equal((await run('add_backup',{a:hashRootCredentialId(backupId)})).outcome,'backup_added');
    assert.equal((await attempt(rootId,grantId,code,'/verify',backupId)).statusCode,200);
-   const link=hash('link',generateRootRecoveryToken()),nextLink=hash('link',generateRootRecoveryToken());
-   assert.equal((await run('prepare_link',{a:link})).outcome,'link_prepared');
-   let challenge=hash('challenge',generateRootRecoveryToken());
-   assert.equal((await run('challenge',{a:link,b:challenge})).outcome,'denied');
-   assert.equal((await run('confirm_link',{a:link})).outcome,'link_confirmed');
-   assert.equal((await run('challenge',{a:link,b:challenge})).outcome,'challenge_created');
+   const linkToken=inbox[1].token,link=hash('link',linkToken);
+   let nextLink;
+   assert.equal((await mail.queueChallenge(rootId,generateRootRecoveryToken())).outcome,'denied');
+   assert.equal((await mail.queueChallenge(rootId,linkToken)).outcome,'challenge_queued');
+   assert.equal((await mail.queueChallenge(rootId,linkToken)).outcome,'denied');
+   const [challengeJob]=await mail.list(rootId);
+   assert.deepEqual(await mail.dispatch(rootId,challengeJob,mailSender),{outcome:'accepted'});
+   assert.equal(inbox[2].purpose,'challenge');
+   let challenge=hash('challenge',inbox[2].token);
    const wrong=hash('code','000000'),grant=hash('grant',generateRootRecoveryToken());
    const recoveryAttempt=(b=wrong,a=challenge)=>run('attempt',{a,b,c:grant});
    assert.equal((await recoveryAttempt(wrong,hash('challenge',generateRootRecoveryToken()))).failures,'0');
@@ -449,14 +494,25 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    const eleventh=await recoveryAttempt();assert.equal(eleventh.failures,'11');
    assert.ok(Math.abs(Date.parse(eleventh.blockedUntil)-Date.now()-86400000)<10000);
    await admin.query("UPDATE sabora.root_recovery_state_candidate SET link_expires_at=clock_timestamp()+interval '1 hour' WHERE singleton");
-   const failedLink=hash('link',generateRootRecoveryToken());
-   assert.equal((await run('prepare_link',{a:failedLink})).outcome,'link_prepared');
-   assert.equal((await run('reject_link',{a:failedLink})).outcome,'link_rejected');
+   assert.equal((await mail.queueLink(rootId)).outcome,'link_queued');
+   const [failedJob]=await mail.list(rootId);sendMode='rejected';
+   assert.deepEqual(await mail.dispatch(rootId,failedJob,mailSender),{outcome:'rejected'});
    const preserved=(await admin.query('SELECT link_hash,pending_link_hash,failures FROM sabora.root_recovery_state_candidate')).rows[0];
    assert.deepEqual(preserved,{link_hash:link,pending_link_hash:null,failures:'11'});
-   assert.equal((await run('prepare_link',{a:nextLink})).outcome,'link_prepared');
-   assert.equal((await run('confirm_link',{a:failedLink})).outcome,'denied');
-   assert.equal((await run('confirm_link',{a:nextLink})).failures,'11');
+   assert.equal((await mail.queueLink(rootId)).outcome,'link_queued');
+   const [uncertainJob]=await mail.list(rootId);sendMode='unknown';
+   assert.deepEqual(await mail.dispatch(rootId,uncertainJob,mailSender),{outcome:'unknown'});
+   assert.equal((await mail.dispatch(rootId,uncertainJob,mailSender)).outcome,'denied');
+   assert.equal((await mail.queueLink(rootId)).outcome,'denied');
+   assert.equal((await mail.promote(rootId,uncertainJob)).outcome,'denied');
+   assert.equal((await admin.query('SELECT link_hash FROM sabora.root_recovery_state_candidate')).rows[0].link_hash,link);
+   // Advance the pending expiry only in the isolated DBA fixture.
+   await admin.query("UPDATE sabora.root_recovery_state_candidate SET pending_link_expires_at=clock_timestamp()-interval '1 second' WHERE singleton");
+   assert.equal((await mail.queueLink(rootId)).outcome,'link_queued');
+   const [nextJob]=await mail.list(rootId);sendMode='accepted';
+   assert.deepEqual(await mail.dispatch(rootId,nextJob,mailSender),{outcome:'accepted',promotion:'link_confirmed'});
+   nextLink=hash('link',inbox.at(-1).token);
+   assert.equal((await admin.query('SELECT failures FROM sabora.root_recovery_state_candidate')).rows[0].failures,'11');
    assert.equal((await recoveryAttempt()).outcome,'blocked');
    const resetResponse=rootPage.waitForResponse(r=>r.url().endsWith(securityPath+'/verify')&&r.request().method()==='POST');
    await securityPanel.getByRole('button',{name:'Restablecer contador con passkey'}).click();
@@ -483,7 +539,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await attempt(otherId,grantId,code,'/verify')).statusCode,200);
    const durable=(await admin.query('SELECT failures,registration_pending,grant_hash FROM sabora.root_recovery_state_candidate')).rows[0];
    assert.deepEqual(durable,{failures:'0',registration_pending:true,grant_hash:null});
-   assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.root_recovery_audit_candidate WHERE action='attempt' AND outcome='denied' AND failures>0")).rows[0].n,11);
+   assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.root_recovery_audit_candidate WHERE action='attempt' AND outcome='code_mismatch'")).rows[0].n,11);
    await assert.rejects(recoveryPool.query('DELETE FROM sabora.root_recovery_audit_candidate'),e=>e.code==='42501');
    const replacementId=Buffer.from('fixture-root-replacement').toString('base64url');
    const replacementCode=generateRootRecoveryCode(),completion={a:grant,b:hashRootCredentialId(replacementId),c:hash('code',replacementCode)};
@@ -499,6 +555,20 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    const restored=await attempt(rootId,grantId,code,'/verify',replacementId);
    assert.equal(restored.statusCode,200,restored.body);assert.equal(restored.json().role,'root');
    assert.equal((await run('challenge',{a:nextLink,b:finalChallenge})).outcome,'denied');
+   // Changing the confirmed recipient requires the replacement credential,
+   // leaves the replacement code intact and queues notice to the old address.
+   const newContext=()=>({...securityContext(),credentialHash:hashRootCredentialId(replacementId)});
+   await assert.rejects(mail.stage({...securityContext(),email:'new-security@demo.invalid'}),e=>e.code==='42501');
+   assert.equal((await mail.stage({...newContext(),email:'new-security@demo.invalid'})).outcome,'verification_queued');
+   const [newVerify]=await mail.list(rootId);
+   assert.deepEqual(await mail.dispatch(rootId,newVerify,mailSender),{outcome:'accepted'});
+   const proof=inbox.at(-1).token;
+   assert.deepEqual(await mail.confirm({...newContext(),proof,initial:false}),{outcome:'email_changed'});
+   const afterChange=(await admin.query('SELECT code_hash,email_hash,failures FROM sabora.root_recovery_state_candidate')).rows[0];
+   assert.deepEqual(afterChange,{code_hash:hash('code',replacementCode),email_hash:hash('email','new-security@demo.invalid'),failures:'0'});
+   for(const job of await mail.list(rootId))assert.equal((await mail.dispatch(rootId,job,mailSender)).outcome,'accepted');
+   assert.ok(inbox.some(m=>m.email==='security@demo.invalid'&&m.purpose==='notice'&&m.token===null));
+   assert.ok(inbox.some(m=>m.email==='new-security@demo.invalid'&&m.purpose==='link'));
   }finally{/* pool owned by test.after */}
   const audit=(await admin.query(`SELECT action,actor_kind FROM sabora.staff_lifecycle_audit
     WHERE enrollment_id=$1 ORDER BY occurred_at`,[id])).rows;
