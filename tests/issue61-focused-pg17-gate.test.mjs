@@ -19,12 +19,18 @@ test('focused issue61 PG17 scope reuses one migrated cluster and exits before un
  const migrations=source.indexOf('for migration in supabase/migrations/*.sql');
  const focused=source.indexOf('node --test scripts/ci/h6-postgres17.test.mjs');
  const unrelated=source.indexOf('node --test scripts/ci/catalog-postgres17-driver-integration.test.mjs');
+ const focusedExit=source.indexOf(' exit 0\nfi',focused);
  const playwright=source.indexOf('playwright@1.56.1');
- assert.ok(migrations>=0&&focused>migrations&&unrelated>focused&&playwright>unrelated);
- assert.match(source.slice(focused,unrelated),/exit 0/);
- assert.match(source.slice(migrations,unrelated),/r\.resolve\('@playwright\/test'\)/);
- assert.match(source.slice(focused,unrelated),/--test-name-pattern/);
- assert.match(source.slice(focused,unrelated),/PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey/);
+ const chromium=source.indexOf('playwright" install chromium',playwright);
+ const genesis=source.indexOf('node --test scripts/ci/staff-root-bootstrap-postgres17.test.mjs');
+ // Focused scope must exit before full-scope downloads AND every unrelated
+ // suite. Full-scope Chromium is now required by the genesis PWA test.
+ assert.ok(migrations>=0&&focused>migrations&&focusedExit>focused&&
+  playwright>focusedExit&&chromium>playwright&&genesis>chromium&&unrelated>genesis);
+ assert.equal(source.indexOf('playwright@1.56.1',playwright+1),-1);
+ assert.match(source.slice(migrations,focusedExit),/r\.resolve\('@playwright\/test'\)/);
+ assert.match(source.slice(focused,focusedExit),/--test-name-pattern/);
+ assert.match(source.slice(focused,focusedExit),/PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey/);
  assert.match(h6Source,/focusedWorkspaceDriver/);
  assert.match(h6Source,/apiRequire\('pg\/package\.json'\)\.version==='8\.16\.3'/);
  assert.match(rootSource,/focusedWorkspaceDriver/);
