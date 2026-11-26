@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,generateKeyPairSync,sign} from 'node:crypto';
 import {isolatedBrowserEnvironment,findDisposableIdentity,isDisposableIdentity,
- verifyExerciseAssertion,isRevokedExerciseCredential} from '../scripts/ops/sabora-hosted-auth-exercise-safety.mjs';
+ verifyExerciseAssertion,isRevokedExerciseCredential,authExerciseErrorCode} from '../scripts/ops/sabora-hosted-auth-exercise-safety.mjs';
 const email='sabora-auth-probe-323e4567-e89b-42d3-a456-426614174000@example.com';
 const subject='123e4567-e89b-42d3-a456-426614174000';
 const other='223e4567-e89b-42d3-a456-426614174000';
@@ -47,4 +47,8 @@ test('revocation evidence requires a locally valid assertion and a documented pr
  assert.equal(isRevokedExerciseCredential({denied:true,status:404,code:'webauthn_credential_not_found'}),true);
  assert.equal(isRevokedExerciseCredential({denied:true,status:400,code:'webauthn_challenge_expired'}),false);
  assert.equal(isRevokedExerciseCredential({denied:true,status:404,code:'unknown'}),false);
+ assert.equal(authExerciseErrorCode({code:400,error_code:'webauthn_verification_failed'}),'webauthn_verification_failed');
+ assert.equal(authExerciseErrorCode({code:'user_not_found'}),'user_not_found');
+ assert.equal(authExerciseErrorCode({code:'user_not_found',error_code:'webauthn_credential_not_found'}),'unknown');
+ assert.equal(authExerciseErrorCode({code:'synthetic_sensitive_value'}),'unknown');
 });

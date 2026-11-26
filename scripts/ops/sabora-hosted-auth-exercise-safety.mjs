@@ -5,6 +5,19 @@ import {createHash,createPublicKey,verify} from 'node:crypto';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FIXTURE=/^sabora-auth-probe-[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}@example\.com$/i;
 const BROWSER_ENV=['PATH','HOME','USERPROFILE','SYSTEMROOT','WINDIR','TMP','TEMP','TMPDIR','LANG','LC_ALL','DISPLAY','WAYLAND_DISPLAY','XDG_RUNTIME_DIR','XDG_CACHE_HOME','LD_LIBRARY_PATH'];
+const SAFE_PROVIDER_CODES=new Set(['bad_jwt','email_exists','email_not_confirmed','otp_expired',
+ 'session_not_found','too_many_passkeys','user_not_found','validation_failed','passkey_disabled',
+ 'webauthn_challenge_expired','webauthn_challenge_not_found','webauthn_credential_exists',
+ 'webauthn_credential_not_found','webauthn_verification_failed']);
+
+export function authExerciseErrorCode(body){
+ const legacy=body?.error_code;
+ const modern=typeof body?.code==='string'?body.code:undefined;
+ if(legacy!==undefined&&modern!==undefined&&legacy!==modern)return 'unknown';
+ const code=modern??legacy;
+ return SAFE_PROVIDER_CODES.has(code)?code:'unknown';
+}
+
 export function isolatedBrowserEnvironment(environment,excluded=[]){
  const allowed={};
  for(const name of BROWSER_ENV){

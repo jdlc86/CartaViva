@@ -6,15 +6,12 @@ import {createRequire} from 'node:module';
 import {resolve} from 'node:path';
 import {verifySupabaseAccessToken} from '../../apps/api/src/auth.mjs';
 import {isolatedBrowserEnvironment,findDisposableIdentity,isDisposableIdentity,
- verifyExerciseAssertion,isRevokedExerciseCredential,createExerciseDevice} from './sabora-hosted-auth-exercise-safety.mjs';
+ verifyExerciseAssertion,isRevokedExerciseCredential,createExerciseDevice,
+ authExerciseErrorCode} from './sabora-hosted-auth-exercise-safety.mjs';
 const issuer='https://byhvmumqivmunkmomhup.supabase.co/auth/v1';
 const origin='https://gestion-sabora.allaiso.com:8443',rpId=new URL(origin).hostname;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const check=(value,code)=>{if(!value)throw Error(code);};
-const SAFE_PROVIDER_CODES=new Set(['bad_jwt','email_exists','email_not_confirmed','otp_expired',
- 'session_not_found','too_many_passkeys','user_not_found','validation_failed','passkey_disabled',
- 'webauthn_challenge_expired','webauthn_challenge_not_found','webauthn_credential_exists',
- 'webauthn_credential_not_found','webauthn_verification_failed']);
 if(process.argv.slice(2).join(' ')!=='--confirm-provider-only'||process.env.CI==='true'||
  process.env.GITHUB_ACTIONS||process.stdin.isTTY||process.env.DEBUG||process.env.NODE_DEBUG||process.env.PWDEBUG)
  throw Error('operator_only_read_keys_from_private_stdin');
@@ -34,7 +31,7 @@ async function call(path,{method='GET',admin=false,token,data,deny=[]}={}){
   ...(data===undefined?{}:{body:JSON.stringify(data)})});
  if(!response.ok){
   let body=null;try{body=await response.json();}catch{}
-  const code=SAFE_PROVIDER_CODES.has(body?.error_code)?body.error_code:'unknown';
+  const code=authExerciseErrorCode(body);
   if(deny.includes(response.status))return {denied:true,status:response.status,code};
   throw Error('auth_http_'+response.status+'_'+code);
  }
