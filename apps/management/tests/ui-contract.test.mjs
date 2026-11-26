@@ -34,6 +34,17 @@ test('management keeps network access inside the injected authenticated operatio
   const managementTransport = readFileSync(new URL('../src/m3-authenticated-management-gateway.js', import.meta.url), 'utf8');
   const staffTransport = readFileSync(new URL('../src/staff-gateway-auth.js', import.meta.url), 'utf8');
   const qrRenderer = readFileSync(new URL('../src/components/TableQrOneTime.tsx', import.meta.url), 'utf8');
+  const enrollmentTransport = readFileSync(new URL('../src/staff-enrollment-gateway.ts', import.meta.url), 'utf8');
+  const enrollmentView = readFileSync(new URL('../src/views/StaffEnrollmentView.tsx', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
+  assert.match(enrollmentTransport, /fetchImpl/);
+  assert.match(enrollmentTransport, /credentials:'same-origin'/);
+  assert.match(enrollmentTransport, /redirect:'error'/);
+  assert.match(enrollmentTransport, /\/api\/v1\/staff\/enrollment/);
+  assert.doesNotMatch(enrollmentTransport, /\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\bEventSource\b/);
+  assert.match(enrollmentView, /gateway\.request\('accept'/);
+  assert.match(enrollmentView, /gateway\.request\('register'/);
+  assert.match(main, /gateway=\{createStaffEnrollmentGateway\(window\.fetch\.bind\(window\)\)\}/);
   const defaultPreview = sources.filter(({path}) => !path.endsWith('order-operations-authenticated-gateway.js') &&
     !path.endsWith('order-operations-gateway.js') &&
     !path.endsWith('m3-authenticated-management-gateway.js') && !path.endsWith('main.tsx'))

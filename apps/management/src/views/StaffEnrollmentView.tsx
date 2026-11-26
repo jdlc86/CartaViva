@@ -1,6 +1,6 @@
 import React,{useRef,useState} from 'react';
 
-const ROOT='/api/v1/staff/enrollment';
+import {EnrollmentError,type StaffEnrollmentGateway} from '../staff-enrollment-gateway';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TOKEN=/^[A-Za-z0-9_-]{32,512}$/;
 type Invitation={enrollmentId:string;inviteToken:string;authProof:string};
@@ -17,21 +17,11 @@ export function takeStaffEnrollmentInvitation():Invitation|null {
   return UUID.test(enrollmentId)&&TOKEN.test(inviteToken)&&TOKEN.test(authProof)
     ?{enrollmentId:enrollmentId.toLowerCase(),inviteToken,authProof}:null;
 }
-class EnrollmentError extends Error{
-  constructor(readonly status:number){super('staff_enrollment_failed');}
-}
-async function request(action:string,body:unknown){
-  const response=await fetch(ROOT+'/'+action,{method:'POST',credentials:'same-origin',
-    cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(!response.ok)throw new EnrollmentError(response.status);
-  return response.status===204?null:response.json();
-}
 const supportsRegistration=()=>window.isSecureContext&&typeof PublicKeyCredential!=='undefined'&&
   typeof PublicKeyCredential.parseCreationOptionsFromJSON==='function'&&
   typeof PublicKeyCredential.prototype.toJSON==='function';
 
-export function StaffEnrollmentView({invitation}:{invitation:Invitation|null}){
+export function StaffEnrollmentView({invitation,gateway}:{invitation:Invitation|null;gateway:StaffEnrollmentGateway}){
   const material=useRef(invitation);
   const current=useRef<string|null>(null);
   const busy=useRef(false);
@@ -55,7 +45,7 @@ export function StaffEnrollmentView({invitation}:{invitation:Invitation|null}){
     const payload=material.current;material.current=null;
     update('accepting','Comprobando la invitación.');
     try{
-      const result=await request('accept',{...payload,correlationId:crypto.randomUUID()});
+      const result=await gateway.request('accept',{...payload,correlationId:crypto.randomUUID()});
       if(result?.enrollmentId!==payload.enrollmentId||result?.state!=='accepted')throw new EnrollmentError(503);
       current.current=result.enrollmentId;
       update('ready','Invitación aceptada. Registra la passkey de este dispositivo.');
@@ -67,7 +57,7 @@ export function StaffEnrollmentView({invitation}:{invitation:Invitation|null}){
     update('registering','Completa la verificación en tu dispositivo.');
     let submitted=false;
     try{
-      const result=await request('options',{});
+      const result=await gateway.request('options',{});
       if(result?.options?.rp?.id!==window.location.hostname||
         result.options?.authenticatorSelection?.userVerification!=='required'||
         typeof result.ticket!=='string')throw new EnrollmentError(503);
@@ -75,7 +65,7 @@ export function StaffEnrollmentView({invitation}:{invitation:Invitation|null}){
       const credential=await navigator.credentials.create({publicKey});
       if(!(credential instanceof PublicKeyCredential))throw new DOMException('cancelled','NotAllowedError');
       submitted=true;
-      const registered=await request('register',{ticket:result.ticket,credential:credential.toJSON(),
+      const registered=await gateway.request('register',{ticket:result.ticket,credential:credential.toJSON(),
         correlationId:crypto.randomUUID()});
       if(registered?.enrollmentId!==current.current||registered?.state!=='registered')throw new EnrollmentError(503);
       current.current=null;
@@ -90,7 +80,7 @@ export function StaffEnrollmentView({invitation}:{invitation:Invitation|null}){
     if(busy.current)return;
     busy.current=true;material.current=null;current.current=null;
     update('cancelling','Cerrando el enrolamiento.');
-    try{await request('cancel',{});}catch{
+    try{await gateway.request('cancel',{});}catch{
       // The local screen is left, not a claim of remote logout or revocation.
     }
     window.location.replace(window.location.pathname);

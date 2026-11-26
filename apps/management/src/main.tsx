@@ -24,6 +24,7 @@ import {TablesView} from './views/TablesView';
 import type {TableChangeQueueGateway} from './views/TableChangeRequestsPanel';
 import {TeamView} from './views/TeamView';
 import {StaffEnrollmentView,takeStaffEnrollmentInvitation} from './views/StaffEnrollmentView';
+import {createStaffEnrollmentGateway} from './staff-enrollment-gateway';
 import {registerManagementServiceWorker} from './pwa';
 import type {StaffGatewayAuth} from './staff-gateway-auth.js';
 import {createStaffSessionFetch,endStaffSession,readStaffSession,signInWithStaffPasskey,
@@ -484,7 +485,8 @@ if (typeof document !== 'undefined') {
   const element = document.getElementById('root');
   if(element&&distributedManagement&&/^#enrolamiento(?:\?|$)/.test(window.location.hash)){
     const invitation=takeStaffEnrollmentInvitation();
-    createRoot(element).render(<StaffEnrollmentView invitation={invitation}/>);
+    createRoot(element).render(<StaffEnrollmentView invitation={invitation}
+      gateway={createStaffEnrollmentGateway(window.fetch.bind(window))}/>);
   }else if (element && distributedManagement) startStaffLogin(element);
   else if (element) renderManagement(element);
 }
