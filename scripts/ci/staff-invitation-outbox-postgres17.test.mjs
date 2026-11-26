@@ -18,6 +18,7 @@ import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction
 import {createDurableStaffLifecycleRepositoryCandidate,createStaffDirectoryDispatchReaderCandidate,DIRECTORY_OUTBOX_SQL} from '../../apps/api/src/staff-invitation-durable-lifecycle-candidate.mjs';
 import {createStaffInvitationResendSender} from '../../apps/api/src/staff-invitation-resend.mjs';
 import {createStaffVerifiedEnrollmentCandidate,STAFF_ENROLLMENT_LOGIN,VERIFIED_ACCEPT_SQL} from '../../apps/api/src/staff-verified-enrollment-candidate.mjs';
+import {registerStaffEnrollmentHttpCandidate} from '../../apps/api/src/staff-enrollment-http-candidate.mjs';
 import {preflightStaffInvitationEnqueueIdentity} from '../../apps/api/src/staff-invitation-enqueue-identity-preflight.mjs';
 import {claimCurrentStaffInvitation} from '../../apps/api/src/staff-invitation-claim-candidate.mjs';
 import {authorizeStaffInvitationDispatch,dispatchStaffInvitation} from '../../apps/api/src/staff-invitation-dispatch-guard.mjs';
@@ -1351,6 +1352,8 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
  const writer=new Pool({connectionString:connectionString({role,value:password}),max:4});
  const deliveryPool=new Pool({connectionString:connectionString({role:dispatchRole,value:password})});
  const enrollmentPool=new Pool({connectionString:connectionString({role:STAFF_ENROLLMENT_LOGIN,value:password})});
+ const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
+ const http=Fastify({logger:false});
  const key=randomBytes(32),keyId='directory_durable_custody_001',keyring={
   active:()=>({keyId,key}),resolveKey:id=>id===keyId?key:null};
  const issue=createStaffLifecycleDirectoryCapabilityIssuer({keyId:lifecycleKeyId,secret:lifecycleSecret,databaseRole:role});
@@ -1492,13 +1495,39 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
    digest(request.email),sessionId,'0'.repeat(64)]),e=>e.code==='42501');
   assert.equal((await admin.query('SELECT state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0].state,'invited');
   await assert.rejects(accept.registrationOptions({accessToken:acceptedJwt,enrollmentId:id}),e=>e.code==='42501');
-  const accepted=await accept.accept(input);
-  assert.deepEqual(accepted,{enrollmentId:id,state:'accepted',repeated:false});
+  const authProof=randomBytes(32).toString('base64url');let exchanges=0;
+  registerStaffEnrollmentHttpCandidate(http,{origin,secret:randomBytes(32),enrollment:accept,
+   exchangeInvitation:async supplied=>{
+    exchanges++;assert.deepEqual(supplied,{enrollmentId:id,authProof});
+    return {accessToken:acceptedJwt};
+   }});
+  const baseHeaders={host:new URL(origin).host,origin};
+  const post=(action,payload,headers=baseHeaders)=>http.inject({method:'POST',url:'/api/v1/staff/enrollment/'+action,headers,payload});
+  const acceptBody={enrollmentId:id,inviteToken:receivedToken,authProof,correlationId:input.correlationId};
+  assert.equal((await post('accept',acceptBody,{...baseHeaders,origin:'https://other.example.test'})).statusCode,403);
+  assert.equal((await post('accept',{...acceptBody,accessToken:acceptedJwt})).statusCode,400);
+  assert.equal(exchanges,0);
+  assert.equal((await post('options',{})).statusCode,403);
+  const accepted=await post('accept',acceptBody);
+  assert.equal(accepted.statusCode,200,accepted.body);
+  assert.deepEqual(accepted.json(),{enrollmentId:id,state:'accepted'});
+  assert.equal(accepted.headers['cache-control'],'no-store');
+  const header=accepted.headers['set-cookie'];
+  assert.match(header,/^__Host-sabora-enrollment=/);
+  assert.match(header,/Secure; HttpOnly; SameSite=Strict/);
+  assert.ok(!header.includes(acceptedJwt));
+  assert.ok(!accepted.body.includes(receivedToken));
+  assert.equal(exchanges,1);
+  const sessionCookie=header.split(';')[0],enrollmentHeaders={...baseHeaders,cookie:sessionCookie};
+  const tamperedCookie=sessionCookie.slice(0,-2)+(sessionCookie.at(-2)==='A'?'B':'A')+sessionCookie.at(-1);
+  assert.equal((await post('options',{}, {...baseHeaders,cookie:tamperedCookie})).statusCode,403);
   assert.deepEqual(await accept.accept(input),{enrollmentId:id,state:'accepted',repeated:true});
   const acceptedRow=(await admin.query('SELECT auth_user_id,state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0];
   assert.deepEqual(acceptedRow,{auth_user_id:invitedUser,state:'accepted'});
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[invitedUser])).rows[0].n,0);
-  const registration=await accept.registrationOptions({accessToken:acceptedJwt,enrollmentId:id});
+  const optionsResponse=await post('options',{},enrollmentHeaders);
+  assert.equal(optionsResponse.statusCode,200,optionsResponse.body);
+  const registration=optionsResponse.json();
   const rawId=randomBytes(32).toString('base64url');
   const encodeClient=challenge=>Buffer.from(JSON.stringify({type:'webauthn.create',origin,challenge})).toString('base64url');
   // Explicit mock attestation: the external verification fixture does NOT
@@ -1511,8 +1540,11 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
   await assert.rejects(accept.register({...regInput,credential:{...credential,
    response:{...credential.response,clientDataJSON:encodeClient('wrong')}}}),e=>e.code==='42501');
   assert.equal(providerRegistrations,0);
-  const registrationResult=await accept.register(regInput);
-  assert.deepEqual(registrationResult,{enrollmentId:id,state:'registered',repeated:false});
+  const registrationResponse=await post('register',{ticket:regInput.ticket,credential,correlationId:regInput.correlationId},enrollmentHeaders);
+  assert.equal(registrationResponse.statusCode,200,registrationResponse.body);
+  assert.deepEqual(registrationResponse.json(),{enrollmentId:id,state:'registered'});
+  assert.match(registrationResponse.headers['set-cookie'],/Max-Age=0/);
+  assert.equal((await post('options',{},enrollmentHeaders)).statusCode,403);
   assert.equal(providerRegistrations,1);
   const receipt=(await admin.query('SELECT auth_user_id,auth_session_id,challenge_id,provider_credential_id FROM sabora.staff_registration_receipts_candidate WHERE enrollment_id=$1',[id])).rows[0];
   assert.deepEqual(receipt,{auth_user_id:invitedUser,auth_session_id:sessionId,
@@ -1524,5 +1556,5 @@ test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are 
    correlationId:'directory_durable_revoke_001'});
   assert.equal((await readDelivery({jobId,fence:claim.fence})).authorized,false);
   await assert.rejects(accept.accept(input),e=>e.code==='42501');
- }finally{await Promise.all([writer.end(),deliveryPool.end(),enrollmentPool.end()]);}
+ }finally{await Promise.all([writer.end(),deliveryPool.end(),enrollmentPool.end(),http.close()]);}
 });
