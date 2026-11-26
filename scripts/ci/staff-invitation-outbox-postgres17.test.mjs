@@ -11,7 +11,7 @@ import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {setTimeout as delay} from 'node:timers/promises';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
-import {createStaffLifecycleCapabilityIssuer,createStaffLifecycleDirectoryCapabilityIssuer} from '../../apps/api/src/staff-lifecycle-capability.mjs';
+import {createStaffLifecycleCapabilityIssuer,createStaffLifecycleDirectoryCapabilityIssuer,createStaffInviteeEmailHasher} from '../../apps/api/src/staff-lifecycle-capability.mjs';
 import {createStaffLifecycleRepository} from '../../apps/api/src/staff-lifecycle-repository.mjs';
 import {createStaffLifecycleCoordinator,STAFF_INVITATION_DELIVERY_TOKEN} from '../../apps/api/src/staff-lifecycle-coordinator.mjs';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
@@ -26,8 +26,8 @@ import {createVerifiedStaffDirectoryFromPool} from '../../apps/api/src/staff-dir
 import {registerStaffDirectoryHttpCandidate} from '../../apps/api/src/staff-directory-http-candidate.mjs';
 import {createOwnershipCapabilityIssuer,createOwnershipGovernanceRepository,registerOwnershipGovernanceHttp,assertOwnershipRuntimeIdentity,OWNERSHIP_ROLE,OWNERSHIP_SQL} from '../../apps/api/src/ownership-governance-candidate.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
-import {createStaffAdminSubjectResolverCandidate,STAFF_ADMIN_SUBJECT_SQL} from '../../apps/api/src/staff-admin-subject-candidate.mjs';
-import {registerDurableStaffAdminHttpCandidate} from '../../apps/api/src/staff-durable-admin-http-candidate.mjs';
+import {STAFF_ADMIN_SUBJECT_SQL} from '../../apps/api/src/staff-admin-subject-candidate.mjs';
+import {createVerifiedDurableStaffAdminCandidate} from '../../apps/api/src/staff-durable-admin-composition.mjs';
 import {registerStaffEnrollmentHttpCandidate} from '../../apps/api/src/staff-enrollment-http-candidate.mjs';
 import {pathToFileURL} from 'node:url';
 import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
@@ -1379,6 +1379,7 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
  const key=randomBytes(32),keyId='directory_durable_custody_001',keyring={
   active:()=>({keyId,key}),resolveKey:id=>id===keyId?key:null};
  const issue=createStaffLifecycleDirectoryCapabilityIssuer({keyId:lifecycleKeyId,secret:lifecycleSecret,databaseRole:role});
+ const emailHashSecret=randomBytes(32),hashInviteeEmail=createStaffInviteeEmailHasher({secret:emailHashSecret});
  const durable=createDurableStaffLifecycleRepositoryCandidate({keyring});
  const verified={verifiedIdentity:{userId:ownerId},verifiedStaff:{userId:ownerId,role:'admin'}};
  const config={withTransaction:createPostgresTransaction({pool:writer}),repository:durable,
@@ -1389,7 +1390,16 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
  // cryptographically verifies the management browser's virtual assertion.
  const readerId=randomUUID(),invitedUser=randomUUID(),otherUser=randomUUID(),sessionId=randomUUID();
  await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES ($1,'admin','active')",[readerId]);
- const resolveSubject=createStaffAdminSubjectResolverCandidate({query:(...args)=>writer.query(...args),keyId:lifecycleKeyId,secret:lifecycleSecret,databaseRole:role});
+ const configAdmin={pool:writer,role,keyId:lifecycleKeyId,secret:lifecycleSecret,emailHashSecret,keyring};
+ const durableAdmin=await createVerifiedDurableStaffAdminCandidate(configAdmin);
+ await admin.query('GRANT EXECUTE ON FUNCTION sabora.transition_staff_lifecycle_with_directory_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text) TO '+role);
+ try{
+  await assert.rejects(durableAdmin.readiness(),/staff_durable_admin_sql_identity_rejected/);
+  await assert.rejects(createVerifiedDurableStaffAdminCandidate(configAdmin),/staff_durable_admin_sql_identity_rejected/);
+ }finally{
+  await admin.query('REVOKE EXECUTE ON FUNCTION sabora.transition_staff_lifecycle_with_directory_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text) FROM '+role);
+ }
+ await durableAdmin.readiness();
  // Register all routes before the first inject/listen. The enrollment
  // fixture is populated only after the actual invitation is dispatched.
  const origin='https://localhost:4188';
@@ -1412,7 +1422,7 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
   issueCapability:createOwnershipCapabilityIssuer({keyId:'durable_staff_ownership_ci',secret:lifecycleSecret,databaseRole:ownershipRole})});
  registerStaffDirectoryHttpCandidate(http,{forRoles,directory});
  registerOwnershipGovernanceHttp(http,{forRoles,repository:ownership});
- registerDurableStaffAdminHttpCandidate(http,{keyring,lifecycleConfig:config,resolveSubject,forRoles});
+ durableAdmin.register(http,{forRoles});
  passkey.register(http,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,
   ownership:true,staffDirectory:true,staffLifecycle:true}});
  let manager,nonOwner,ownerHeaders,readerHeaders;
@@ -1587,7 +1597,7 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
      providerRegistrations++;
      return {id:registeredCredential};
     }},
-   keyId:lifecycleKeyId,secret:lifecycleSecret,hashInviteeEmail:digest});
+   keyId:lifecycleKeyId,secret:lifecycleSecret,hashInviteeEmail});
   let input={accessToken:acceptedJwt,enrollmentId:id,inviteToken:receivedToken,
    correlationId:'directory_verified_accept_001'};
   await assert.rejects(accept.accept({...input,accessToken:wrongJwt}),e=>e.code==='42501');
