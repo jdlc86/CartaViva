@@ -930,8 +930,8 @@ BEGIN
  IF p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
  OR p_action IS NULL OR p_action NOT IN ('queue','list','claim','finish','consume')
  OR ((p_action='list')<>(p_intent IS NULL))
- OR session_user::text IS DISTINCT FROM CASE WHEN p_action IN ('queue','consume')
-  THEN 'sabora_root_recovery_login' ELSE 'sabora_root_recovery_mail_login' END
+ OR session_user::text IS DISTINCT FROM (CASE WHEN p_action IN ('queue','consume')
+  THEN 'sabora_root_recovery_login' ELSE 'sabora_root_recovery_mail_login' END)
  OR p_payload IS NULL OR octet_length(p_payload)>4096
  OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
  OR p_issued IS NULL OR p_expires IS NULL OR p_expires::numeric-p_issued::numeric NOT BETWEEN 1 AND 15000

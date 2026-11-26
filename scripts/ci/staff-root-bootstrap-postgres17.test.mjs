@@ -66,7 +66,13 @@ test.before(async()=>{
  for(const filename of ['staff_invitation_outbox_schema_pg17.sql','staff_invitation_custody_pg17.sql',
   'staff_invitation_custody_restricted_pg17.sql','staff_invitation_dispatch_envelope_pg17.sql',
   'staff_invitation_directory_outbox_pg17.sql','staff_first_admin_durable_pg17.sql','staff_root_recovery_pg17.sql'])
-  await admin.query(await readFile(new URL('../../docs/security/sql-candidates/'+filename,import.meta.url),'utf8'));
+  {
+   const sql=await readFile(new URL('../../docs/security/sql-candidates/'+filename,import.meta.url),'utf8');
+   try{await admin.query(sql);}catch(error){
+    const position=Number(error.position),line=Number.isSafeInteger(position)&&position>0?sql.slice(0,position-1).split('\n').length:null;
+    throw Error(`candidate SQL installation failed: ${filename}, SQLSTATE ${error.code??'unknown'}, line ${line??'unknown'}`,{cause:error});
+   }
+  }
  await admin.query(`CREATE ROLE ${login} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${password}';
  CREATE ROLE ${reader} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${password}';
  GRANT USAGE ON SCHEMA sabora TO ${login},${reader};
