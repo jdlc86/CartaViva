@@ -153,3 +153,8 @@ suspendido y vigencias se distinguen de lo expresamente confirmado; la
 revocación irreversible previa se mantiene. Pendiente implementar y probar,
 con reutilización de outbox/enrolamiento y sin otro PR. No se ha autorizado
 prueba alojada ni operación real. No se altera el mecanismo de ROOT.
+
+
+## S54-14 — Estabilización de la batería ROOT antes de ampliar recuperación de personal
+
+Se consulta CI de los cortes S54-10..13. S54-10 (`9279774e`): Bootstrap PASS, web-publication PASS, navegador gestión, cliente, instalabilidad y gate funcional PASS; validate todavía en ejecución en la consulta. S54-11 (`cd31d163`) y S54-12 (`9b365c54`): 5/7 controles aplicables PASS, validate y generate-lockfile FAIL. En ambos falla la comprobación de sintaxis del mismo ensayo integrado antes de su ejecución, por redeclaración de `const proof` en el mismo ámbito (log [Bootstrap S54-12](https://github.com/jdlc86/CartaViva/actions/runs/45890356039/job/140151205873), [validate S54-12](https://github.com/jdlc86/CartaViva/actions/runs/45890356047/job/140151206372)). Se renombra únicamente la función de evidencia del fixture a `fixtureEvidence`; se mantienen todas las comprobaciones y puertas. S54-13 documental contiene el mismo código anterior y no constituye evidencia nueva. No se modifica producción, SQL, normativa ni se abre otro PR. El nuevo SHA debe pasar íntegramente CI antes de ampliar el candidato. La recuperación no ROOT aprobada en S54-13 sigue pendiente de implementación; no se mezcla con un candidato todavía sin estabilizar. H1-A parcial, NO-GO técnico/operativo.

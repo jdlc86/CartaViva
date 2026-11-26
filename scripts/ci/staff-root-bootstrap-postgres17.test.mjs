@@ -704,23 +704,23 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await run('complete',{...completion,b:hashRootCredentialId(genesisCredential)})).outcome,'registration_pending');
    // No finalization on an arbitrary credential, even from an internal
    // signed command. Persist the expected binding before the remote step.
-   const proof=label=>createHash('sha256').update(label).digest('hex');
+   const fixtureEvidence=label=>createHash('sha256').update(label).digest('hex');
    assert.equal((await run('complete',completion)).outcome,'registration_pending');
-   assert.equal((await run('record_registration',{a:grant,b:completion.b,c:proof('early')})).outcome,'registration_pending');
-   assert.equal((await run('prepare_registration',{a:grant,b:hashRootCredentialId(genesisCredential),c:proof('ceremony')})).outcome,'registration_pending');
-   assert.equal((await run('prepare_registration',{a:grant,b:completion.b,c:proof('ceremony')})).outcome,'registration_prepared');
+   assert.equal((await run('record_registration',{a:grant,b:completion.b,c:fixtureEvidence('early')})).outcome,'registration_pending');
+   assert.equal((await run('prepare_registration',{a:grant,b:hashRootCredentialId(genesisCredential),c:fixtureEvidence('ceremony')})).outcome,'registration_pending');
+   assert.equal((await run('prepare_registration',{a:grant,b:completion.b,c:fixtureEvidence('ceremony')})).outcome,'registration_prepared');
    await admin.query("UPDATE sabora.root_recovery_state_candidate SET pending_registration_deadline=clock_timestamp()-interval '1 second' WHERE singleton");
    assert.equal((await run('expire_unprepared')).outcome,'registration_pending');
    assert.equal((await state()).statusCode,401);
-   assert.equal((await run('prepare_registration',{a:grant,b:hashRootCredentialId(Buffer.from('unbound').toString('base64url')),c:proof('other')})).outcome,'registration_pending');
-   assert.equal((await run('record_revocation',{a:grant,b:completion.b,c:proof('early')})).outcome,'registration_pending');
-   assert.equal((await run('record_registration',{a:grant,b:hashRootCredentialId(backupId),c:proof('wrong')})).outcome,'registration_pending');
+   assert.equal((await run('prepare_registration',{a:grant,b:hashRootCredentialId(Buffer.from('unbound').toString('base64url')),c:fixtureEvidence('other')})).outcome,'registration_pending');
+   assert.equal((await run('record_revocation',{a:grant,b:completion.b,c:fixtureEvidence('early')})).outcome,'registration_pending');
+   assert.equal((await run('record_registration',{a:grant,b:hashRootCredentialId(backupId),c:fixtureEvidence('wrong')})).outcome,'registration_pending');
    // Restart preserves the pending operation and its exact binding.
    kernel=createRootRecoveryKernelCandidate(config);
-   assert.equal((await run('record_registration',{a:grant,b:completion.b,c:proof('provider-registration-fixture')})).outcome,'registration_recorded');
+   assert.equal((await run('record_registration',{a:grant,b:completion.b,c:fixtureEvidence('provider-registration-fixture')})).outcome,'registration_recorded');
    assert.equal((await run('complete',completion)).outcome,'registration_pending');
    assert.equal((await state()).statusCode,401);
-   assert.equal((await run('record_revocation',{a:grant,b:completion.b,c:proof('provider-revocation-fixture')})).outcome,'revocation_recorded');
+   assert.equal((await run('record_revocation',{a:grant,b:completion.b,c:fixtureEvidence('provider-revocation-fixture')})).outcome,'revocation_recorded');
    // These receipts represent fixture evidence, not actual remote effects.
    assert.equal((await run('complete',completion)).outcome,'completed');
    const recoveryNotice=(await admin.query("SELECT id,purpose,token_hash,token_envelope FROM sabora.root_recovery_mail_job_candidate WHERE purpose='recovered'")).rows;
