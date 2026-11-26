@@ -524,7 +524,7 @@ BEGIN
   END IF;
  ELSIF p_action='queue_link' THEN
   IF c.root_user_id=p_actor AND c.email_hash=s.email_hash AND NOT s.registration_pending
-   AND (s.link_hash IS NULL OR s.link_expires_at<=v_now+interval '1 day')
+   AND (s.link_hash IS NULL OR s.link_expires_at<=v_now+interval '1 hour')
    AND (s.pending_link_hash IS NULL OR s.pending_link_expires_at<=v_now OR EXISTS(
     SELECT 1 FROM sabora.root_recovery_mail_job_candidate old
      WHERE old.root_user_id=p_actor AND old.purpose='link' AND old.token_hash=s.pending_link_hash

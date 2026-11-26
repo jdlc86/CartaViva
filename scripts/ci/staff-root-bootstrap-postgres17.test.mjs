@@ -626,7 +626,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    // leaves the replacement code intact and queues notice to the old address.
    const newContext=()=>({...securityContext(),credentialHash:hashRootCredentialId(replacementId)});
    await assert.rejects(rootMail.stage({...securityContext(),email:'new-security@demo.invalid'}),e=>e.code==='42501');
-   assert.equal((await rootMail.stage({...newContext(),email:'new-security@demo.invalid'})).outcome,'verification_queued');
+   assert.equal((await rootMail.stage({...newContext(),email:'new-security@demo.invalid',days:1})).outcome,'verification_queued');
    const [newVerify]=await mail.list(rootId);
    assert.deepEqual(await mail.dispatch(rootId,newVerify,mailSender),{outcome:'accepted'});
    const proof=inbox.at(-1).token;
@@ -634,6 +634,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    const afterChange=(await admin.query('SELECT code_hash,email_hash,failures FROM sabora.root_recovery_state_candidate')).rows[0];
    assert.deepEqual(afterChange,{code_hash:hash('code',replacementCode),email_hash:hash('email','new-security@demo.invalid'),failures:'0'});
    for(const job of await mail.list(rootId))assert.equal((await mail.dispatch(rootId,job,mailSender)).outcome,'accepted');
+   assert.equal((await mail.queueLink(rootId)).outcome,'denied');
    assert.ok(inbox.some(m=>m.email==='security@demo.invalid'&&m.purpose==='notice'&&m.token===null));
    assert.ok(inbox.some(m=>m.email==='new-security@demo.invalid'&&m.purpose==='link'));
   }finally{/* pool owned by test.after */}
