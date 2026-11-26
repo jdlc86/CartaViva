@@ -1367,10 +1367,10 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
   issueCapability:issue,issueInvitationToken:()=>randomBytes(32).toString('base64url'),
   hashInviteeEmail:digest,verifyCredentialRegistration:async()=>{throw Error('fixture_registration_unused');},
   uuid:()=>uuid('d')};
- const lifecycle=createStaffLifecycleCoordinator(config);
  // Fixture-only authentication injection: the real SQL owner check is not
  // mocked. The production protected-route hook is independently tested.
  const readerId=randomUUID();
+ await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES ($1,'admin','active')",[readerId]);
  registerDurableStaffAdminHttpCandidate(http,{keyring,lifecycleConfig:config,
   forRoles:roles=>async(req,reply)=>{
    const role=req.headers['x-fixture-role'],actor=req.headers['x-fixture-actor'];
@@ -1469,6 +1469,11 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
   const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
   const jwk={...publicKey.export({format:'jwk'}),alg:'RS256',use:'sig',kid:'enrollment-ci'};
   const invitedUser=randomUUID(),otherUser=randomUUID(),sessionId=randomUUID();
+  const premature=await adminPost({action:'activate',enrollmentId:id,subjectUserId:invitedUser,
+   correlationId:'directory_premature_activate_001'});
+  assert.ok(premature.statusCode>=400);
+  assert.equal((await admin.query('SELECT state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0].state,'invited');
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[invitedUser])).rows[0].n,0);
   const jwt=(user,anonymous=false,expires=300)=>{
    const now=Math.floor(Date.now()/1000);
    const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
@@ -1616,6 +1621,8 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
   const activate={action:'activate',enrollmentId:id,subjectUserId:invitedUser,correlationId:'directory_durable_activate_001'};
   assert.equal((await adminPost(activate,readerId)).statusCode,403);
   assert.equal((await adminPost({...activate,subjectUserId:null})).statusCode,400);
+  assert.ok((await adminPost({...activate,subjectUserId:otherUser,correlationId:'directory_wrong_subject_001'})).statusCode>=400);
+  assert.equal((await admin.query('SELECT state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0].state,'registered');
   const activation=await adminPost(activate);
   assert.equal(activation.statusCode,200,activation.body);
   assert.deepEqual(activation.json(),{enrollmentId:id,state:'active',repeated:false});
