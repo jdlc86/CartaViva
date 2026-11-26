@@ -106,11 +106,11 @@ verificable, sin repetir acciones destructivas ni perder los factores por
 un GET o un registro fallido. No reabrir genesis ni alterar las 103
 migraciones originales.
 
-El intervalo N, vigencias exactas, almacenamiento temporal de material de
-correo, retención, parámetros antiabuso restantes y resolución de fallo total (pérdida
-del correo y del código y de todas las passkeys) siguen pendientes de
-concreción. No existe bypass por correo solo ni procedimiento de emergencia
-inventado. La recuperación de roles no ROOT, la modalidad de generación y
+El intervalo N y las vigencias de recuperación se concretan en la adenda
+final de esta sección. El almacenamiento temporal y la retención del material
+de correo se resolverán en el diseño técnico sin añadir vías de recuperación.
+No existe bypass por correo solo ni procedimiento de emergencia alternativo
+ante la pérdida de todos los factores. La recuperación de roles no ROOT, la modalidad de generación y
 entrega de las invitaciones ordinarias y el delta V2 son decisiones separadas.
 
 La aprobación es de diseño para implementar en el PR #92. No acredita
@@ -141,11 +141,62 @@ recuperación excepcional de ROOT:
   abuso, sin revelar factores ni facilitar enumeración. No crear un
   bypass por correo o ADMIN.
 
-La semántica exacta del contador después del último umbral (sin bloqueo
-permanente), la recuperación del contador mediante una passkey vigente,
-el control de solicitudes de desafíos, la agrupación de alertas y los
-plazos restantes se concretarán en el diseño técnico antes de activar.
+La semántica del contador, su restablecimiento y los plazos se fijan en la
+adenda final. El control de solicitudes de desafíos y la agrupación de alertas
+son detalles técnicos de implementación, no nuevas vías de recuperación.
 No se reduce ninguna garantía del contrato anterior. La aceptación
 integrada debe cubrir los umbrales y sus vencimientos, concurrencia,
 persistencia, rotación y acceso ordinario durante bloqueo. Este acuerdo
 no autoriza operaciones reales ni acredita implementación.
+
+
+### Adenda final aprobada — contador, vigencias y cierre del diseño (26-11-2026)
+
+El propietario acepta los parámetros propuestos y pide no incrementar más
+la complejidad del mecanismo. Se cierra la decisión funcional de recuperación
+ROOT con las siguientes reglas:
+
+| Fallos acumulados admitidos | Bloqueo resultante |
+| --- | --- |
+| 1–2 | Ninguno |
+| 3 | 15 minutos |
+| 4 | Ninguno adicional |
+| 5 | 1 hora |
+| 6–9 | Ninguno adicional |
+| 10 y cada nuevo fallo posterior | 24 horas |
+
+Al vencer el bloqueo se admite un nuevo intento. El transcurso del tiempo
+no reinicia el contador. Después de diez fallos, cada nuevo fallo admitido
+produce otro bloqueo de 24 horas; no existe bloqueo permanente. Las
+solicitudes durante un bloqueo no incrementan el contador ni prolongan
+el plazo. La verificación de ambos factores, la admisión de intentos y
+las transiciones del contador deben impedir carreras entre solicitudes.
+
+El contador y el bloqueo solo se restablecen tras recuperación excepcional
+completada correctamente, o por una acción expresa del ROOT autenticado
+mediante una passkey vigente desde Seguridad de ROOT. Solicitar otro
+desafío, rotar el enlace, cambiar IP o reiniciar el servicio no restablece
+ninguno de los dos.
+
+| Elemento | Vigencia aprobada |
+| --- | --- |
+| Enlace periódico de recuperación | 28 días por defecto, intervalo configurable |
+| Desafío de verificación reciente del correo | 10 minutos |
+| Autorización restringida de registro de nueva passkey | 5 minutos, un solo uso |
+| Código secreto de recuperación de 128 bits | Hasta uso exitoso o sustitución expresa |
+
+Se acepta el riesgo residual de que quien controle el correo compita por
+el siguiente intento disponible tras un bloqueo; la segunda passkey de
+respaldo conserva el acceso ordinario. No se añaden factores, procedimientos
+de emergencia alternativos ni requisitos de infraestructura adicionales.
+La pérdida simultánea de todos los factores no dispone de un bypass
+automático. Se conserva la totalidad de las garantías ya aprobadas.
+
+La implementación debe verificar estos parámetros y sus límites en un
+recorrido integrado con persistencia real PG17, API y PWA, incluyendo
+replay, concurrencia, rotación, caducidades, bloqueo y restablecimiento,
+revocación efectiva de credenciales y sesiones anteriores y fallos
+inciertos de proveedor. La aceptación del diseño no equivale a validación
+de código, autorización de SQL operativo, aprovisionamiento de Auth,
+envío de correo real, merge o despliegue. Los detalles técnicos de
+custodia/retención y composición no se convierten en nuevos mecanismos.
