@@ -16,3 +16,11 @@ export type StaffLifecycleGateway = Pick<StaffManagementGateway,'invite'>&StaffR
  suspendAccess(input:{enrollmentId:string;reason:string;correlationId:string}):Promise<Readonly<{enrollmentId:string;state:'suspended';repeated:boolean}>>;
 };
 export function createStaffManagementGateway(input?:{send?:typeof fetch}):StaffManagementGateway&StaffLifecycleGateway;
+
+export type FirstAdminMember={enrollmentId:string;givenName:string;familyName:string;email:string;operationalDisplayId:string;state:'invited'|'accepted'|'registered'|'active'};
+export type FirstAdminState={phase:'empty'|'closed'|'blocked';member:null}|{phase:'current';member:FirstAdminMember};
+export type StaffFirstAdminGateway=Pick<StaffLifecycleGateway,'resendInvitation'|'activateAccess'|'revokeAccess'>&{
+ read():Promise<FirstAdminState>;
+ invite(input:{email:string;givenName:string;familyName:string;correlationId:string}):Promise<Readonly<{enrollmentId:string;state:'invited';repeated:boolean}>>;
+};
+export function createStaffFirstAdminGateway(input:{send:typeof fetch}):StaffFirstAdminGateway;

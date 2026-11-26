@@ -18,7 +18,8 @@ export async function preflightStaffDurableAdminIdentity({pool,role,firstAdminBo
  if(typeof firstAdminBootstrapOnly!=='boolean'||(role===FIRST_LOGIN)!==firstAdminBootstrapOnly||
     !ROLE.test(role??'')||['postgres','anon','authenticated','service_role','public','sabora_staff_enrollment_login'].includes(role)||
     typeof pool?.connect!=='function')throw rejected();
- const routines=firstAdminBootstrapOnly?ROUTINES.map(([signature,owner])=>[signature.replace('resolve_staff_admin_subject_candidate','resolve_staff_first_admin_subject_candidate'),owner]):ROUTINES;
+ const routines=firstAdminBootstrapOnly?[...ROUTINES.map(([signature,owner])=>[signature.replace('resolve_staff_admin_subject_candidate','resolve_staff_first_admin_subject_candidate'),owner]),
+  ['sabora.read_staff_first_admin_state_candidate(text,uuid,bigint,bigint,text)','sabora_staff_lifecycle_fn_owner']]:ROUTINES;
  const tables=firstAdminBootstrapOnly?[...TABLES,'root_bootstrap_receipt','admin_ownership_audit']:TABLES;
  let client,discard;
  try{

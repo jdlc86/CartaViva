@@ -3,6 +3,8 @@ import test from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createHash,generateKeyPairSync,randomBytes,randomUUID,sign} from 'node:crypto';
 import {createRequire} from 'node:module';
+import {pathToFileURL} from 'node:url';
+import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createStaffRootBootstrapCandidate,ROOT_BOOTSTRAP_SQL} from '../../apps/api/src/staff-root-bootstrap-candidate.mjs';
 import {createStaffPasskeySession} from '../../apps/api/src/staff-passkey-session.mjs';
@@ -73,7 +75,8 @@ test.before(async()=>{
  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text),
  sabora.store_staff_invitation_custody_restricted_candidate(uuid,uuid,integer,text,text,text,text,text)
  TO ${FIRST_ADMIN_BOOTSTRAP_LOGIN},${normalLogin};
- GRANT EXECUTE ON FUNCTION sabora.resolve_staff_first_admin_subject_candidate(text,uuid,uuid,text,text,bigint,bigint,text) TO ${FIRST_ADMIN_BOOTSTRAP_LOGIN};
+ GRANT EXECUTE ON FUNCTION sabora.resolve_staff_first_admin_subject_candidate(text,uuid,uuid,text,text,bigint,bigint,text),
+ sabora.read_staff_first_admin_state_candidate(text,uuid,bigint,bigint,text) TO ${FIRST_ADMIN_BOOTSTRAP_LOGIN};
  GRANT EXECUTE ON FUNCTION sabora.resolve_staff_admin_subject_candidate(text,uuid,uuid,text,text,bigint,bigint,text) TO ${normalLogin};
  GRANT EXECUTE ON FUNCTION sabora.read_staff_invitation_directory_dispatch_candidate(uuid,uuid) TO ${dispatchLogin};
  GRANT EXECUTE ON FUNCTION sabora.accept_staff_invitation_verified_candidate(text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,text),
@@ -94,9 +97,9 @@ test.before(async()=>{
 });
 test.after(async()=>{await Promise.allSettled([pool?.end(),staffPool?.end(),firstPool?.end(),normalPool?.end(),ownershipPool?.end(),enrollmentPool?.end(),dispatchPool?.end()]);await admin.end();});
 
-test('PG17 + Fastify: ROOT and first ADMIN bootstrap, concurrency, revocation and ownership closure',async()=>{
+test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, revocation and ownership closure',{timeout:180_000},async()=>{
  const bootstrap=createStaffRootBootstrapCandidate({pool,databaseRole:login});
- const issuer='https://root-bootstrap-ci.test/auth/v1',origin='https://gestion-root-ci.test:8443';
+ const issuer='https://root-bootstrap-ci.test/auth/v1',origin='https://localhost:4189';
  const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
  const jwk={...publicKey.export({format:'jwk'}),alg:'RS256',use:'sig',kid:'ci-root'};
  const challenges=new Map(),sessions=new Map();
@@ -138,7 +141,8 @@ test('PG17 + Fastify: ROOT and first ADMIN bootstrap, concurrency, revocation an
   withTransaction:createRoleScopedPostgresTransaction({pool:ownershipPool,role:OWNERSHIP_ROLE,allowedSql:new Set([OWNERSHIP_SQL])}),
   issueCapability:createOwnershipCapabilityIssuer({keyId:ownershipKey,secret:ownershipSecret,databaseRole:ownershipLogin})});
  registerOwnershipGovernanceHttp(app,{forRoles,repository:ownership});
- passkey.register(app,{forRoles,features:{},rootBootstrap:bootstrap});
+ passkey.register(app,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,ownership:true,staffFirstAdmin:true},rootBootstrap:bootstrap});
+ let preview,browser;
  const auth='/api/v1/staff/auth';
  const post=(path,body,cookie)=>app.inject({method:'POST',url:auth+path,payload:body,
   headers:{host:new URL(origin).host,origin,...(cookie?{cookie}:{})}});
@@ -154,6 +158,7 @@ test('PG17 + Fastify: ROOT and first ADMIN bootstrap, concurrency, revocation an
   return post(endpoint,endpoint==='/verify'?{credential}:{credential,grantId:id,authorizationCode},cookie);
  }
  try{
+  const apiOrigin=await app.listen({host:'127.0.0.1',port:0});
   // The provider fixture signs JWTs and consumes challenges; it does not
   // implement actual WebAuthn cryptographic verification or hosted Auth.
   assert.equal((await attempt(rootId,grantId,code,'/verify')).statusCode,403);
@@ -180,6 +185,21 @@ test('PG17 + Fastify: ROOT and first ADMIN bootstrap, concurrency, revocation an
   const rootCookie=success.headers['set-cookie'].find(value=>value.startsWith('__Host-sabora-staff=')).split(';')[0];
   const rootHeaders={host:new URL(origin).host,origin,cookie:rootCookie,'x-sabora-staff-session':success.json().sessionId};
   const rootPost=(payload)=>app.inject({method:'POST',url:'/api/v1/staff/bootstrap/first-admin',headers:rootHeaders,payload});
+  const state=async(headers=rootHeaders)=>app.inject({method:'GET',url:'/api/v1/staff/bootstrap/first-admin',headers});
+  assert.deepEqual((await state()).json(),{phase:'empty',member:null});
+  preview=await startPublishedManagementPwa({apiOrigin,port:4189,tls:true});
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true});
+  const rootContext=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
+  const sessionCookie=(cookie)=>({name:cookie.slice(0,cookie.indexOf('=')),value:cookie.slice(cookie.indexOf('=')+1),
+   url:origin,secure:true,httpOnly:true,sameSite:'Strict'});
+  await rootContext.addCookies([sessionCookie(rootCookie)]);
+  const rootPage=await rootContext.newPage();
+  await rootPage.goto(origin+'/#equipo');
+  const panel=rootPage.getByRole('region',{name:'Primer ADMIN'});
+  await panel.getByRole('button',{name:'Invitar primer ADMIN'}).waitFor();
+  const actionResponse=()=>rootPage.waitForResponse(r=>r.url().endsWith('/api/v1/staff/bootstrap/first-admin')&&r.request().method()==='POST');
+  assert.ok([401,403].includes((await state({host:new URL(origin).host,origin})).statusCode));
   const correlation=()=>randomUUID().replaceAll('-','_');
   const inviteBody=(email,requestedRole='admin')=>({action:'invite',email,givenName:'Primer',familyName:'Admin',
    requestedRole,correlationId:correlation()});
@@ -214,15 +234,27 @@ test('PG17 + Fastify: ROOT and first ADMIN bootstrap, concurrency, revocation an
     {recorded:true,state:'delivered',retryable:false,ambiguous:false});
    return delivered.get(id);
   }
-  const pendingInput=inviteBody('revoked-first@demo.invalid');
-  const pending=await rootPost(pendingInput);assert.equal(pending.statusCode,201,pending.body);
-  const pendingId=pending.json().enrollmentId,pendingDelivery=await deliver(pendingId,1);
-  assert.ok(!pending.body.includes(pendingDelivery.token));
+  await panel.getByLabel('Nombre',{exact:true}).fill('Primer');
+  await panel.getByLabel('Apellidos',{exact:true}).fill('Admin');
+  await panel.getByLabel('Correo de invitación',{exact:true}).fill('revoked-first@demo.invalid');
+  const pendingResponse=actionResponse();await panel.getByRole('button',{name:'Invitar primer ADMIN'}).click();
+  const pending=await pendingResponse;assert.equal(pending.status(),201,await pending.text());
+  const pendingInput=pending.request().postDataJSON(),pendingJson=await pending.json();
+  const pendingId=pendingJson.enrollmentId,pendingDelivery=await deliver(pendingId,1);
+  const currentState=await state();assert.equal(currentState.statusCode,200,currentState.body);
+  assert.deepEqual(currentState.json(),{phase:'current',member:{enrollmentId:pendingId,givenName:'Primer',familyName:'Admin',
+   email:pendingInput.email,operationalDisplayId:pendingJson.operationalDisplayId,state:'invited'}});
+  assert.ok(!currentState.body.includes(pendingDelivery.token));
+  assert.ok(!(await pending.text()).includes(pendingDelivery.token));
+  await rootPage.reload();await panel.getByRole('heading',{name:'Primer Admin',exact:true}).waitFor();
   const replay=await rootPost(pendingInput);assert.equal(replay.statusCode,200,replay.body);
   assert.equal(replay.json().repeated,true);assert.equal(replay.json().enrollmentId,pendingId);
   assert.equal((await rootPost(inviteBody('parallel-denied@demo.invalid'))).statusCode,403);
-  assert.equal((await rootPost({action:'revoke',enrollmentId:pendingId,subjectUserId:null,
-   reason:'Revocación previa a la aceptación',correlationId:correlation()})).statusCode,200);
+  await panel.getByLabel('Motivo de revocación').fill('Revocación previa a la aceptación');
+  const revokedResponse=actionResponse();await panel.getByRole('button',{name:'Revocar acceso'}).click();
+  const revoked=await revokedResponse;assert.equal(revoked.status(),200,await revoked.text());
+  await panel.getByRole('button',{name:'Invitar primer ADMIN'}).waitFor();
+  assert.deepEqual((await state()).json(),{phase:'empty',member:null});
   const enrollmentSession=randomUUID();
   const mintEnrollment=()=>{
    const now=Math.floor(Date.now()/1000);
@@ -269,8 +301,12 @@ test('PG17 + Fastify: ROOT and first ADMIN bootstrap, concurrency, revocation an
    clientDataJSON:enc({type:'webauthn.create',origin,challenge:nonce}),attestationObject:enc('provider-fixture-only')}};
   assert.equal((await enrollment.register({accessToken,enrollmentId:id,ticket:options.ticket,credential,correlationId:correlation()})).state,'registered');
   assert.equal((await attempt(otherId,grantId,code,'/verify')).statusCode,403);
-  const activated=await rootPost(activate);assert.equal(activated.statusCode,200,activated.body);
-  assert.equal((await rootPost(activate)).json().repeated,true);
+  assert.equal((await state()).json().member.state,'registered');
+  await rootPage.reload();await panel.getByRole('button',{name:'Activar acceso'}).waitFor();
+  const activationResponse=actionResponse();await panel.getByRole('button',{name:'Activar acceso'}).click();
+  const activated=await activationResponse;assert.equal(activated.status(),200,await activated.text());
+  assert.equal((await rootPost(activated.request().postDataJSON())).json().repeated,true);
+  await panel.getByText('Usa el panel Titularidad de escritura para asignar el ADMIN activo.').waitFor();
   const adminSession=await attempt(otherId,grantId,code,'/verify');
   assert.equal(adminSession.statusCode,200,adminSession.body);
   assert.equal(adminSession.json().role,'admin');
@@ -279,6 +315,9 @@ test('PG17 + Fastify: ROOT and first ADMIN bootstrap, concurrency, revocation an
    payload:{requestId:randomUUID(),action:'force',proposalId:null,targetUserId:otherId,reason:'Titularidad inicial'}});
   assert.equal(ownerAction.statusCode,200,ownerAction.body);
   assert.equal(ownerAction.json().ownerUserId,otherId);
+  assert.deepEqual((await state()).json(),{phase:'closed',member:null});
+  await rootPage.reload();await panel.getByText('Arranque cerrado. La gestión ordinaria corresponde al ADMIN titular.').waitFor();
+  assert.equal(await panel.getByRole('button',{name:'Invitar primer ADMIN'}).count(),0);
   assert.equal((await rootPost(inviteBody('another-after-owner@demo.invalid'))).statusCode,403);
   assert.equal((await rootPost(activate)).statusCode,403);
   assert.equal((await rootPost({action:'revoke',enrollmentId:id,subjectUserId:null,
@@ -286,6 +325,12 @@ test('PG17 + Fastify: ROOT and first ADMIN bootstrap, concurrency, revocation an
   const adminCookie=adminSession.headers['set-cookie'].find(value=>value.startsWith('__Host-sabora-staff=')).split(';')[0];
   const adminHeaders={host:new URL(origin).host,origin,cookie:adminCookie,'x-sabora-staff-session':adminSession.json().sessionId};
   assert.equal((await app.inject({method:'POST',url:'/api/v1/staff/bootstrap/first-admin',headers:adminHeaders,payload:inviteBody('forbidden-admin@demo.invalid')})).statusCode,403);
+  assert.equal((await state(adminHeaders)).statusCode,403);
+  const adminContext=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
+  await adminContext.addCookies([sessionCookie(adminCookie)]);
+  const adminPage=await adminContext.newPage();await adminPage.goto(origin+'/#equipo');
+  await adminPage.getByRole('button',{name:'Cerrar sesión'}).waitFor();
+  assert.equal(await adminPage.getByRole('region',{name:'Primer ADMIN'}).count(),0);
   assert.equal((await ordinary(inviteBody('ordinary-waiter@demo.invalid','waiter'),adminHeaders)).statusCode,201);
   const audit=(await admin.query(`SELECT action,actor_kind FROM sabora.staff_lifecycle_audit
     WHERE enrollment_id=$1 ORDER BY occurred_at`,[id])).rows;
@@ -293,5 +338,5 @@ test('PG17 + Fastify: ROOT and first ADMIN bootstrap, concurrency, revocation an
    {action:'accept',actor_kind:'invitee'},{action:'register',actor_kind:'invitee'},{action:'activate',actor_kind:'root'}]);
   assert.equal((await admin.query('SELECT owner_user_id FROM sabora.admin_write_ownership WHERE singleton')).rows[0].owner_user_id,otherId);
   assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.staff_members WHERE role='root'")).rows[0].n,1);
- }finally{await app.close();}
+ }finally{await browser?.close();await preview?.close();await app.close();}
 });

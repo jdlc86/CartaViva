@@ -93,7 +93,9 @@ test('navigation is deep-linkable and read transports remain injected and discon
   assert.match(main, /href=\{toManagementHash\(section\.id\)\}/);
   assert.match(main, /aria-current=\{activeArea === section\.id \? 'page'/);
   assert.match(main, /window\.addEventListener\('popstate'/);
-  assert.match(main, /renderManagement\(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut,staffRole,\s*staffDirectoryGateway,staffRevocationGateway,staffLifecycleGateway\)/);
+  assert.match(main, /renderManagement\(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut,staffRole,\s*staffDirectoryGateway,staffRevocationGateway,staffLifecycleGateway,staffFirstAdminGateway\)/);
+  assert.match(main, /enableStaffFirstAdmin = false/);
+  assert.match(main, /enableStaffFirstAdmin&&staffRole==='root'&&sendStaff&&ownershipGateway/);
   assert.match(main, /enableStaffLifecycle = false/);
   assert.match(main, /enableStaffLifecycle&&sendStaff&&staffDirectoryGateway&&ownershipGateway/);
   assert.match(main, /lifecycleGateway=\{canRevokeStaff \? staffLifecycleGateway : undefined\}/);

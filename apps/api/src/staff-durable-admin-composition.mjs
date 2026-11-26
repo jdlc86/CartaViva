@@ -6,6 +6,7 @@ import {DIRECTORY_OUTBOX_SQL} from './staff-invitation-durable-lifecycle-candida
 import {STAFF_INVITATION_CUSTODY_RESTRICTED_SQL} from './staff-invitation-custody-coordinator-candidate.mjs';
 import {registerDurableStaffAdminHttpCandidate,registerDurableFirstAdminHttpCandidate} from './staff-durable-admin-http-candidate.mjs';
 import {FIRST_ADMIN_BOOTSTRAP_LOGIN} from './staff-lifecycle-coordinator.mjs';
+import {createStaffFirstAdminStateCandidate,FIRST_ADMIN_STATE_SQL} from './staff-first-admin-state-candidate.mjs';
 import {preflightStaffDurableAdminIdentity} from './staff-durable-admin-identity-preflight.mjs';
 
 // Explicitly injected candidate. No environment access, provisioning,
@@ -34,10 +35,13 @@ async function compose({pool,role,keyId,secret,emailHashSecret,keyring},first){
    return query(sql,args);
   })
  });
+ const readState=first?createStaffFirstAdminStateCandidate({keyId,secret,query:(sql,args)=>tx(query=>{
+  if(sql!==FIRST_ADMIN_STATE_SQL)throw Error('staff_durable_admin_sql_not_allowed');return query(sql,args);
+ })}):undefined;
  const readiness=()=>preflightStaffDurableAdminIdentity({pool,role,firstAdminBootstrapOnly:first});
  await readiness();
  return Object.freeze({readiness,register(app,{forRoles}={}){
-  return (first?registerDurableFirstAdminHttpCandidate:registerDurableStaffAdminHttpCandidate)(app,{forRoles,keyring,resolveSubject,lifecycleConfig:{
+  return (first?registerDurableFirstAdminHttpCandidate:registerDurableStaffAdminHttpCandidate)(app,{forRoles,keyring,resolveSubject,readState,lifecycleConfig:{
    withTransaction,issueCapability,hashInviteeEmail,uuid:randomUUID,
    issueInvitationToken:()=>randomBytes(32).toString('base64url'),
    verifyCredentialRegistration:async()=>{throw Error('staff_admin_registration_forbidden');}

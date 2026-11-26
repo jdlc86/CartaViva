@@ -13,14 +13,20 @@ export function registerDurableStaffAdminHttpCandidate(app,config){
 export function registerDurableFirstAdminHttpCandidate(app,config){
  return registerLifecycle(app,config,true);
 }
-function registerLifecycle(app,{forRoles,keyring,lifecycleConfig,resolveSubject}={},first){
- if(typeof forRoles!=='function'||typeof resolveSubject!=='function'||!lifecycleConfig||typeof lifecycleConfig!=='object')
+function registerLifecycle(app,{forRoles,keyring,lifecycleConfig,resolveSubject,readState}={},first){
+ if(typeof forRoles!=='function'||typeof resolveSubject!=='function'||(first&&typeof readState!=='function')||!lifecycleConfig||typeof lifecycleConfig!=='object')
   throw Error('invalid_staff_durable_admin_http_config');
  // Distinct fixed route/role, same durable repository. The caller cannot
  // select the exceptional path through HTTP. SQL independently rechecks authority.
  const coordinator=createStaffLifecycleCoordinator({...lifecycleConfig,
   repository:createDurableStaffLifecycleRepositoryCandidate({keyring}),
   revocationOnly:false,firstAdminBootstrapOnly:first});
+ if(first)app.get('/api/v1/staff/bootstrap/first-admin',{preHandler:forRoles(['root'])},async(request,reply)=>{
+  reply.header('Cache-Control','no-store');reply.header('X-Content-Type-Options','nosniff');
+  if(Object.keys(request.query??{}).length)return reply.code(400).send({error:'invalid_staff_lifecycle_request'});
+  try{return await readState({verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff});}
+  catch(error){return reply.code(error?.code==='42501'?403:503).send({error:error?.code==='42501'?'forbidden':'staff_lifecycle_unavailable'});}
+ });
  app.post(first?'/api/v1/staff/bootstrap/first-admin':'/api/v1/staff/lifecycle',{preHandler:forRoles([first?'root':'admin']),bodyLimit:4096},async(request,reply)=>{
   reply.header('Cache-Control','no-store');
   reply.header('X-Content-Type-Options','nosniff');

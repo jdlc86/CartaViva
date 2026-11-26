@@ -1,11 +1,12 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import type {FormEvent} from 'react';
 import type {StaffManagementGateway, StaffMaintenanceResult, StaffInvitationResult,
- StaffRevocationGateway,StaffLifecycleGateway} from '../staff-management-gateway.js';
+ StaffRevocationGateway,StaffLifecycleGateway,StaffFirstAdminGateway} from '../staff-management-gateway.js';
 import {StaffManagementGatewayError} from '../staff-management-gateway.js';
 import type {StaffDirectoryGateway, StaffDirectoryMember, StaffOwnProfile} from '../staff-directory-gateway.js';
 import {Icon} from '../components/Icon';
 import {OwnershipPanel} from './OwnershipPanel';
+import {FirstAdminPanel} from './FirstAdminPanel';
 import type {OwnershipGovernanceGateway} from '../ownership-governance-gateway.js';
 import {ConnectionNotice, EmptyState, LockedButton, PageHeader, StatusBadge} from '../components/Primitives';
 import type {StaffSession} from '../staff-passkey';
@@ -23,9 +24,10 @@ const stateLabel={invited:'Invitación pendiente',accepted:'Invitación aceptada
  active:'Activo',suspended:'Suspendido',revoked:'Revocado'} as const;
 
 export function TeamView({gateway,directoryGateway,ownershipGateway,onOwnershipChanged,
- staffRole,revocationGateway,lifecycleGateway}:{gateway?:StaffManagementGateway;directoryGateway?:StaffDirectoryGateway;
+ staffRole,revocationGateway,lifecycleGateway,firstAdminGateway,ownershipRevision=0}:{gateway?:StaffManagementGateway;directoryGateway?:StaffDirectoryGateway;
  ownershipGateway?:OwnershipGovernanceGateway;onOwnershipChanged?:()=>void;
- staffRole?:StaffSession['role'];revocationGateway?:StaffRevocationGateway;lifecycleGateway?:StaffLifecycleGateway}){
+ staffRole?:StaffSession['role'];revocationGateway?:StaffRevocationGateway;lifecycleGateway?:StaffLifecycleGateway;
+ firstAdminGateway?:StaffFirstAdminGateway;ownershipRevision?:number}){
  const [givenName,setGivenName]=useState('');const [familyName,setFamilyName]=useState('');
  const [email,setEmail]=useState('');const [role,setRole]=useState<'admin'|'waiter'|'kitchen'>('waiter');
  const [pending,setPending]=useState(false);const [error,setError]=useState<string|null>(null);
@@ -148,7 +150,8 @@ export function TeamView({gateway,directoryGateway,ownershipGateway,onOwnershipC
 
  return <div className="view-stack">
   {staffRole===undefined||staffRole==='admin'||staffRole==='root'
-   ?<OwnershipPanel gateway={ownershipGateway} onOwnershipChanged={onOwnershipChanged}/>:null}
+   ?<OwnershipPanel gateway={ownershipGateway} onOwnershipChanged={onOwnershipChanged} revision={ownershipRevision}/>:null}
+  {staffRole==='root'&&firstAdminGateway?<FirstAdminPanel gateway={firstAdminGateway} revision={ownershipRevision} onActivated={()=>onOwnershipChanged?.()}/>:null}
   <PageHeader eyebrow="Equipo" title="Personal y accesos"
    description="Alta trazable, identidad operativa compacta y recuperación global controlada."
    actions={inviteGateway||directoryGateway?<StatusBadge tone="brand">Lectura y acciones separadas por capacidad</StatusBadge>:
