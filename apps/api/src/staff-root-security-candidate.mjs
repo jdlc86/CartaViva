@@ -3,8 +3,9 @@
 import {generateRootRecoveryCode} from './staff-root-recovery-candidate.mjs';
 const HASH=/^[0-9a-f]{64}$/;
 const forbidden=()=>Object.assign(Error('root_security_forbidden'),{code:'42501'});
-export function createStaffRootSecurityCandidate({kernel,mail}={}){
+export function createStaffRootSecurityCandidate({kernel,mail,rotationDays=28}={}){
  if(typeof kernel?.command!=='function'||typeof kernel?.hash!=='function'||
+   !Number.isSafeInteger(rotationDays)||rotationDays<1||rotationDays>365||
    (mail&&!(typeof mail.stage==='function'&&typeof mail.confirm==='function')))throw Error('invalid_root_security_config');
  function context({identity,credentialHash}={}){
   if(!identity?.userId||!HASH.test(credentialHash??''))throw forbidden();
@@ -21,7 +22,7 @@ export function createStaffRootSecurityCandidate({kernel,mail}={}){
   async mutate(input){
    const actor=context(input);
    if(!Number.isSafeInteger(input.deadlineMs)||input.deadlineMs<=Date.now())throw forbidden();
-   if(input.action==='stage_email'&&mail)return mail.stage({...input,email:input.parameters.email});
+   if(input.action==='stage_email'&&mail)return mail.stage({...input,email:input.parameters.email,days:rotationDays});
    if(input.action==='confirm_email'&&mail)return mail.confirm({...input,...input.parameters});
    if(input.action==='reset'){
     const result=await kernel.command('security_reset',actor,{a:input.credentialHash,requestId:input.requestId,deadlineMs:input.deadlineMs});

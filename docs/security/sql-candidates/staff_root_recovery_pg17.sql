@@ -35,6 +35,7 @@ CREATE TABLE sabora.root_recovery_state_candidate(
 CREATE TABLE sabora.root_recovery_audit_candidate(
  request_id uuid PRIMARY KEY,root_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id),
  action text NOT NULL,outcome text NOT NULL,failures bigint NOT NULL,
+ mail_job_id uuid,
  occurred_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 ALTER TABLE sabora.root_recovery_keys_candidate ENABLE ROW LEVEL SECURITY;
@@ -53,7 +54,7 @@ GRANT USAGE ON SCHEMA sabora,extensions TO sabora_root_recovery_fn_owner;
 GRANT EXECUTE ON FUNCTION extensions.hmac(bytea,bytea,text) TO sabora_root_recovery_fn_owner;
 GRANT SELECT(key_id,hmac_key,expires_at,purpose) ON sabora.root_recovery_keys_candidate TO sabora_root_recovery_fn_owner;
 GRANT SELECT,INSERT,UPDATE ON sabora.root_recovery_state_candidate TO sabora_root_recovery_fn_owner;
-GRANT SELECT(request_id),INSERT(request_id,root_user_id,action,outcome,failures)
+GRANT SELECT(request_id),INSERT(request_id,root_user_id,action,outcome,failures,mail_job_id)
  ON sabora.root_recovery_audit_candidate TO sabora_root_recovery_fn_owner;
 GRANT SELECT(root_user_id,singleton,credential_hash) ON sabora.root_bootstrap_receipt TO sabora_root_recovery_fn_owner;
 GRANT SELECT(user_id,role,state) ON sabora.staff_members TO sabora_root_recovery_fn_owner;
@@ -120,7 +121,7 @@ BEGIN
  v_now:=clock_timestamp();
  IF p_expires<=floor(extract(epoch FROM v_now)*1000) OR v_key_expiry<=v_now
   OR NOT EXISTS(SELECT 1 FROM sabora.root_recovery_keys_candidate k WHERE k.key_id=p_key_id
-   AND k.hmac_key=v_key AND k.expires_at>v_now)
+   AND k.purpose='control' AND k.hmac_key=v_key AND k.expires_at>v_now)
   OR NOT EXISTS(SELECT 1 FROM sabora.root_bootstrap_receipt r JOIN sabora.staff_members m
    ON m.user_id=r.root_user_id AND m.role='root' AND m.state='active'
    WHERE r.singleton AND r.root_user_id=p_actor)
@@ -278,7 +279,7 @@ BEGIN
  PERFORM pg_advisory_xact_lock(17302101,52426);
  IF p_expires<=floor(extract(epoch FROM clock_timestamp())*1000) OR v_expiry<=clock_timestamp()
   OR NOT EXISTS(SELECT 1 FROM sabora.root_recovery_keys_candidate k WHERE k.key_id=p_key_id
-   AND k.hmac_key=v_key AND k.expires_at>clock_timestamp())
+   AND k.purpose='control' AND k.hmac_key=v_key AND k.expires_at>clock_timestamp())
  THEN RAISE EXCEPTION 'root_recovery_access_forbidden' USING ERRCODE='42501'; END IF;
  IF NOT EXISTS(SELECT 1 FROM sabora.staff_members m WHERE m.user_id=p_actor AND m.role='root') THEN RETURN true; END IF;
  SELECT r.credential_hash INTO v_genesis FROM sabora.root_bootstrap_receipt r WHERE r.singleton AND r.root_user_id=p_actor;
@@ -466,8 +467,8 @@ BEGIN
     WHERE root_user_id=p_actor AND state IN ('queued','dispatching') AND dispatch_until<=v_now
     RETURNING id,purpose,state
   )
-  INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures)
-   SELECT gen_random_uuid(),p_actor,'mail_expire_'||purpose,state,coalesce(s.failures,0) FROM expired;
+  INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures,mail_job_id)
+   SELECT gen_random_uuid(),p_actor,'mail_expire_'||purpose,state,coalesce(s.failures,0),id FROM expired;
  END IF;
  DELETE FROM sabora.root_recovery_mail_pending_candidate WHERE expires_at<=v_now;
  SELECT * INTO p FROM sabora.root_recovery_mail_pending_candidate WHERE singleton;
@@ -541,6 +542,7 @@ BEGIN
     VALUES(v_job,p_actor,'link',c.email_hash,c.recipient_envelope,v->>'tokenHash',v->>'tokenEnvelope',v_until,v_now+interval '10 minutes');
    v_result:='link_queued';
   END IF;
+  IF v_result='denied' THEN RETURN jsonb_build_object('outcome','denied'); END IF;
  ELSIF p_action='queue_challenge' THEN
   IF c.root_user_id=p_actor AND c.email_hash=s.email_hash AND NOT s.registration_pending
    AND (s.blocked_until IS NULL OR s.blocked_until<=v_now)
@@ -573,8 +575,8 @@ BEGIN
     THEN
      v_fence:=gen_random_uuid();
      UPDATE sabora.root_recovery_mail_job_candidate SET state='dispatching',fence=v_fence WHERE id=j.id;
-     INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures)
-      VALUES(p_request,p_actor,'mail_claim','claimed',coalesce(s.failures,0));
+     INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures,mail_job_id)
+      VALUES(p_request,p_actor,'mail_claim','claimed',coalesce(s.failures,0),j.id);
      RETURN jsonb_build_object('outcome','claimed','jobId',j.id,'fence',v_fence,'purpose',j.purpose,
       'emailHash',j.email_hash,'recipientEnvelope',j.recipient_envelope,'tokenHash',j.token_hash,'tokenEnvelope',j.token_envelope);
     ELSE
@@ -604,8 +606,8 @@ BEGIN
    END IF;
   END IF;
  END IF;
- INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures)
-  VALUES(p_request,p_actor,'mail_'||p_action,v_result,coalesce(s.failures,0));
+ INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures,mail_job_id)
+  VALUES(p_request,p_actor,'mail_'||p_action,v_result,coalesce(s.failures,0),coalesce(j.id,v_job));
  RETURN jsonb_build_object('outcome',v_result);
 END;
 $mail$;

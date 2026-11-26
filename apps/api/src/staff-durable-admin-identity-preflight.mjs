@@ -21,6 +21,12 @@ export async function preflightStaffDurableAdminIdentity({pool,role,firstAdminBo
  const routines=firstAdminBootstrapOnly?[...ROUTINES.map(([signature,owner])=>[signature.replace('resolve_staff_admin_subject_candidate','resolve_staff_first_admin_subject_candidate'),owner]),
   ['sabora.read_staff_first_admin_state_candidate(text,uuid,bigint,bigint,text)','sabora_staff_lifecycle_fn_owner']]:ROUTINES;
  const tables=firstAdminBootstrapOnly?[...TABLES,'root_bootstrap_receipt','admin_ownership_audit']:TABLES;
+ return preflightStaffRestrictedIdentity({pool,role,routines,tables,requiredTriggers:[
+  ['staff_invitation_outbox','staff_invitation_custody_required',true],
+ ]});
+}
+
+export async function preflightStaffRestrictedIdentity({pool,role,routines,tables,requiredTriggers}){
  let client,discard;
  try{
   client=await pool.connect();
@@ -54,15 +60,19 @@ export async function preflightStaffDurableAdminIdentity({pool,role,firstAdminBo
    (SELECT count(*)::integer FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname='sabora' AND c.relname=ANY($3::text[]) AND c.relkind IN('r','p')
     AND c.relrowsecurity AND c.relforcerowsecurity) AS forced_tables,
-   EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgrelid='sabora.staff_invitation_outbox'::regclass
-    AND t.tgname='staff_invitation_custody_required' AND t.tgdeferrable AND t.tginitdeferred
-    AND t.tgenabled IN ('O','A') AND NOT t.tgisinternal) AS custody_guard
+   (SELECT count(*)::integer
+    FROM unnest($4::text[],$5::text[],$6::boolean[]) AS expected(relation_name,trigger_name,deferred)
+    JOIN pg_catalog.pg_trigger t ON t.tgrelid=to_regclass('sabora.'||expected.relation_name)
+     AND t.tgname=expected.trigger_name AND t.tgdeferrable=expected.deferred AND t.tginitdeferred=expected.deferred
+    WHERE t.tgenabled IN ('O','A') AND NOT t.tgisinternal) AS safe_triggers
    FROM pg_catalog.pg_roles r WHERE r.rolname=current_user`,
-   [routines.map(r=>r[0]),routines.map(r=>r[1]),tables]);
+   [routines.map(r=>r[0]),routines.map(r=>r[1]),tables,
+    requiredTriggers.map(t=>t[0]),requiredTriggers.map(t=>t[1]),requiredTriggers.map(t=>t[2])]);
   const row=result?.rows?.[0];
   if(result?.rows?.length!==1||row?.effective_role!==role||row.login_role!==role||
-    !['restricted','schema_safe','no_memberships','no_relations','no_sequences','custody_guard'].every(key=>row[key]===true)||
-    row.routines!==routines.length||row.safe_routines!==routines.length||row.forced_tables!==tables.length)throw rejected();
+    !['restricted','schema_safe','no_memberships','no_relations','no_sequences'].every(key=>row[key]===true)||
+    row.routines!==routines.length||row.safe_routines!==routines.length||row.forced_tables!==tables.length||
+    row.safe_triggers!==requiredTriggers.length)throw rejected();
   return Object.freeze({role});
  }catch(error){discard=error;throw rejected();}
  finally{if(typeof client?.release==='function')client.release(discard);}

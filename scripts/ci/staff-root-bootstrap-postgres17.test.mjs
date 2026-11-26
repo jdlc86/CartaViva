@@ -8,6 +8,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createStaffRootSecurityCandidate} from '../../apps/api/src/staff-root-security-candidate.mjs';
+import {createVerifiedRootRecoveryCandidate} from '../../apps/api/src/staff-root-recovery-composition.mjs';
 import {hashRootCredentialId} from '../../apps/api/src/staff-root-credential-id.mjs';
 import {createRootRecoveryKernelCandidate,generateRootRecoveryCode,generateRootRecoveryToken,ROOT_MUTATION_PROOF_SQL,ROOT_RECOVERY_LOGIN,ROOT_RECOVERY_SQL} from '../../apps/api/src/staff-root-recovery-candidate.mjs';
 import {createStaffRootBootstrapCandidate,ROOT_BOOTSTRAP_SQL} from '../../apps/api/src/staff-root-bootstrap-candidate.mjs';
@@ -172,7 +173,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   issueRootMutationProof:rootKernel.issueMutationProof});
  registerOwnershipGovernanceHttp(app,{forRoles,repository:ownership});
  passkey.register(app,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,ownership:true,staffFirstAdmin:true,rootSecurity:true},rootBootstrap:bootstrap,rootSecurity:createStaffRootSecurityCandidate({kernel:rootKernel,mail:rootMail})});
- let preview,browser;
+ let preview,browser,recoveryWorker;
  const auth='/api/v1/staff/auth';
  const post=(path,body,cookie)=>app.inject({method:'POST',url:auth+path,payload:body,
   headers:{host:new URL(origin).host,origin,...(cookie?{cookie}:{})}});
@@ -399,7 +400,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
     deadlineMs:Date.now()+30000,requestId:randomUUID()});
    const inbox=[],providerReceipts=new Set();
    let sendMode='accepted';
-   const mailSender=createRootRecoveryResendSender({managementOrigin:origin,from:'sab@example.test',apiKey:'re_root_mail_fixture',
+   const resend={managementOrigin:origin,from:'sab@example.test',apiKey:'re_root_mail_fixture',
     fetchImpl:async(url,options)=>{
      assert.equal(url,'https://api.resend.com/emails');
      assert.match(options.headers['Idempotency-Key'],/^sabora-staff-root-recovery\//);
@@ -412,7 +413,18 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
      const fields=body.text.includes('\n\n')?new URLSearchParams(new URL(body.text.split('\n\n').at(-1)).hash.split('?')[1]):null;
      inbox.push({email:body.to[0],purpose:fields?.get('purpose')??'notice',token:fields?.get('token')??null});
      return Response.json({id:randomUUID()});
-    }});
+    }};
+   const mailSender=createRootRecoveryResendSender(resend);
+   const workerConfig={
+    control:{pool:recoveryPool,expectedLogin:ROOT_RECOVERY_LOGIN,keyId:recoveryKey,signingSecret:recoverySigning},
+    worker:{pool:mailPool,expectedLogin:ROOT_MAIL_LOGIN,keyId:mailKey,signingSecret:mailSigning},
+    getRootUserId:async()=>rootId,factorSecret:recoveryFactors,keyring,resend,
+   };
+   recoveryWorker=await createVerifiedRootRecoveryCandidate(workerConfig);
+   await admin.query(`GRANT TRIGGER ON sabora.root_recovery_mail_contact_candidate TO ${ROOT_MAIL_LOGIN}`);
+   await assert.rejects(recoveryWorker.readiness(),/staff_durable_admin_sql_identity_rejected/);
+   await admin.query(`REVOKE TRIGGER ON sabora.root_recovery_mail_contact_candidate FROM ${ROOT_MAIL_LOGIN}`);
+   await recoveryWorker.readiness();
    await assert.rejects(rootMail.stage({...securityContext(),identity:{userId:otherId},email:'security@demo.invalid'}),e=>e.code==='42501');
    await assert.rejects(rootMail.stage({...securityContext(),credentialHash:'0'.repeat(64),email:'security@demo.invalid'}),e=>e.code==='42501');
    await assert.rejects(recoveryPool.query('SELECT * FROM sabora.root_recovery_mail_contact_candidate'),e=>e.code==='42501');
@@ -432,8 +444,8 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await security()).json().configured,false);
    const [verifyJob]=await mail.list(rootId);
    assert.ok(verifyJob);
-   const verificationDispatch=await Promise.all([mail.dispatch(rootId,verifyJob,mailSender),mail.dispatch(rootId,verifyJob,mailSender)]);
-   assert.equal(verificationDispatch.filter(x=>x.outcome==='accepted').length,1);
+   await Promise.all([recoveryWorker.start(),mail.dispatch(rootId,verifyJob,mailSender)]);
+   await recoveryWorker.close();
    assert.equal(inbox.length,1);assert.equal(inbox[0].purpose,'verify');
    const material=(await admin.query('SELECT recipient_envelope,token_envelope,state FROM sabora.root_recovery_mail_job_candidate WHERE id=$1',[verifyJob])).rows[0];
    assert.deepEqual(material,{recipient_envelope:null,token_envelope:null,state:'accepted'});
@@ -631,5 +643,5 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    {action:'accept',actor_kind:'invitee'},{action:'register',actor_kind:'invitee'},{action:'activate',actor_kind:'root'}]);
   assert.equal((await admin.query('SELECT owner_user_id FROM sabora.admin_write_ownership WHERE singleton')).rows[0].owner_user_id,otherId);
   assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.staff_members WHERE role='root'")).rows[0].n,1);
- }finally{await browser?.close();await preview?.close();await app.close();}
+ }finally{await recoveryWorker?.close();await browser?.close();await preview?.close();await app.close();}
 });

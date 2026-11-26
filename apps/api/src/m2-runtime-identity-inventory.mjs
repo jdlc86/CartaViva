@@ -41,6 +41,10 @@ const STAFF_DIRECTORY = Object.freeze([
 const STAFF_REVOCATION = Object.freeze([
  ['staff.revocation.pool','staff.revocation.expectedLogin']
 ]);
+const ROOT_RECOVERY = Object.freeze([
+ ['staff.rootRecovery.control.pool','staff.rootRecovery.control.expectedLogin'],
+ ['staff.rootRecovery.worker.pool','staff.rootRecovery.worker.expectedLogin']
+]);
 const LOGIN = /^[a-z][a-z0-9_]{0,62}$/;
 const invalid = () => Error('m2_restaurant_candidate_isolation_required');
 
@@ -49,16 +53,17 @@ const read = (object,path) =>
 
 export function describeM2RuntimeSqlSlots({
  management=true,ownership=false,communications=false,waiterCalls=false,staffDirectory=false,
- staffRevocation=false
+ staffRevocation=false,rootRecovery=false
 }={}){
  if(typeof management!=='boolean'||typeof ownership!=='boolean'||
     typeof communications!=='boolean'||typeof waiterCalls!=='boolean'||typeof staffDirectory!=='boolean'||
-    typeof staffRevocation!=='boolean'||(staffRevocation&&(!ownership||!staffDirectory))||
+    typeof staffRevocation!=='boolean'||typeof rootRecovery!=='boolean'||(rootRecovery&&!ownership)||
+    (staffRevocation&&(!ownership||!staffDirectory))||
     (!management&&(ownership||communications)))throw invalid();
  const groups=[...CORE,...(management?MANAGEMENT:[]),
   ...(ownership?OWNERSHIP:[]),...(communications?COMMUNICATIONS:[]),
   ...(waiterCalls?WAITER_CALLS:[]),...(staffDirectory?STAFF_DIRECTORY:[]),
-  ...(staffRevocation?STAFF_REVOCATION:[])];
+  ...(staffRevocation?STAFF_REVOCATION:[]),...(rootRecovery?ROOT_RECOVERY:[])];
  return Object.freeze(groups.map(([poolPath,loginPath]) =>
   Object.freeze({poolPath,loginPath})));
 }
@@ -76,7 +81,7 @@ export function validateM2RuntimeSqlIdentities(options={}){
  const waiterCalls=options.waiterCalls!=null;
  const requirements=describeM2RuntimeSqlSlots({
   management,ownership,communications,waiterCalls,staffDirectory:options.staff?.directory!=null,
-  staffRevocation:options.staff?.revocation!=null
+  staffRevocation:options.staff?.revocation!=null,rootRecovery:options.staff?.rootRecovery!=null
  });
  const entries=[];
  for(const spec of requirements){

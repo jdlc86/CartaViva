@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S54 · H1-A.** El Draft #92 incorpora verificación del correo ROOT desde gestión, control transaccional de credenciales ROOT y despacho candidato con LOGIN separado. Falta cerrar la recuperación pública del mismo ROOT, la reconciliación Auth, la entrega ordinaria, el delta V2 y la aceptación. **H1-A parcial. NO-GO técnico y operativo.** [Informe S54](../reviews/SABORA_S54_ROOT_RECOVERY_H1_A_REVIEW_2026-11-26.md).
+
 > **S52-31 · H1-A.** Candidato de verificación de destinatario y entrega durable ROOT (día 0, rotación, desafío, aviso de cambio), transporte Resend reutilizado y prueba PG17 ampliada. CI pendiente. Sin conexión al worker/PWA de alta ni Auth real; falta reconciliación y alertas. **H1-A parcial / NO-GO.**
 
 > **S52-29 · H1-A.** Seguridad ROOT en Configuración (estado, sustitución de código, reset con nueva passkey), candidato opt-in y ensayo PWA/PG17 ampliado; CI pendiente. Alta/cambio de correo, despacho rotatorio, recuperación de credenciales real y composición siguen abiertos. **H1-A parcial / NO-GO.**

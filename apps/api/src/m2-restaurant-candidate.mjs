@@ -37,6 +37,9 @@ import {preflightStaffDirectoryIdentity} from './staff-directory-identity-prefli
 import {createVerifiedStaffLifecycleFromPool} from './staff-lifecycle-composition.mjs';
 import {registerStaffRevocationHttp} from './staff-lifecycle-http-candidate.mjs';
 import {preflightStaffLifecycleIdentity} from './staff-lifecycle-identity-preflight.mjs';
+import {createStaffPasskeySession} from './staff-passkey-session.mjs';
+import {createVerifiedRootRecoveryCandidate} from './staff-root-recovery-composition.mjs';
+import {ROOT_MUTATION_PROOF_SQL} from './staff-root-recovery-candidate.mjs';
 import {preflightOrderTransitionStaffIdentity}
  from './order-operations-identity-preflight.mjs';
 import {createOrderOperationsCoordinator} from './order-operations-coordinator.mjs';
@@ -122,11 +125,11 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   try{observability?.recordOperation({component:'database',
    operation:'check',outcome,durationMs:performance.now()-started});}catch{}
  };
- let tableNotifier,h6Notifier,scheduler,announcementStream,closed=false,
+ let tableNotifier,h6Notifier,scheduler,announcementStream,rootRecovery,closed=false,
   operational=false,notificationDependencyLost=false;
  const closeServices=async()=>{
   if(closed)return;closed=true;operational=false;
-  await Promise.allSettled([scheduler?.close(),announcementStream?.close(),tableNotifier?.close(),h6Notifier?.close()]);
+  await Promise.allSettled([scheduler?.close(),announcementStream?.close(),tableNotifier?.close(),h6Notifier?.close(),rootRecovery?.close()]);
  };
  try{
   // Explicit diagnostics injection for the full H3-H6/M3 HTTP composition.
@@ -144,7 +147,9 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
      typeof customer.allowedOrigin!=='string'||typeof customer.secretKey!=='string'||
      Buffer.byteLength(customer.secretKey,'utf8')<32||
      typeof staff.issuer!=='string'||typeof staff.getTrustedKeys!=='function'||
-     (staff.directory!=null&&(!staff.passkey||typeof staff.directory.issueCapability!=='function'))||
+     (staff.directory!=null&&((!staff.passkey&&!staff.rootRecovery)||typeof staff.directory.issueCapability!=='function'))||
+     (staff.rootRecovery!=null&&(staff.passkey||!management?.ownership||!staff.rootRecovery.passkey||
+      staff.rootRecovery.passkey.origin!==staff.rootRecovery.resend?.managementOrigin))||
      (staff.revocation!=null&&typeof staff.revocation.issueCapability!=='function')||
      typeof h4.issueTransitionCapability!=='function'||typeof h4.issueReadCapability!=='function'||
      typeof h6.issueStaffCapability!=='function'||typeof h6.issueCloseCapability!=='function'||
@@ -185,6 +190,16 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    customer,tableChange,staff,h4,h6,management,waiterCalls
   });
 
+  let staffPasskey=staff.passkey;
+  if(staff.rootRecovery){
+   const {passkey}=staff.rootRecovery;
+   if(!(passkey.secret instanceof Uint8Array)||passkey.secret.byteLength<32||
+    !['options','verify','user','logout'].every(method=>typeof passkey.provider?.[method]==='function'))
+    throw Error('invalid_m2_restaurant_candidate');
+   rootRecovery=await createVerifiedRootRecoveryCandidate({...staff.rootRecovery,observeFailure});
+   staffPasskey=createStaffPasskeySession({...passkey,issuer:staff.issuer,
+    getTrustedKeys:staff.getTrustedKeys,rootAccess:rootRecovery.allowsAccess});
+  }
   let staffDirectory,staffRevocation;
   const preflight=async()=>{
    // Readiness includes the configured issuer and a bounded trusted JWKS
@@ -224,6 +239,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    await assertPendingReaderCapabilities({pool:tableChange.pendingPool,
     expectedLogin:tableChange.expectedPendingLogin});
    await preflightOrderTransitionStaffIdentity({pool:staff.pool,role:staff.expectedLogin});
+   if(rootRecovery)await rootRecovery.readiness();
    if(staffDirectory)await preflightStaffDirectoryIdentity({
     pool:staff.directory.pool,role:staff.directory.expectedLogin
    });
@@ -320,7 +336,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   const composedOperations=Object.freeze({...operations,
    closeAccount:closeOperations.closeAccount});
   const customerEvents=createH6CustomerEventRepository({withTransaction:eventTx});
-  const authenticate=staff.passkey?.authenticate??(staff.requirePasskey
+  const authenticate=staffPasskey?.authenticate??(staff.requirePasskey
    ? async (_request,reply)=>reply.header('Cache-Control','no-store').code(401).send({error:'unauthorized'})
    : undefined);
   const forRoles=createStaffProtectedHooksFromPool({pool:staff.pool,issuer:staff.issuer,authenticate,
@@ -341,10 +357,10 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    });
    registerStaffRevocationHttp(app,{forRoles:oneGuard,coordinator:staffRevocation});
   }
-  staff.passkey?.register(app,{forRoles,features:{
+  staffPasskey?.register(app,{forRoles,...(rootRecovery?{rootSecurity:rootRecovery.security}:{}),features:{
    tableChange:true,waiterCalls:Boolean(waiterCalls),management:Boolean(management),
    ownership:Boolean(management?.ownership),staffDirectory:Boolean(staffDirectory),
-   staffRevocation:Boolean(staffRevocation)
+   staffRevocation:Boolean(staffRevocation),...(rootRecovery?{rootSecurity:true}:{})
   }});
   const h4Operations=createOrderOperationsCoordinator({withTransaction:h4Tx,
    repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
@@ -367,9 +383,10 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    if(management.ownership){
     const ownershipTx=createRoleScopedPostgresTransaction({
      pool:management.ownership.pool,role:OWNERSHIP_ROLE,
-     allowedSql:new Set([OWNERSHIP_SQL])});
+     allowedSql:new Set([OWNERSHIP_SQL,...(rootRecovery?[ROOT_MUTATION_PROOF_SQL]:[])])});
     ownershipGovernance=createOwnershipGovernanceRepository({
-     withTransaction:ownershipTx,issueCapability:management.ownership.issueCapability});
+     withTransaction:ownershipTx,issueCapability:management.ownership.issueCapability,
+     issueRootMutationProof:rootRecovery?.issueMutationProof});
    }
    if(management.communications){
     const adminCommsTx=createRoleScopedPostgresTransaction({
@@ -412,7 +429,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    subscribeCommitted:h6Notifier.subscribe,heartbeatMs:eventHeartbeatMs});
   registerH6StaffEventStreamHttp(app,{forRoles:oneGuard,events:operationsRepository,
    issueCapability:h6.issueStaffCapability,subscribeCommitted:h6Notifier.subscribe,
-   heartbeatMs:eventHeartbeatMs,assertIdentity:staff.passkey?.assertIdentity});
+   heartbeatMs:eventHeartbeatMs,assertIdentity:staffPasskey?.assertIdentity});
   if(waiterCalls)registerWaiterCallHttp(app,{cookieAuth,forRoles:oneGuard,
    repository:createWaiterCallComposition({
     customerPool:waiterCalls.customerPool,staffPool:waiterCalls.staffPool,
@@ -465,6 +482,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    return {status:'ready',service:management?'sabora-m3-candidate':'sabora-m2-candidate',mode:'opt-in'};
   });
   app.addHook('onClose',closeServices);
+  await rootRecovery?.start();
   await app.ready();operational=!notificationDependencyLost;
   let closePromise=null;
   return Object.freeze({app,economicService,mode:management?'opt-in-h3-h6-m3-candidate':'opt-in-h3-h6-m2-candidate',

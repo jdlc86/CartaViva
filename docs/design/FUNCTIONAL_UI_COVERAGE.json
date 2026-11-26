@@ -247,6 +247,11 @@
           "surface": "management",
           "path": "apps/management/src/views/RootSecurityPanel.tsx",
           "marker": "Restablecer contador con passkey"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/views/RootSecurityPanel.tsx",
+          "marker": "Verificar correo con passkey"
         }
       ],
       "api": [
@@ -261,6 +266,10 @@
         {
           "path": "apps/api/src/staff-passkey-session.mjs",
           "marker": "root-security"
+        },
+        {
+          "path": "apps/api/src/m2-restaurant-candidate.mjs",
+          "marker": "createVerifiedRootRecoveryCandidate"
         }
       ],
       "evidence": [
@@ -283,14 +292,19 @@
           "kind": "postgres17",
           "path": "scripts/ci/staff-root-bootstrap-postgres17.test.mjs",
           "marker": "PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, revocation and ownership closure"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/staff-root-bootstrap-postgres17.test.mjs",
+          "marker": "Verificar correo con passkey"
         }
       ],
       "blockers": [
         "Verificar el flujo con Supabase Auth alojado y una identidad ficticia",
-        "Cerrar arranque ROOT desde navegador y recuperación excepcional (kernel candidato; faltan UI, proveedor, revocación y reconciliación); composición de entrega durable real",
+        "Completar respaldo y recuperación pública del mismo ROOT, registro Auth, reconciliación y revocación; validar circuito ordinario y delta mínimo V2",
         "Obtener la aceptación del propietario"
       ],
-      "note": "Entrada para personal activo, directorio y revocación conectados mediante passkey. Sigue pendiente el ciclo completo con proveedor autorizado. Véase SABORA_S52_H1_A_STAFF_IDENTITY_REVIEW_2026-11-25.md. El contrato ROOT S52-25 cierra el diseño; S52-26 aporta el kernel transaccional no montado. No acredita recuperación operativa. S52-27 añade admisión ROOT ligada a la credencial genesis/permitida y revocación local durante y después del registro pendiente; no acredita proveedor real ni la interfaz de recuperación. S52-29 conecta controles de seguridad ROOT para estado, sustitución y reset con nueva ceremonia; alta de correo y proveedor siguen pendientes. S52-31 incorpora custodia y cola de correo ROOT cifradas, confirmación de destinatario y despacho candidato con Resend simulado; no acredita worker, PWA de alta/cambio ni proveedor alojado."
+      "note": "S54 conecta el correo de seguridad ROOT a la PWA, incorpora un fence SQL en titularidad y primer ADMIN y compone un trabajador candidato con Resend inyectado. El ensayo usa proveedor aislado. El informe SABORA_S54_ROOT_RECOVERY_H1_A_REVIEW_2026-11-26.md delimita la recuperación pública, Auth alojado, delta y aceptación pendientes."
     }
   ]
 }
