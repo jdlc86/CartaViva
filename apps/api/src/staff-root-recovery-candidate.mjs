@@ -9,8 +9,8 @@ export const ROOT_RECOVERY_SQL='SELECT * FROM sabora.root_recovery_transition_ca
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HASH=/^[0-9a-f]{64}$/;
 const ALPHABET='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-const ACTIONS=new Set(['configure','prepare_link','confirm_link','reject_link','challenge','attempt','claim','reset','add_backup','complete']);
-const OUTCOMES=new Set(['configured','link_prepared','link_confirmed','link_rejected','challenge_created','authorized','claimed','reset','backup_added','completed','denied','blocked','registration_pending']);
+const ACTIONS=new Set(['configure','prepare_link','confirm_link','reject_link','challenge','attempt','claim','reset','add_backup','complete','security_status','security_reset','replace_code']);
+const OUTCOMES=new Set(['configured','unconfigured','code_replaced','link_prepared','link_confirmed','link_rejected','challenge_created','authorized','claimed','reset','backup_added','completed','denied','blocked','registration_pending']);
 export function generateRootRecoveryCode(){
  const bytes=randomBytes(16);let buffer=0,bits=0,code='';
  for(const byte of bytes){

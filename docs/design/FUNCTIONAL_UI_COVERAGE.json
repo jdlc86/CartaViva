@@ -242,6 +242,11 @@
           "surface": "management",
           "path": "apps/management/src/views/TeamView.tsx",
           "marker": "Revocar acceso"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/views/RootSecurityPanel.tsx",
+          "marker": "Restablecer contador con passkey"
         }
       ],
       "api": [
@@ -252,6 +257,10 @@
         {
           "path": "apps/api/src/m2-restaurant-candidate.mjs",
           "marker": "registerStaffRevocationHttp"
+        },
+        {
+          "path": "apps/api/src/staff-passkey-session.mjs",
+          "marker": "root-security"
         }
       ],
       "evidence": [
@@ -281,7 +290,7 @@
         "Cerrar arranque ROOT desde navegador y recuperación excepcional (kernel candidato; faltan UI, proveedor, revocación y reconciliación); composición de entrega durable real",
         "Obtener la aceptación del propietario"
       ],
-      "note": "Entrada para personal activo, directorio y revocación conectados mediante passkey. Sigue pendiente el ciclo completo con proveedor autorizado. Véase SABORA_S52_H1_A_STAFF_IDENTITY_REVIEW_2026-11-25.md. El contrato ROOT S52-25 cierra el diseño; S52-26 aporta el kernel transaccional no montado. No acredita recuperación operativa. S52-27 añade admisión ROOT ligada a la credencial genesis/permitida y revocación local durante y después del registro pendiente; no acredita proveedor real ni la interfaz de recuperación."
+      "note": "Entrada para personal activo, directorio y revocación conectados mediante passkey. Sigue pendiente el ciclo completo con proveedor autorizado. Véase SABORA_S52_H1_A_STAFF_IDENTITY_REVIEW_2026-11-25.md. El contrato ROOT S52-25 cierra el diseño; S52-26 aporta el kernel transaccional no montado. No acredita recuperación operativa. S52-27 añade admisión ROOT ligada a la credencial genesis/permitida y revocación local durante y después del registro pendiente; no acredita proveedor real ni la interfaz de recuperación. S52-29 conecta controles de seguridad ROOT para estado, sustitución y reset con nueva ceremonia; alta de correo y proveedor siguen pendientes."
     }
   ]
 }

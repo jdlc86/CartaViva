@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFile} from 'node:fs/promises';
-import {createHash,generateKeyPairSync,randomBytes,randomUUID,sign} from 'node:crypto';
+import {createHash,generateKeyPairSync,randomBytes,randomUUID,sign,verify} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
+import {createStaffRootSecurityCandidate} from '../../apps/api/src/staff-root-security-candidate.mjs';
 import {hashRootCredentialId} from '../../apps/api/src/staff-root-credential-id.mjs';
 import {createRootRecoveryKernelCandidate,generateRootRecoveryCode,generateRootRecoveryToken,ROOT_RECOVERY_LOGIN,ROOT_RECOVERY_SQL} from '../../apps/api/src/staff-root-recovery-candidate.mjs';
 import {createStaffRootBootstrapCandidate,ROOT_BOOTSTRAP_SQL} from '../../apps/api/src/staff-root-bootstrap-candidate.mjs';
@@ -113,6 +114,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
  const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
  const jwk={...publicKey.export({format:'jwk'}),alg:'RS256',use:'sig',kid:'ci-root'};
  const challenges=new Map(),sessions=new Map();
+ const rootKeys=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
  const enc=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
  const provider={
   async options(){
@@ -126,6 +128,12 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    const data=JSON.parse(Buffer.from(credential.response.clientDataJSON,'base64url').toString());
    if(challenge!==data.challenge)return null;
    const uid=Buffer.from(credential.response.userHandle,'base64url').toString();
+   if(credential.response.signature!=='fixture'){
+    const authenticator=Buffer.from(credential.response.authenticatorData,'base64url');
+    const clientData=Buffer.from(credential.response.clientDataJSON,'base64url');
+    if(uid!==rootId||credential.id!==genesisCredential||!authenticator.subarray(0,32).equals(createHash('sha256').update(new URL(origin).hostname).digest())||
+     !verify('sha256',Buffer.concat([authenticator,createHash('sha256').update(clientData).digest()]),rootKeys.publicKey,Buffer.from(credential.response.signature,'base64url')))return null;
+   }
    const now=Math.floor(Date.now()/1000);
    const sid=randomUUID();
    const msg=enc({typ:'JWT',alg:'RS256',kid:jwk.kid})+'.'+enc({iss:issuer,aud:'authenticated',
@@ -153,7 +161,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   withTransaction:createRoleScopedPostgresTransaction({pool:ownershipPool,role:OWNERSHIP_ROLE,allowedSql:new Set([OWNERSHIP_SQL])}),
   issueCapability:createOwnershipCapabilityIssuer({keyId:ownershipKey,secret:ownershipSecret,databaseRole:ownershipLogin})});
  registerOwnershipGovernanceHttp(app,{forRoles,repository:ownership});
- passkey.register(app,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,ownership:true,staffFirstAdmin:true},rootBootstrap:bootstrap});
+ passkey.register(app,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,ownership:true,staffFirstAdmin:true,rootSecurity:true},rootBootstrap:bootstrap,rootSecurity:createStaffRootSecurityCandidate({kernel:rootKernel})});
  let preview,browser;
  const auth='/api/v1/staff/auth';
  const post=(path,body,cookie)=>app.inject({method:'POST',url:auth+path,payload:body,
@@ -214,6 +222,10 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    url:origin,secure:true,httpOnly:true,sameSite:'Strict'});
   await rootContext.addCookies([sessionCookie(rootCookie),sessionCookie(rootProof)]);
   const rootPage=await rootContext.newPage();
+  const cdp=await rootContext.newCDPSession(rootPage);
+  await cdp.send('WebAuthn.enable');
+  const {authenticatorId}=await cdp.send('WebAuthn.addVirtualAuthenticator',{options:{protocol:'ctap2',transport:'internal',hasResidentKey:true,hasUserVerification:true,isUserVerified:true,automaticPresenceSimulation:true}});
+  await cdp.send('WebAuthn.addCredential',{authenticatorId,credential:{credentialId:Buffer.from(genesisCredential,'base64url').toString('base64'),privateKey:rootKeys.privateKey.export({format:'der',type:'pkcs8'}).toString('base64'),rpId:new URL(origin).hostname,isResidentCredential:true,signCount:0,userHandle:Buffer.from(rootId).toString('base64')}});
   await rootPage.goto(origin+'/#equipo');
   const panel=rootPage.getByRole('region',{name:'Primer ADMIN'});
   await panel.getByRole('button',{name:'Invitar primer ADMIN'}).waitFor();
@@ -347,6 +359,13 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.equal((await state(adminHeaders)).statusCode,403);
   const adminContext=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
   await adminContext.addCookies([sessionCookie(adminCookie)]);
+  const securityPath=auth+'/root-security';
+  const security=(suffix='',headers=rootHeaders,body)=>app.inject({method:body===undefined?'GET':'POST',url:securityPath+suffix,headers,...(body===undefined?{}:{payload:body})});
+  assert.deepEqual((await security()).json(),{configured:false,failures:'0',blockedUntil:null});
+  assert.equal((await security('',adminHeaders)).statusCode,403);
+  assert.equal((await security('/options',adminHeaders,{action:'reset'})).statusCode,403);
+  assert.equal((await security('/options',rootHeaders,{action:'configure'})).statusCode,400);
+  assert.equal((await security('/verify',rootHeaders,{action:'reset',credential:{}})).statusCode,401);
   const adminPage=await adminContext.newPage();await adminPage.goto(origin+'/#equipo');
   await adminPage.getByRole('button',{name:'Cerrar sesión'}).waitFor();
   assert.equal(await adminPage.getByRole('region',{name:'Primer ADMIN'}).count(),0);
@@ -358,7 +377,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    let kernel=createRootRecoveryKernelCandidate(config);
    const run=(action,fields={})=>kernel.command(action,rootId,fields);
    const hash=(kind,value)=>kernel.hash(kind,value);
-   const recoveryCode=generateRootRecoveryCode();
+   let recoveryCode=generateRootRecoveryCode();
    assert.match(recoveryCode,/^[A-Z2-7]{25}[AEIMQUY4]$/);
    assert.notEqual(recoveryCode,generateRootRecoveryCode());
    const configFields={a:hash('email','security@demo.invalid'),b:hash('code',recoveryCode),days:28};
@@ -374,7 +393,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await attempt(rootId,grantId,code,'/verify',backupId)).statusCode,200);
    const link=hash('link',generateRootRecoveryToken()),nextLink=hash('link',generateRootRecoveryToken());
    assert.equal((await run('prepare_link',{a:link})).outcome,'link_prepared');
-   const challenge=hash('challenge',generateRootRecoveryToken());
+   let challenge=hash('challenge',generateRootRecoveryToken());
    assert.equal((await run('challenge',{a:link,b:challenge})).outcome,'denied');
    assert.equal((await run('confirm_link',{a:link})).outcome,'link_confirmed');
    assert.equal((await run('challenge',{a:link,b:challenge})).outcome,'challenge_created');
@@ -389,9 +408,33 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    kernel=createRootRecoveryKernelCandidate(config); // restart does not reset
    const blocked=await recoveryAttempt();assert.deepEqual(blocked,{...third,outcome:'blocked'});
    assert.equal((await state()).statusCode,200); // existing ROOT session unaffected
+   await rootPage.goto(origin+'/#configuracion');
+   const securityPanel=rootPage.getByRole('region',{name:'Recuperación de ROOT'});
+   await securityPanel.getByText('Fallos acumulados').waitFor();
+   await securityPanel.getByRole('checkbox').check();
+   const replacementResponse=rootPage.waitForResponse(r=>r.url().endsWith(securityPath+'/verify')&&r.request().method()==='POST');
+   await securityPanel.getByRole('button',{name:'Sustituir código con passkey'}).click();
+   const replacement=await replacementResponse;assert.equal(replacement.status(),200,await replacement.text());
+   assert.equal(replacement.headers()['cache-control'],'no-store');
+   assert.equal((await security('/verify',rootHeaders,replacement.request().postDataJSON())).statusCode,401);
+   const newCode=(await replacement.json()).code;
+   assert.match(newCode,/^[A-Z2-7]{25}[AEIMQUY4]$/);assert.notEqual(newCode,recoveryCode);
+   await securityPanel.getByText(newCode,{exact:true}).waitFor();
+   assert.equal((await security()).json().failures,'3');
+   assert.equal((await security()).json().blockedUntil,third.blockedUntil);
+   assert.ok(!(await security()).body.includes(newCode));
+   await securityPanel.getByRole('button',{name:'He guardado el código'}).click();
+   assert.equal(await securityPanel.getByText(newCode,{exact:true}).count(),0);
+   recoveryCode=newCode;
+   // A rotated code invalidates the previous challenge. No recovery
+   // factor is injected by the DBA; after the block a fresh challenge is issued.
+   assert.deepEqual((await admin.query('SELECT challenge_hash,grant_hash FROM sabora.root_recovery_state_candidate')).rows[0],{challenge_hash:null,grant_hash:null});
    // Only the disposable DBA advances timestamps, never the restricted login.
    const expireBlock=()=>admin.query("UPDATE sabora.root_recovery_state_candidate SET blocked_until=clock_timestamp()-interval '1 second' WHERE singleton");
    await expireBlock();
+   assert.equal((await recoveryAttempt()).failures,'3');
+   challenge=hash('challenge',generateRootRecoveryToken());
+   assert.equal((await run('challenge',{a:link,b:challenge})).outcome,'challenge_created');
    assert.equal((await recoveryAttempt()).failures,'4');
    const fifth=await recoveryAttempt();assert.equal(fifth.failures,'5');
    assert.ok(Math.abs(Date.parse(fifth.blockedUntil)-Date.now()-3600000)<10000);
@@ -412,7 +455,10 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await run('confirm_link',{a:failedLink})).outcome,'denied');
    assert.equal((await run('confirm_link',{a:nextLink})).failures,'11');
    assert.equal((await recoveryAttempt()).outcome,'blocked');
-   assert.equal((await run('reset')).outcome,'reset');
+   const resetResponse=rootPage.waitForResponse(r=>r.url().endsWith(securityPath+'/verify')&&r.request().method()==='POST');
+   await securityPanel.getByRole('button',{name:'Restablecer contador con passkey'}).click();
+   const reset=await resetResponse;assert.equal(reset.status(),200,await reset.text());assert.deepEqual(await reset.json(),{configured:true,failures:'0',blockedUntil:null});
+   assert.equal((await security()).json().failures,'0');
    assert.equal((await run('challenge',{a:link,b:challenge})).outcome,'denied');
    const renewed=hash('challenge',generateRootRecoveryToken());
    assert.equal((await run('challenge',{a:nextLink,b:renewed})).outcome,'challenge_created');

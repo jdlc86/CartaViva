@@ -98,6 +98,9 @@ BEGIN
    WHEN 'claim' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
    WHEN 'add_backup' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
    WHEN 'complete' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NOT NULL AND p_days IS NULL
+   WHEN 'security_status' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
+   WHEN 'security_reset' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
+   WHEN 'replace_code' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NULL AND p_days IS NULL
    WHEN 'reset' THEN p_a IS NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
    ELSE false END,false)
  THEN RAISE EXCEPTION 'root_recovery_forbidden' USING ERRCODE='42501'; END IF;
@@ -126,6 +129,7 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'root_recovery_forbidden' USING ERRCODE='42501'; END IF;
  SELECT * INTO s FROM sabora.root_recovery_state_candidate t WHERE t.singleton FOR UPDATE;
  IF NOT FOUND THEN
+  IF p_action='security_status' AND p_a=v_genesis_hash THEN RETURN QUERY SELECT 'unconfigured'::text,0::bigint,NULL::timestamptz; RETURN; END IF;
   IF p_action<>'configure' THEN RETURN QUERY SELECT 'denied'::text,0::bigint,NULL::timestamptz; RETURN; END IF;
   INSERT INTO sabora.root_recovery_state_candidate(root_user_id,email_hash,code_hash,interval_days)
    VALUES(p_actor,p_a,p_b,p_days);
@@ -134,7 +138,17 @@ BEGIN
   v_fails:=s.failures;v_block:=s.blocked_until;
   IF s.root_user_id IS DISTINCT FROM p_actor THEN RAISE EXCEPTION 'root_recovery_forbidden' USING ERRCODE='42501'; END IF;
   v_result:='denied';
-  IF s.registration_pending THEN
+  IF p_action IN ('security_status','security_reset','replace_code') AND
+   (s.registration_pending OR NOT coalesce(p_a=coalesce(s.primary_credential_hash,v_genesis_hash) OR p_a=s.backup_credential_hash,false))
+  THEN RETURN QUERY SELECT 'denied'::text,0::bigint,NULL::timestamptz; RETURN;
+  ELSIF p_action='security_status' THEN RETURN QUERY SELECT 'configured'::text,s.failures,s.blocked_until; RETURN;
+  ELSIF p_action='replace_code' THEN
+   IF p_b IS DISTINCT FROM s.code_hash THEN
+    UPDATE sabora.root_recovery_state_candidate SET code_hash=p_b,challenge_hash=NULL,challenge_expires_at=NULL,
+     grant_hash=NULL,grant_expires_at=NULL WHERE singleton;
+    v_result:='code_replaced';
+   END IF;
+  ELSIF s.registration_pending THEN
    -- Only trusted, verified provider reconciliation may issue complete.
    -- No HTTP endpoint exposes this command.
    IF p_action='complete' AND p_a=s.pending_operation_hash
@@ -155,7 +169,7 @@ BEGIN
     UPDATE sabora.root_recovery_state_candidate SET backup_credential_hash=p_a WHERE singleton;
     v_result:='backup_added';
    END IF;
-  ELSIF p_action='reset' THEN
+  ELSIF p_action IN ('reset','security_reset') THEN
    UPDATE sabora.root_recovery_state_candidate SET failures=0,blocked_until=NULL,
     challenge_hash=NULL,challenge_expires_at=NULL,grant_hash=NULL,grant_expires_at=NULL WHERE singleton;
    v_fails:=0;v_block:=NULL;v_result:='reset';

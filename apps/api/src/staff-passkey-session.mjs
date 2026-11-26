@@ -5,6 +5,7 @@ import {hashRootCredentialId} from './staff-root-credential-id.mjs';
 const SESSION = '__Host-sabora-staff';
 const CHALLENGE = '__Host-sabora-staff-challenge';
 const ROOT_PROOF = '__Host-sabora-root-proof';
+const ROOT_SECURITY_CHALLENGE = '__Host-sabora-root-security-challenge';
 const PATH = '/api/v1/staff/auth';
 const ROLES = ['root', 'admin', 'waiter', 'kitchen'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -69,6 +70,10 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
       return null;
     }
   };
+  const rootProofHash=(request,identity)=>{
+    const [sid,hash,extra]=(open(request,ROOT_PROOF)??'').split('.');
+    return sid===identity.sessionId&&/^[0-9a-f]{64}$/.test(hash??'')&&extra===undefined?hash:null;
+  };
   const assertIdentity = async request => {
     const token = open(request, SESSION);
     const identity = await verify(token);
@@ -76,8 +81,7 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
     const user = await provider.user(token);
     if(user?.id!==identity.userId||identity.expiresAt<=clock())return null;
     if(rootAccess){
-      const [sid,hash,extra]=(open(request,ROOT_PROOF)??'').split('.');
-      const credentialHash=sid===identity.sessionId&&/^[0-9a-f]{64}$/.test(hash??'')&&extra===undefined?hash:null;
+      const credentialHash=rootProofHash(request,identity);
       if(await rootAccess(identity.userId,credentialHash)!==true)return null;
     }
     return identity;
@@ -97,7 +101,9 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
     }
   };
 
-  function register(app, {forRoles, features, rootBootstrap}) {
+  function register(app, {forRoles, features, rootBootstrap,rootSecurity}) {
+    if(rootSecurity!==undefined&&(!rootAccess||typeof rootSecurity?.read!=='function'||typeof rootSecurity?.mutate!=='function'))throw Error('invalid_root_security_config');
+    if(features?.rootSecurity===true&&!rootSecurity)throw Error('invalid_root_security_feature');
     if(rootBootstrap!==undefined&&typeof rootBootstrap!=='function')throw Error('invalid_root_bootstrap_config');
     const staff = forRoles(ROLES);
     const [, authorizeMembership] = staff;
@@ -171,6 +177,63 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
     // operator-authorized bootstrap installation may supply the callback.
     if(rootBootstrap)app.post(PATH+'/bootstrap/root',{preHandler:originOnly,bodyLimit:16_384},
       (request,reply)=>completePasskey(request,reply,true));
+
+    // Separate, intent-bound, one-use provider challenge. Neither options
+    // nor the fresh assertion grants a new operational cookie. The existing
+    // ROOT identity and the just-proven credential are checked under SQL lock.
+    if(rootSecurity){
+      const root=forRoles(['root']),securityPath=PATH+'/root-security';
+      const actionAllowed=action=>['reset','replace_code'].includes(action);
+      const responseError=(error,reply)=>error?.code==='42501'?reply.code(403).send({error:'forbidden'}):unavailable(reply);
+      const safe=async(request,reply)=>{
+        reply.header('Cache-Control','no-store');
+        reply.header('Referrer-Policy','no-referrer');
+        if(request.url.includes('?'))return reply.code(400).send({error:'invalid_request'});
+      };
+      app.get(securityPath,{preHandler:[safe,...root]},async(request,reply)=>{
+        try{return await rootSecurity.read({identity:request.verifiedIdentity,credentialHash:rootProofHash(request,request.verifiedIdentity)});}
+        catch(error){return responseError(error,reply);}
+      });
+      app.post(securityPath+'/options',{preHandler:[safe,...root],bodyLimit:1024},async(request,reply)=>{
+        const action=request.body?.action;
+        if(Object.keys(request.body??{}).join(',')!=='action'||!actionAllowed(action))return reply.code(400).send({error:'invalid_request'});
+        try{
+          const result=await provider.options();
+          if(!UUID.test(result?.challenge_id??'')||result.options?.rpId!==hostname||
+            typeof result.options.challenge!=='string'||!BASE64URL.test(result.options.challenge)||
+            !Number.isSafeInteger(result.expires_at))return unavailable(reply);
+          const identity=request.verifiedIdentity,expires=Math.min(result.expires_at,identity.expiresAt,clock()+60);
+          if(expires<=clock())return unauthorized(reply);
+          const value=[result.challenge_id,expires,identity.userId,identity.sessionId,action].join('.');
+          reply.header('Set-Cookie',cookie(ROOT_SECURITY_CHALLENGE,signed(ROOT_SECURITY_CHALLENGE,value),expires-clock()));
+          return {options:{...result.options,userVerification:'required'}};
+        }catch{return unavailable(reply);}
+      });
+      app.post(securityPath+'/verify',{preHandler:[safe,...root],bodyLimit:16384},async(request,reply)=>{
+        const [challenge,expires,actor,sessionId,action,extra]=(open(request,ROOT_SECURITY_CHALLENGE)??'').split('.');
+        reply.header('Set-Cookie',cookie(ROOT_SECURITY_CHALLENGE,'',0));
+        const identity=request.verifiedIdentity,credential=request.body?.credential;
+        if(!UUID.test(challenge??'')||!(Number(expires)>clock())||extra!==undefined||
+          actor!==identity.userId||sessionId!==identity.sessionId||!actionAllowed(action)||
+          Object.keys(request.body??{}).sort().join(',')!=='action,credential'||request.body.action!==action||
+          !verifiedAssertion(credential,origin))return unauthorized(reply);
+        try{
+          const result=await provider.verify(challenge,credential),token=result?.access_token;
+          const fresh=await verify(token);
+          if(!fresh)return unauthorized(reply);
+          // Always retire the isolated new Auth session; no token reaches UI.
+          // Do not sign out the original session on malformed provider output.
+          if(fresh.sessionId===identity.sessionId)return unauthorized(reply);
+          const user=await provider.user(token);
+          const retired=await provider.logout(token);
+          if(retired!==true||user?.id!==fresh.userId||fresh.userId!==identity.userId||
+            Number(expires)<=clock()||identity.expiresAt<=clock())return unauthorized(reply);
+          const credentialHash=hashRootCredentialId(credential.id);
+          if(await rootAccess(identity.userId,credentialHash)!==true)return unauthorized(reply);
+          return await rootSecurity.mutate({identity,credentialHash,action,requestId:challenge});
+        }catch(error){return responseError(error,reply);}
+      });
+    }
     app.post(PATH + '/logout', {preHandler: originOnly}, async (request, reply) => {
       try {
         const token = open(request, SESSION);
@@ -180,7 +243,7 @@ export function createStaffPasskeySession({origin, issuer, provider, getTrustedK
           if (await provider.logout(token) !== true && (await provider.user(token))?.id === identity.userId)
             return unavailable(reply);
         }
-        return reply.header('Set-Cookie', [cookie(SESSION, '', 0), cookie(CHALLENGE, '', 0),...(rootAccess?[cookie(ROOT_PROOF,'',0)]:[])])
+        return reply.header('Set-Cookie', [cookie(SESSION, '', 0), cookie(CHALLENGE, '', 0),...(rootAccess?[cookie(ROOT_PROOF,'',0),cookie(ROOT_SECURITY_CHALLENGE,'',0)]:[])])
           .code(204).send();
       } catch {
         return unavailable(reply);
