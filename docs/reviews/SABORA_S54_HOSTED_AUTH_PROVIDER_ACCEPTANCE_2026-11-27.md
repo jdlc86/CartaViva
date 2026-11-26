@@ -26,6 +26,8 @@ La [sonda alojada del 26-11](https://github.com/jdlc86/CartaViva/actions/runs/45
 
 Comprobación local del candidato: sintaxis Node, seis tests focalizados de seguridad y transporte, y una ceremonia Chromium offline con autenticador virtual que produjo una firma válida y rechazó el acceso de red desde la página. La firma local se verificó con la clave pública de registro. El único contacto alojado de esta ejecución fue la consulta pública de JWKS.
 
+Bootstrap del corte `3550dd9d` terminó en `p3_corrupt_encrypted_archive_accepted` antes de las pruebas de Auth. La prueba sobrescribía un byte aleatorio con `X` y podía dejar el archivo original intacto. El fixture ahora invierte un bit del byte leído y comprueba que la escritura se realiza. La exigencia de que el descifrado rechace la alteración permanece en la batería. [Log de Bootstrap](https://github.com/jdlc86/CartaViva/actions/runs/45913288997/job/140226457541) · [Fixture corregido](../../scripts/ci/postgres-recovery-smoke.sh).
+
 ## Paso manual del propietario
 
 Usar el [procedimiento manual revisado](SABORA_S54_HOSTED_AUTH_READINESS_2026-11-26.md#s54-25--resultado-de-la-sonda-y-ensayo-siguiente) desde una terminal propia de confianza, con Node 22, Chromium del proyecto, el SHA exacto del candidato y custodia local de las dos claves del proyecto RESTAURANTE. Confirmar Auth vacío y exclusividad de la ventana antes de ejecutar una única vez. El procedimiento produce un correo ficticio para reconciliación local si la ejecución se interrumpe. Compartir el SHA y los marcadores de resultado con el correo ficticio y los materiales sensibles suprimidos. Si aparece `CLEANUP NOT PROVEN`, mantener NO-GO y reconciliar únicamente esa identidad.

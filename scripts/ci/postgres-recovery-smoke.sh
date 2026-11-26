@@ -293,7 +293,16 @@ SABORA_BACKUP_KEY_FILE="$backup_key" node scripts/ci/encrypted-backup-artifact.m
  "$encrypted_bundle" "$backup_manifest" "$host_bundle"
 tar -xf "$host_bundle" -C "$RUNNER_TEMP"
 cp "$encrypted_bundle" "$corrupt_bundle"
-printf 'X' | dd of="$corrupt_bundle" bs=1 seek=17 conv=notrunc status=none
+# Flip a bit so the negative fixture always differs from the random original.
+node --input-type=module -e '
+ import {closeSync,openSync,readSync,writeSync} from "node:fs";
+ const file=openSync(process.argv[1],"r+"),byte=Buffer.alloc(1),offset=17;
+ try{
+  if(readSync(file,byte,0,1,offset)!==1)throw Error("p3_corrupt_fixture_too_short");
+  byte[0]^=1;
+  if(writeSync(file,byte,0,1,offset)!==1)throw Error("p3_corrupt_fixture_write_failed");
+ }finally{closeSync(file);}
+' "$corrupt_bundle"
 if SABORA_BACKUP_KEY_FILE="$backup_key" node scripts/ci/encrypted-backup-artifact.mjs decrypt \
  "$corrupt_bundle" "$backup_manifest" "$corrupt_output" >/dev/null 2>&1; then
  echo 'p3_corrupt_encrypted_archive_accepted' >&2; exit 1
