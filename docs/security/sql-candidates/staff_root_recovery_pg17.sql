@@ -685,4 +685,94 @@ END;
 $mail$;
 ALTER FUNCTION sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text) OWNER TO sabora_root_recovery_fn_owner;
 REVOKE ALL ON FUNCTION sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text) FROM PUBLIC,anon,authenticated;
+
+-- Read-only classification; not an authorization to send mail or mutate
+-- membership. The subsequent writer must resolve and recheck under locks.
+GRANT SELECT(id,invitee_email_hash,auth_user_id,requested_role,state)
+ ON sabora.staff_enrollments TO sabora_root_recovery_fn_owner;
+GRANT SELECT(singleton,owner_user_id) ON sabora.admin_write_ownership TO sabora_root_recovery_fn_owner;
+CREATE POLICY staff_recovery_classify_enrollment ON sabora.staff_enrollments FOR SELECT
+ TO sabora_root_recovery_fn_owner USING(true);
+CREATE POLICY staff_recovery_classify_owner ON sabora.admin_write_ownership FOR SELECT
+ TO sabora_root_recovery_fn_owner USING(singleton);
+CREATE POLICY staff_recovery_classify_members ON sabora.staff_members FOR SELECT
+ TO sabora_root_recovery_fn_owner USING(role IN ('admin','waiter','kitchen'));
+
+CREATE FUNCTION sabora.classify_staff_invitation_candidate(
+ p_key_id text,p_actor uuid,p_credential text,p_email_hash text,p_enrollment uuid,
+ p_issued bigint,p_expires bigint,p_signature text
+) RETURNS TABLE(purpose text,enrollment_id uuid,enrollment_state text)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $classify$
+DECLARE v_key bytea;v_expiry timestamptz;v_expected bytea;v_given bytea;v_diff integer:=0;v_i integer;
+ v_role text;v_owner uuid;v_genesis text;s sabora.root_recovery_state_candidate%ROWTYPE;
+ e record;v_member record;
+BEGIN
+ IF session_user::text IS DISTINCT FROM 'sabora_root_recovery_login' OR p_actor IS NULL
+ OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
+ OR (p_credential IS NOT NULL AND p_credential !~ '^[0-9a-f]{64}$')
+ OR (p_email_hash IS NOT NULL AND p_email_hash !~ '^[0-9a-f]{64}$')
+ OR ((p_email_hash IS NULL)=(p_enrollment IS NULL))
+ OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
+ OR p_issued IS NULL OR p_expires IS NULL OR p_expires::numeric-p_issued::numeric NOT BETWEEN 1 AND 15000
+ OR p_issued::numeric>floor(extract(epoch FROM clock_timestamp())*1000)::numeric+5000
+ OR p_expires<=floor(extract(epoch FROM clock_timestamp())*1000)
+ THEN RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT k.hmac_key,k.expires_at INTO v_key,v_expiry FROM sabora.root_recovery_keys_candidate k
+ WHERE k.key_id=p_key_id AND k.purpose='control' AND k.expires_at>clock_timestamp();
+ IF NOT FOUND THEN RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501'; END IF;
+ v_expected:=extensions.hmac(convert_to(concat_ws(chr(10),'sabora.staff-invitation-classify.v1',p_key_id,
+ session_user::text,p_actor::text,coalesce(p_credential,'-'),coalesce(p_email_hash,'-'),
+ coalesce(p_enrollment::text,'-'),p_issued::text,p_expires::text),'UTF8'),v_key,'sha256');
+ v_given:=decode(p_signature,'hex');
+ FOR v_i IN 0..31 LOOP v_diff:=v_diff | (get_byte(v_expected,v_i)#get_byte(v_given,v_i)); END LOOP;
+ IF v_diff IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501'; END IF;
+ PERFORM pg_advisory_xact_lock(17302101,52426);
+ IF p_expires<=floor(extract(epoch FROM clock_timestamp())*1000) OR v_expiry<=clock_timestamp()
+ OR NOT EXISTS(SELECT 1 FROM sabora.root_recovery_keys_candidate k WHERE k.key_id=p_key_id
+  AND k.purpose='control' AND k.hmac_key=v_key AND k.expires_at>clock_timestamp())
+ THEN RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT m.role,o.owner_user_id INTO v_role,v_owner FROM sabora.staff_members m
+ CROSS JOIN sabora.admin_write_ownership o WHERE m.user_id=p_actor AND m.state='active' AND o.singleton;
+ IF v_role='root' THEN
+  SELECT r.credential_hash INTO v_genesis FROM sabora.root_bootstrap_receipt r WHERE r.singleton AND r.root_user_id=p_actor;
+  IF NOT FOUND OR p_credential IS NULL THEN RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501'; END IF;
+  SELECT * INTO s FROM sabora.root_recovery_state_candidate WHERE singleton;
+  IF NOT FOUND THEN
+   IF p_credential IS DISTINCT FROM v_genesis THEN RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501'; END IF;
+  ELSIF NOT coalesce(s.root_user_id=p_actor AND NOT s.registration_pending
+   AND (p_credential=coalesce(s.primary_credential_hash,v_genesis) OR p_credential=s.backup_credential_hash),false)
+  THEN RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501'; END IF;
+ ELSIF v_role IS DISTINCT FROM 'admin' OR v_owner IS DISTINCT FROM p_actor THEN
+  RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501';
+ END IF;
+ SELECT x.id,x.auth_user_id,x.requested_role,x.state INTO e FROM sabora.staff_enrollments x
+ WHERE (p_enrollment IS NOT NULL AND x.id=p_enrollment)
+ OR (p_email_hash IS NOT NULL AND x.invitee_email_hash=decode(p_email_hash,'hex'));
+ IF NOT FOUND THEN
+  IF v_role='admin' AND p_email_hash IS NOT NULL THEN RETURN QUERY SELECT 'new'::text,NULL::uuid,NULL::text; RETURN; END IF;
+  RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501';
+ END IF;
+ IF e.state='invited' AND e.auth_user_id IS NULL AND v_role='admin' THEN
+  RETURN QUERY SELECT 'resend'::text,e.id,e.state; RETURN;
+ END IF;
+ IF e.state IN ('active','suspended') AND e.auth_user_id IS NOT NULL AND e.auth_user_id<>p_actor
+ AND e.requested_role IN ('admin','waiter','kitchen') THEN
+  SELECT m.role,m.state INTO v_member FROM sabora.staff_members m WHERE m.user_id=e.auth_user_id;
+  IF FOUND AND v_member.role=e.requested_role AND v_member.state=e.state THEN
+   RETURN QUERY SELECT 'recover'::text,e.id,e.state; RETURN;
+  END IF;
+ END IF;
+ -- Accepted/registered are incomplete original enrollments, not recoveries.
+ -- Revoked is terminal. ROOT cannot use this capability to invite or resume an alta.
+ IF v_role='admin' AND e.state IN ('accepted','registered') THEN
+  RETURN QUERY SELECT 'incomplete'::text,e.id,e.state; RETURN;
+ END IF;
+ RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501';
+END;
+$classify$;
+ALTER FUNCTION sabora.classify_staff_invitation_candidate(text,uuid,text,text,uuid,bigint,bigint,text)
+ OWNER TO sabora_root_recovery_fn_owner;
+REVOKE ALL ON FUNCTION sabora.classify_staff_invitation_candidate(text,uuid,text,text,uuid,bigint,bigint,text)
+ FROM PUBLIC,anon,authenticated;
+
 COMMIT;

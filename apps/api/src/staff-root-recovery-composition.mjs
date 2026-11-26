@@ -9,12 +9,13 @@ const OWNER='sabora_root_recovery_fn_owner';
 const MAIL=['sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text)',OWNER];
 const CONTROL=[
  MAIL,
+ ['sabora.classify_staff_invitation_candidate(text,uuid,text,text,uuid,bigint,bigint,text)',OWNER],
  ['sabora.root_recovery_access_candidate(text,uuid,text,bigint,bigint,text)',OWNER],
  ['sabora.root_recovery_transition_candidate(text,text,uuid,uuid,text,text,text,integer,bigint,bigint,text)',OWNER],
 ];
 const TABLES=['staff_members','root_bootstrap_receipt','root_recovery_keys_candidate',
  'root_recovery_state_candidate','root_recovery_audit_candidate','root_recovery_mail_contact_candidate',
- 'root_recovery_mail_pending_candidate','root_recovery_mail_job_candidate','admin_ownership_audit','staff_lifecycle_audit'];
+ 'root_recovery_mail_pending_candidate','root_recovery_mail_job_candidate','admin_ownership_audit','staff_lifecycle_audit','staff_enrollments','admin_write_ownership'];
 const TRIGGERS=[
  ['root_recovery_audit_candidate','root_recovery_audit_immutable',false],
  ['root_recovery_audit_candidate','root_recovery_audit_no_truncate',false],
