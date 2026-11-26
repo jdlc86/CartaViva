@@ -1376,6 +1376,7 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
  const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
  const http=Fastify({logger:false});
  let preview,browser;
+ try{
  const key=randomBytes(32),keyId='directory_durable_custody_001',keyring={
   active:()=>({keyId,key}),resolveKey:id=>id===keyId?key:null};
  const issue=createStaffLifecycleDirectoryCapabilityIssuer({keyId:lifecycleKeyId,secret:lifecycleSecret,databaseRole:role});
@@ -1449,7 +1450,6 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
  const actionResponse=page=>page.waitForResponse(r=>r.url().endsWith('/api/v1/staff/lifecycle')&&r.request().method()==='POST');
  const request={action:'invite',email:'durable-directory@example.invalid',givenName:'Equipo',familyName:'Durable',
   requestedRole:'waiter',correlationId:'directory_durable_001'};
- try{
   const apiOrigin=await http.listen({host:'127.0.0.1',port:0});
   preview=await startPublishedManagementPwa({apiOrigin,port:4188,tls:true});
   const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
@@ -1708,6 +1708,11 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
   assert.ok((await adminPost({...activate,subjectUserId:otherUser,correlationId:'directory_wrong_subject_001'})).statusCode>=400);
   assert.equal((await admin.query('SELECT state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0].state,'registered');
   await assert.rejects(writer.query(STAFF_ADMIN_SUBJECT_SQL,[lifecycleKeyId,ownerId,id,'activate','directory_unsigned_subject',Date.now(),Date.now()+10000,null]),e=>e.code==='42501');
+  for(const [key,correlation,signature] of [
+   ['bad key', 'directory_bad_subject_key', '0'.repeat(64)],
+   [lifecycleKeyId,'bad correlation','0'.repeat(64)],
+   [lifecycleKeyId,'directory_bad_subject_signature','f'.repeat(63)]
+  ])await assert.rejects(writer.query(STAFF_ADMIN_SUBJECT_SQL,[key,ownerId,id,'activate',correlation,Date.now(),Date.now()+10000,signature]),e=>e.code==='42501');
   await selectMember(manager);
   const activationResponse=actionResponse(manager);
   await manager.getByRole('button',{name:'Activar acceso'}).click();

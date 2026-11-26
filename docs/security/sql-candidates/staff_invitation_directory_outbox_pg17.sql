@@ -420,16 +420,13 @@ AS $resolve_staff_subject$
 DECLARE v_key bytea;v_expiry timestamptz;v_now timestamptz:=clock_timestamp();
  v_expected bytea;v_provided bytea;v_diff integer:=0;v_i integer;v_subject uuid;
 BEGIN
- IF p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}
-
+ IF p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
   OR p_actor IS NULL OR p_enrollment IS NULL OR p_action IS NULL
   OR p_action NOT IN ('activate','suspend')
-  OR p_correlation IS NULL OR p_correlation !~ '^[A-Za-z0-9_-]{8,128}
-
+  OR p_correlation IS NULL OR p_correlation !~ '^[A-Za-z0-9_-]{8,128}$'
   OR p_issued IS NULL OR p_expires IS NULL
   OR p_expires::numeric-p_issued::numeric NOT BETWEEN 1 AND 30000
-  OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}
-
+  OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
   OR p_issued::numeric>floor(extract(epoch FROM v_now)*1000)::numeric+5000
   OR p_expires<=floor(extract(epoch FROM v_now)*1000)
  THEN RAISE EXCEPTION 'staff_admin_subject_forbidden' USING ERRCODE='42501'; END IF;
