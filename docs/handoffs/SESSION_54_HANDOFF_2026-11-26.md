@@ -136,3 +136,20 @@ Se incorpora una frontera HTTP de laboratorio para iniciar el desafío de correo
 ## S54-12 — Caducidad de la concesión y aviso durable de recuperación
 
 Sobre S54-11, el SQL conserva la fecha límite original de cinco minutos al consumir la concesión: la preparación de un registro nuevo queda denegada tras ese límite. La limpieza del trabajador existente puede liberar exclusivamente una operación caducada que todavía no alcanzó la vinculación durable previa a cualquier mutación de registro Auth. Conserva código, contador, enlace vigente y credenciales anteriores, no reutiliza la concesión ni reabre un registro preparado. Una operación preparada con resultado remoto incierto mantiene el fence aunque caduque la ventana; solo evidencia atribuible permite reconciliarla. No se habilita ninguna ruta pública nueva. El contrato del futuro adaptador exige persistir preparación antes de toda mutación de registro y no iniciar llamada fuera del plazo. Se añade aviso sin factores ni secretos mediante el outbox existente, correlacionado con el audit de complete y en la misma transacción que sustituye credenciales/código; invalida pruebas pendientes de destinatario y trabajos de factores obsoletos. El ensayo genesis amplía escenarios de caducidad, liberación segura, replay, conservación del fence preparado, aviso único, despacho y borrado del sobre. Resultados pendientes de CI; los recibos de Auth y el correo siguen siendo fixtures. La documentación oficial Auth indica registro para usuario confirmado no anónimo y API passkey experimental: https://supabase.com/docs/guides/auth/passkeys. La prueba alojada debe demostrar vinculación exacta del registro (incluida respuesta perdida) y revocación; no se presupone una API remota inexistente. La decisión técnica de liberar solo la fase sin mutación externa y utilizar el outbox existente no añade vía de recuperación ni infraestructura. H1-A parcial/NO-GO; sin cambios en genesis, proveedores reales, VPS o Fleetia.
+
+
+## S54-13 — Decisión del propietario: recuperación de ADMIN, camarero y cocina
+
+El propietario decide reutilizar el reenvío de invitaciones para registrar una
+nueva passkey de un usuario existente y que el sistema distinga alta nueva de
+recuperación. Precisa expresamente: «Solo el admin titular». En consecuencia,
+ROOT o ADMIN activo titular pueden autorizar recuperación de personal no ROOT;
+para recuperar a un ADMIN, el autorizante ADMIN debe ser otro usuario. Si el
+titular pierde acceso, ROOT puede autorizar la recuperación. No se concede
+facultad a ADMIN no titular ni escritura ordinaria a ROOT. Se documenta la
+excepción acotada y conservación del UUID en los contratos de [identidad](../security/SABORA_STAFF_IDENTITY_LIFECYCLE_V1.md) y [ROOT/ADMIN](../architecture/SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md).
+Los detalles propuestos sobre revocación de credenciales/sesiones, estado
+suspendido y vigencias se distinguen de lo expresamente confirmado; la
+revocación irreversible previa se mantiene. Pendiente implementar y probar,
+con reutilización de outbox/enrolamiento y sin otro PR. No se ha autorizado
+prueba alojada ni operación real. No se altera el mecanismo de ROOT.

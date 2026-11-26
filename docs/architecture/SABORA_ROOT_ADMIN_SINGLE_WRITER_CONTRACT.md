@@ -200,3 +200,18 @@ inciertos de proveedor. La aceptación del diseño no equivale a validación
 de código, autorización de SQL operativo, aprovisionamiento de Auth,
 envío de correo real, merge o despliegue. Los detalles técnicos de
 custodia/retención y composición no se convierten en nuevos mecanismos.
+
+
+## Adenda S54 — recuperación de personal existente (26-11-2026)
+
+El propietario confirma que solo el ADMIN activo **titular** o ROOT pueden
+autorizar el reenvío de una invitación de recuperación para una identidad de
+personal existente no ROOT. Para recuperar a un ADMIN, el ADMIN autorizante
+debe ser otro usuario y titular vigente; si el titular pierde acceso, ROOT
+puede autorizar su recuperación. Ningún ADMIN no titular obtiene esa
+capacidad. La autorización de recuperación de ROOT sobre otros usuarios es
+una excepción específica, sin escritura ordinaria, sin alta nueva y sin
+alteración de titularidad. El servidor distingue alta de recuperación y
+conserva la identidad existente. Véase [contrato de ciclo de identidad](../security/SABORA_STAFF_IDENTITY_LIFECYCLE_V1.md#adenda-s54--recuperación-de-credenciales-de-personal-no-root-26-11-2026).
+No modifica las reglas de recuperación excepcional de ROOT. No constituye
+validación técnica ni autorización operativa.

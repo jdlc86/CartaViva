@@ -176,3 +176,42 @@ La recuperación conserva el ROOT existente y no utiliza el alta ordinaria
 de personal ni la concesión genesis. Esta referencia no aprueba un mecanismo
 equivalente para ADMIN, camarero o cocina, ni fija retención/intervalos.
 Pendiente implementación, integración, pruebas y autorizaciones operativas.
+
+
+## Adenda S54 — recuperación de credenciales de personal no ROOT (26-11-2026)
+
+Decisión expresa del propietario: reutilizar la invitación de personal para
+recuperar el acceso de una identidad existente mediante registro de una nueva
+passkey. Para un ADMIN, la recuperación puede ser autorizada por ROOT o por
+**otro ADMIN activo que sea el titular vigente**. Para camarero y cocina,
+únicamente ROOT o el ADMIN activo titular. Un ADMIN no titular no puede
+iniciar, reenviar ni autorizar una recuperación. ROOT queda excluido como
+objetivo de este mecanismo y conserva su recuperación especial.
+
+El servidor distingue de forma inequívoca el alta nueva del reenvío de una
+invitación pendiente y del registro de una nueva passkey para una identidad
+existente. Una recuperación conserva el UUID del usuario y no crea un nuevo
+miembro ni cambia su rol. El vínculo debe derivarse de registros durables de
+Sabora y verificarse en Auth, no de un UUID libre aportado por el navegador
+ni de una coincidencia de correo tomada como prueba suficiente de identidad.
+
+La capacidad de ROOT para autorizar recuperación de personal existente es una
+excepción acotada de seguridad, no una autorización de escritura
+administrativa ordinaria ni una reapertura del alta excepcional del primer
+ADMIN. La titularidad se verifica dentro de la transacción; la excepción no
+permite recuperar ROOT, crear otro usuario o alterar roles/titularidad.
+
+**Detalles de implementación propuestos, pendientes de ratificación si
+implican una decisión funcional adicional:** mantener suspendida una cuenta
+suspendida, rechazar recuperación de una cuenta revocada (conforme a la
+irrevocabilidad ya normativa), revocar credenciales anteriores y sesiones al
+completar, no conceder sesión operativa mediante el enlace, conservar
+historial e identificador del empleado. El enlace de recuperación debe
+vincularse al UUID existente y a un propósito distinto de alta; reenvíos
+invalidan la autorización anterior. No se acepta una recuperación autónoma
+por el correo sin autorización de ROOT o ADMIN titular. La vigencia concreta,
+política de retención y tratamiento de efectos inciertos de Auth quedan por
+resolver dentro del diseño y pruebas de H1-A; no introducir bypass.
+
+Decisión de diseño candidata para #92; no acredita implementación ni prueba,
+no autoriza operaciones sobre Auth/Resend reales, SQL, merge o despliegue.
