@@ -775,4 +775,117 @@ ALTER FUNCTION sabora.classify_staff_invitation_candidate(text,uuid,text,text,uu
 REVOKE ALL ON FUNCTION sabora.classify_staff_invitation_candidate(text,uuid,text,text,uuid,bigint,bigint,text)
  FROM PUBLIC,anon,authenticated;
 
+
+-- Durable authorization only. No token, provider request, membership
+-- mutation or outbox job is generated until the recovery delivery and
+-- credential-admission boundaries are connected. Versions are monotonic.
+CREATE TABLE sabora.staff_recovery_intent_candidate(
+ request_id uuid PRIMARY KEY,
+ enrollment_id uuid NOT NULL REFERENCES sabora.staff_enrollments(id) ON DELETE RESTRICT,
+ subject_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id) ON DELETE RESTRICT,
+ actor_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id) ON DELETE RESTRICT,
+ version integer NOT NULL CHECK(version>0),
+ subject_role text NOT NULL CHECK(subject_role IN ('admin','waiter','kitchen')),
+ subject_state text NOT NULL CHECK(subject_state IN ('active','suspended')),
+ issued_at timestamptz NOT NULL,
+ expires_at timestamptz NOT NULL CHECK(expires_at>issued_at),
+ CHECK(actor_user_id<>subject_user_id),
+ UNIQUE(enrollment_id,version)
+);
+ALTER TABLE sabora.staff_recovery_intent_candidate ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sabora.staff_recovery_intent_candidate FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON sabora.staff_recovery_intent_candidate FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT ON sabora.staff_recovery_intent_candidate TO sabora_root_recovery_fn_owner;
+CREATE POLICY staff_recovery_intent_read ON sabora.staff_recovery_intent_candidate FOR SELECT
+ TO sabora_root_recovery_fn_owner USING(true);
+CREATE POLICY staff_recovery_intent_insert ON sabora.staff_recovery_intent_candidate FOR INSERT
+ TO sabora_root_recovery_fn_owner WITH CHECK(true);
+CREATE TRIGGER staff_recovery_intent_immutable BEFORE UPDATE OR DELETE ON sabora.staff_recovery_intent_candidate
+ FOR EACH ROW EXECUTE FUNCTION sabora.reject_staff_lifecycle_history_mutation();
+CREATE TRIGGER staff_recovery_intent_no_truncate BEFORE TRUNCATE ON sabora.staff_recovery_intent_candidate
+ FOR EACH STATEMENT EXECUTE FUNCTION sabora.reject_staff_lifecycle_history_mutation();
+
+-- FOR UPDATE takes row locks compatible with the existing lifecycle order.
+-- PostgreSQL requires UPDATE privilege to take these locks; the dedicated
+-- owner's UPDATE RLS policies forbid writing any resulting row.
+GRANT UPDATE(owner_user_id) ON sabora.admin_write_ownership TO sabora_root_recovery_fn_owner;
+GRANT UPDATE(state) ON sabora.staff_enrollments,sabora.staff_members TO sabora_root_recovery_fn_owner;
+CREATE POLICY staff_recovery_owner_lock ON sabora.admin_write_ownership FOR UPDATE
+ TO sabora_root_recovery_fn_owner USING(singleton) WITH CHECK(false);
+CREATE POLICY staff_recovery_enrollment_lock ON sabora.staff_enrollments FOR UPDATE
+ TO sabora_root_recovery_fn_owner USING(true) WITH CHECK(false);
+CREATE POLICY staff_recovery_member_lock ON sabora.staff_members FOR UPDATE
+ TO sabora_root_recovery_fn_owner USING(true) WITH CHECK(false);
+
+CREATE FUNCTION sabora.authorize_staff_recovery_intent_candidate(
+ p_key_id text,p_actor uuid,p_credential text,p_enrollment uuid,p_request uuid,p_seconds integer,
+ p_issued bigint,p_expires bigint,p_signature text
+) RETURNS TABLE(intent_id uuid,enrollment_id uuid,intent_version integer,expires_at timestamptz,repeated boolean)
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $intent$
+DECLARE v_key bytea;v_expiry timestamptz;v_expected bytea;v_given bytea;v_diff integer:=0;v_i integer;
+ v_now timestamptz;v_class record;v_sig text;v_version integer;
+ e record; prior sabora.staff_recovery_intent_candidate%ROWTYPE;
+BEGIN
+ IF session_user::text IS DISTINCT FROM 'sabora_root_recovery_login' OR p_actor IS NULL
+ OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
+ OR (p_credential IS NOT NULL AND p_credential !~ '^[0-9a-f]{64}$')
+ OR p_enrollment IS NULL OR p_request IS NULL OR p_seconds IS NULL OR p_seconds NOT BETWEEN 60 AND 86400
+ OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
+ OR p_issued IS NULL OR p_expires IS NULL OR p_expires::numeric-p_issued::numeric NOT BETWEEN 1 AND 15000
+ OR p_issued::numeric>floor(extract(epoch FROM clock_timestamp())*1000)::numeric+5000
+ OR p_expires<=floor(extract(epoch FROM clock_timestamp())*1000)
+ THEN RAISE EXCEPTION 'staff_recovery_intent_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT k.hmac_key,k.expires_at INTO v_key,v_expiry FROM sabora.root_recovery_keys_candidate k
+ WHERE k.key_id=p_key_id AND k.purpose='control' AND k.expires_at>clock_timestamp();
+ IF NOT FOUND THEN RAISE EXCEPTION 'staff_recovery_intent_forbidden' USING ERRCODE='42501'; END IF;
+ v_expected:=extensions.hmac(convert_to(concat_ws(chr(10),'sabora.staff-recovery-intent.v1',p_key_id,
+ session_user::text,p_actor::text,coalesce(p_credential,'-'),p_enrollment::text,p_request::text,
+ p_seconds::text,p_issued::text,p_expires::text),'UTF8'),v_key,'sha256');
+ v_given:=decode(p_signature,'hex');
+ FOR v_i IN 0..31 LOOP v_diff:=v_diff | (get_byte(v_expected,v_i)#get_byte(v_given,v_i)); END LOOP;
+ IF v_diff IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'staff_recovery_intent_forbidden' USING ERRCODE='42501'; END IF;
+ -- Existing ownership/lifecycle mutations serialize on this singleton.
+ PERFORM 1 FROM sabora.admin_write_ownership o WHERE o.singleton FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'staff_recovery_intent_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT x.id,x.auth_user_id,x.requested_role,x.state INTO e FROM sabora.staff_enrollments x
+ WHERE x.id=p_enrollment FOR UPDATE;
+ IF NOT FOUND OR e.auth_user_id IS NULL THEN RAISE EXCEPTION 'staff_recovery_intent_forbidden' USING ERRCODE='42501'; END IF;
+ PERFORM 1 FROM sabora.staff_members m WHERE m.user_id IN (p_actor,e.auth_user_id)
+ ORDER BY m.user_id FOR UPDATE;
+ -- Reuse the classifier's current authority and ROOT credential fence
+ -- while holding the business locks. No stale preview authorizes a write.
+ v_sig:=encode(extensions.hmac(convert_to(concat_ws(chr(10),'sabora.staff-invitation-classify.v1',p_key_id,
+ session_user::text,p_actor::text,coalesce(p_credential,'-'),'-',p_enrollment::text,
+ p_issued::text,p_expires::text),'UTF8'),v_key,'sha256'),'hex');
+ SELECT * INTO STRICT v_class FROM sabora.classify_staff_invitation_candidate(
+ p_key_id,p_actor,p_credential,NULL,p_enrollment,p_issued,p_expires,v_sig);
+ v_now:=clock_timestamp();
+ IF v_class.purpose IS DISTINCT FROM 'recover' OR v_class.enrollment_id IS DISTINCT FROM p_enrollment
+ OR v_expiry<=v_now OR p_expires<=floor(extract(epoch FROM v_now)*1000)
+ THEN RAISE EXCEPTION 'staff_recovery_intent_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT * INTO prior FROM sabora.staff_recovery_intent_candidate i WHERE i.request_id=p_request;
+ SELECT coalesce(max(i.version),0) INTO v_version FROM sabora.staff_recovery_intent_candidate i
+ WHERE i.enrollment_id=p_enrollment;
+ IF prior.request_id IS NOT NULL THEN
+  IF prior.actor_user_id IS DISTINCT FROM p_actor OR prior.enrollment_id IS DISTINCT FROM p_enrollment
+   OR prior.subject_user_id IS DISTINCT FROM e.auth_user_id OR prior.subject_role IS DISTINCT FROM e.requested_role
+   OR prior.subject_state IS DISTINCT FROM e.state OR prior.expires_at-prior.issued_at<>make_interval(secs=>p_seconds)
+   OR prior.version<>v_version OR prior.expires_at<=v_now THEN
+   RAISE EXCEPTION 'staff_recovery_intent_conflict' USING ERRCODE='40001';
+  END IF;
+  RETURN QUERY SELECT prior.request_id,prior.enrollment_id,prior.version,prior.expires_at,true;RETURN;
+ END IF;
+ INSERT INTO sabora.staff_recovery_intent_candidate(request_id,enrollment_id,subject_user_id,actor_user_id,
+ version,subject_role,subject_state,issued_at,expires_at)
+ VALUES(p_request,p_enrollment,e.auth_user_id,p_actor,v_version+1,e.requested_role,e.state,v_now,
+ v_now+make_interval(secs=>p_seconds))
+ RETURNING * INTO prior;
+ RETURN QUERY SELECT prior.request_id,prior.enrollment_id,prior.version,prior.expires_at,false;
+END;
+$intent$;
+ALTER FUNCTION sabora.authorize_staff_recovery_intent_candidate(text,uuid,text,uuid,uuid,integer,bigint,bigint,text)
+ OWNER TO sabora_root_recovery_fn_owner;
+REVOKE ALL ON FUNCTION sabora.authorize_staff_recovery_intent_candidate(text,uuid,text,uuid,uuid,integer,bigint,bigint,text)
+ FROM PUBLIC,anon,authenticated;
+
 COMMIT;
