@@ -7,7 +7,7 @@ import {createAuthenticatedOrderOperationsGateway} from './order-operations-auth
 import {createManagementSessionFence} from './management-session-fence.js';
 import {createAuthenticatedOwnershipGovernanceGateway,type OwnershipGovernanceGateway} from './ownership-governance-gateway.js';
 import {createStaffManagementGateway,type StaffManagementGateway,
-  type StaffRevocationGateway} from './staff-management-gateway.js';
+  type StaffRevocationGateway,type StaffLifecycleGateway} from './staff-management-gateway.js';
 import {createStaffDirectoryGateway,type StaffDirectoryGateway} from './staff-directory-gateway.js';
 import {Icon, type IconName} from './components/Icon';
 import {parseManagementArea, toManagementHash, type ManagementArea} from './navigation-model';
@@ -56,6 +56,7 @@ export function ManagementApp({
   staffGateway,
   staffDirectoryGateway,
   staffRevocationGateway,
+  staffLifecycleGateway,
   financeGateway,
   ownershipGateway,
   staffRole,
@@ -69,6 +70,7 @@ export function ManagementApp({
   staffGateway?: StaffManagementGateway;
   staffDirectoryGateway?: StaffDirectoryGateway;
   staffRevocationGateway?: StaffRevocationGateway;
+  staffLifecycleGateway?: StaffLifecycleGateway;
   financeGateway?: M3AuthenticatedManagementGateway;
   ownershipGateway?: OwnershipGovernanceGateway;
   staffRole?: StaffSession['role'];
@@ -88,7 +90,7 @@ export function ManagementApp({
     const current=++revision;
     setCanWriteAdmin(false);
     setCanRevokeStaff(false);
-    if(area==='equipo'&&staffRevocationGateway&&ownershipGateway){
+    if(area==='equipo'&&(staffRevocationGateway||staffLifecycleGateway)&&ownershipGateway){
      void ownershipGateway.read().then(page=>{
       if(active&&current===revision)setCanRevokeStaff(page.role==='admin'&&page.isOwner===true);
      }).catch(()=>{if(active&&current===revision)setCanRevokeStaff(false);});
@@ -112,7 +114,7 @@ export function ManagementApp({
    document.addEventListener('visibilitychange',visible);
    return()=>{active=false;revision++;window.removeEventListener('focus',refresh);
     document.removeEventListener('visibilitychange',visible);};
-  },[financeGateway,area,ownershipRevision,ownershipGateway,staffRevocationGateway]);
+  },[financeGateway,area,ownershipRevision,ownershipGateway,staffRevocationGateway,staffLifecycleGateway]);
   useEffect(()=>{
    let active=true;
    setFinanceAllowed(false);
@@ -183,6 +185,7 @@ export function ManagementApp({
     : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway}
         ownershipGateway={ownershipGateway} staffRole={staffRole}
         revocationGateway={canRevokeStaff ? staffRevocationGateway : undefined}
+        lifecycleGateway={canRevokeStaff ? staffLifecycleGateway : undefined}
         onOwnershipChanged={()=>setOwnershipRevision(v=>v+1)}/>;
 
   return (
@@ -282,6 +285,7 @@ function renderManagement(
   staffRole?:StaffSession['role'],
   staffDirectoryGateway?:StaffDirectoryGateway,
   staffRevocationGateway?:StaffRevocationGateway,
+  staffLifecycleGateway?:StaffLifecycleGateway,
 ) {
   if (managementRoot && managementElement !== element) {
     throw Error('management_root_already_mounted');
@@ -311,7 +315,8 @@ function renderManagement(
       tableChangeGateway={tableChangeGateway} tablesGateway={managementGateway}
       catalogManagementGateway={managementGateway} financeGateway={managementGateway}
       ownershipGateway={ownershipGateway} staffRole={staffRole} onSignOut={onSignOut}
-      staffDirectoryGateway={staffDirectoryGateway} staffRevocationGateway={staffRevocationGateway}/></React.StrictMode>,
+      staffDirectoryGateway={staffDirectoryGateway} staffRevocationGateway={staffRevocationGateway}
+      staffLifecycleGateway={staffLifecycleGateway}/></React.StrictMode>,
   ));
 }
 
@@ -327,6 +332,7 @@ export function mountAuthenticatedManagementApp({
   enableOwnershipGovernance = false,
   enableStaffDirectory = false,
   enableStaffRevocation = false,
+  enableStaffLifecycle = false,
   onSignOut,
   staffRole,
 }: StaffGatewayAuth & {
@@ -343,6 +349,7 @@ export function mountAuthenticatedManagementApp({
   enableOwnershipGovernance?:boolean;
   enableStaffDirectory?:boolean;
   enableStaffRevocation?:boolean;
+  enableStaffLifecycle?:boolean;
   /** Only after waiter-call SQL identity preflight succeeds. */
   enableWaiterCalls?:boolean;
 }) {
@@ -368,6 +375,8 @@ export function mountAuthenticatedManagementApp({
     ? createStaffDirectoryGateway({send:sendStaff}) : undefined;
   const staffRevocationGateway=enableStaffRevocation&&sendStaff
     ? createStaffManagementGateway({send:sendStaff}) : undefined;
+  const staffLifecycleGateway=enableStaffLifecycle&&sendStaff&&staffDirectoryGateway&&ownershipGateway
+    ? createStaffManagementGateway({send:sendStaff}) : undefined;
   if (managementRoot && managementElement !== element) {
     operationsGateway.revoke();
     m3Gateway?.revoke();
@@ -391,7 +400,7 @@ export function mountAuthenticatedManagementApp({
        decideTableChange: operationsGateway.decideTableChange}
     : undefined;
   renderManagement(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut,staffRole,
-    staffDirectoryGateway,staffRevocationGateway);
+    staffDirectoryGateway,staffRevocationGateway,staffLifecycleGateway);
   let disposed = false;
   return () => {
     if (disposed) return;
@@ -457,7 +466,8 @@ function startStaffLogin(element: HTMLElement) {
       enableM3Management: session.features.management && session.role !== 'kitchen',
       enableOwnershipGovernance: session.features.ownership && ['root', 'admin'].includes(session.role),
       enableStaffDirectory: session.features.staffDirectory === true && session.role !== 'root',
-      enableStaffRevocation: session.features.staffRevocation === true && session.role === 'admin'
+      enableStaffRevocation: session.features.staffRevocation === true && session.role === 'admin',
+      enableStaffLifecycle: session.features.staffLifecycle === true && session.role === 'admin'
     });
     dispose = current;
     expiry = setTimeout(expire, session.expiresAt * 1000 - Date.now());

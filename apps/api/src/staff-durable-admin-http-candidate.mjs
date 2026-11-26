@@ -7,8 +7,8 @@ import {validateStaffLifecycleHttpInput} from './staff-lifecycle-http-candidate.
 const ACTIONS=new Set(['invite','resend','activate','suspend','revoke']);
 const EXPECTED_STATE={invite:'invited',resend:'invited',activate:'active',suspend:'suspended',revoke:'revoked'};
 
-export function registerDurableStaffAdminHttpCandidate(app,{forRoles,keyring,lifecycleConfig}={}){
- if(typeof forRoles!=='function'||!lifecycleConfig||typeof lifecycleConfig!=='object')
+export function registerDurableStaffAdminHttpCandidate(app,{forRoles,keyring,lifecycleConfig,resolveSubject}={}){
+ if(typeof forRoles!=='function'||typeof resolveSubject!=='function'||!lifecycleConfig||typeof lifecycleConfig!=='object')
   throw Error('invalid_staff_durable_admin_http_config');
  // Callers cannot substitute the historical token-returning repository or
  // enable the exceptional ROOT path. SQL still rechecks current ownership.
@@ -22,14 +22,14 @@ export function registerDurableStaffAdminHttpCandidate(app,{forRoles,keyring,lif
   try{
    parsed=validateStaffLifecycleHttpInput(request.body);
    if(!ACTIONS.has(parsed.action)||
-      (parsed.action==='revoke'&&parsed.input.subjectUserId!==null)||
-      (['activate','suspend'].includes(parsed.action)&&parsed.input.subjectUserId===null))
+      (['revoke','activate','suspend'].includes(parsed.action)&&parsed.input.subjectUserId!==null))
     throw Error('invalid_staff_lifecycle_request');
   }catch{return reply.code(400).send({error:'invalid_staff_lifecycle_request'});}
   try{
-   const result=await coordinator.transition({
-    verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff
-   },parsed.input);
+   const context={verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff};
+   const input=['activate','suspend'].includes(parsed.action)
+    ? {...parsed.input,subjectUserId:await resolveSubject(context,parsed.input)}:parsed.input;
+   const result=await coordinator.transition(context,input);
    if(result[STAFF_INVITATION_DELIVERY_TOKEN]!==undefined||
       result.currentState!==EXPECTED_STATE[parsed.action])throw Error('invalid_staff_durable_admin_result');
    // Explicit projection: no subject UUID, email, token, custody, provider
@@ -44,7 +44,7 @@ export function registerDurableStaffAdminHttpCandidate(app,{forRoles,keyring,lif
    if(error?.code==='42501'||['staff_lifecycle_identity_forbidden','staff_lifecycle_admin_forbidden'].includes(error?.message))
     return reply.code(403).send({error:'forbidden'});
    if(error?.message==='staff_employee_codes_exhausted')return reply.code(409).send({error:'staff_employee_codes_exhausted'});
-   if(['40001','23505','23514'].includes(error?.code))
+   if(['40001','23505','23514','22023','P0002'].includes(error?.code))
     return reply.code(409).send({error:'staff_lifecycle_conflict'});
    return reply.code(503).send({error:'staff_lifecycle_unavailable'});
   }

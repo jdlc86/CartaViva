@@ -32,6 +32,15 @@ function maintenance(value,action){
   return Object.freeze({...value});
 }
 
+async function lifecycleAction(send,action,state,input){
+  const {enrollmentId,correlationId}=input;
+  if(!UUID.test(enrollmentId??'')||!CORRELATION.test(correlationId??''))throw Error('invalid_staff_lifecycle_action');
+  const value=await mutation(send,'/api/v1/staff/lifecycle',{action,...input});
+  if(value?.enrollmentId!==enrollmentId||value.state!==state||typeof value.repeated!=='boolean')
+    throw new StaffManagementGatewayError('invalid_response');
+  return Object.freeze({enrollmentId,state,repeated:value.repeated});
+}
+
 export function createStaffManagementGateway({send=globalThis.fetch}={}){
   if(typeof send!=='function')throw Error('invalid_staff_management_gateway');
   return Object.freeze({
@@ -44,6 +53,16 @@ export function createStaffManagementGateway({send=globalThis.fetch}={}){
       if(value?.enrollmentId!==enrollmentId||value.state!=='revoked'||typeof value.repeated!=='boolean')
         throw new StaffManagementGatewayError('invalid_response');
       return Object.freeze({enrollmentId,state:'revoked',repeated:value.repeated});
+    },
+    async resendInvitation({enrollmentId,correlationId}={}){
+      return lifecycleAction(send,'resend','invited',{enrollmentId,correlationId});
+    },
+    async activateAccess({enrollmentId,correlationId}={}){
+      return lifecycleAction(send,'activate','active',{enrollmentId,correlationId,subjectUserId:null});
+    },
+    async suspendAccess({enrollmentId,reason,correlationId}={}){
+      if(typeof reason!=='string'||!reason.trim()||reason.trim().length>500)throw Error('invalid_staff_suspension');
+      return lifecycleAction(send,'suspend','suspended',{enrollmentId,correlationId,subjectUserId:null,reason:reason.trim()});
     },
     async invite({email,givenName,familyName,requestedRole,correlationId}={}){
       if(typeof email!=='string'||typeof givenName!=='string'||typeof familyName!=='string'||

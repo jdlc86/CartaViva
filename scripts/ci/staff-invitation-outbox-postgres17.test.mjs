@@ -18,6 +18,15 @@ import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction
 import {createDurableStaffLifecycleRepositoryCandidate,createStaffDirectoryDispatchReaderCandidate,DIRECTORY_OUTBOX_SQL} from '../../apps/api/src/staff-invitation-durable-lifecycle-candidate.mjs';
 import {createStaffInvitationResendSender} from '../../apps/api/src/staff-invitation-resend.mjs';
 import {createStaffVerifiedEnrollmentCandidate,STAFF_ENROLLMENT_LOGIN,VERIFIED_ACCEPT_SQL} from '../../apps/api/src/staff-verified-enrollment-candidate.mjs';
+import {createStaffPasskeyBrowserFixture} from './staff-passkey-browser-fixture.mjs';
+import {createStaffPasskeySession} from '../../apps/api/src/staff-passkey-session.mjs';
+import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
+import {createStaffDirectoryCapabilityIssuer} from '../../apps/api/src/staff-directory-capability.mjs';
+import {createVerifiedStaffDirectoryFromPool} from '../../apps/api/src/staff-directory-composition.mjs';
+import {registerStaffDirectoryHttpCandidate} from '../../apps/api/src/staff-directory-http-candidate.mjs';
+import {createOwnershipCapabilityIssuer,createOwnershipGovernanceRepository,registerOwnershipGovernanceHttp,assertOwnershipRuntimeIdentity,OWNERSHIP_ROLE,OWNERSHIP_SQL} from '../../apps/api/src/ownership-governance-candidate.mjs';
+import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
+import {createStaffAdminSubjectResolverCandidate,STAFF_ADMIN_SUBJECT_SQL} from '../../apps/api/src/staff-admin-subject-candidate.mjs';
 import {registerDurableStaffAdminHttpCandidate} from '../../apps/api/src/staff-durable-admin-http-candidate.mjs';
 import {registerStaffEnrollmentHttpCandidate} from '../../apps/api/src/staff-enrollment-http-candidate.mjs';
 import {pathToFileURL} from 'node:url';
@@ -1341,20 +1350,29 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
  const overlay=await readFile(new URL('../../docs/security/sql-candidates/staff_invitation_directory_outbox_pg17.sql',import.meta.url),'utf8');
  await admin.query(overlay);
  const role='sabora_ci_directory_durable',dispatchRole='sabora_ci_directory_dispatch';
+ const directoryRole='sabora_ci_durable_directory_read',staffRole='sabora_ci_durable_staff_read',ownershipRole='sabora_ci_durable_ownership';
  const password='sabora_ci_directory_durable_ephemeral';
- for(const login of [role,dispatchRole,STAFF_ENROLLMENT_LOGIN]){
+ for(const login of [role,dispatchRole,STAFF_ENROLLMENT_LOGIN,directoryRole,staffRole,ownershipRole]){
   await admin.query(`CREATE ROLE ${login} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${password}'; GRANT USAGE ON SCHEMA sabora TO ${login}`);
  }
  await admin.query(`GRANT EXECUTE ON FUNCTION sabora.transition_staff_lifecycle_with_directory_outbox_candidate(
  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text) TO ${role};
  GRANT EXECUTE ON FUNCTION sabora.store_staff_invitation_custody_restricted_candidate(uuid,uuid,integer,text,text,text,text,text) TO ${role};
+ GRANT EXECUTE ON FUNCTION sabora.resolve_staff_admin_subject_candidate(text,uuid,uuid,text,text,bigint,bigint,text) TO ${role};
  GRANT EXECUTE ON FUNCTION sabora.read_staff_invitation_directory_dispatch_candidate(uuid,uuid) TO ${dispatchRole};
+ GRANT EXECUTE ON FUNCTION sabora.read_staff_directory_authorized_candidate(text,text,uuid,text,text,uuid,text,integer,integer,bigint,bigint,text) TO ${directoryRole};
+ GRANT SELECT(user_id,role,state) ON sabora.staff_members TO ${staffRole};
+ CREATE POLICY ci_durable_staff_membership ON sabora.staff_members FOR SELECT TO ${staffRole} USING(true);
+ GRANT ${OWNERSHIP_ROLE} TO ${ownershipRole} WITH SET TRUE,INHERIT FALSE;
  GRANT EXECUTE ON FUNCTION sabora.accept_staff_invitation_verified_candidate(text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,text) TO ${STAFF_ENROLLMENT_LOGIN};
  GRANT EXECUTE ON FUNCTION sabora.check_staff_registration_candidate(text,uuid,uuid,uuid,text,bigint,text),
  sabora.register_staff_passkey_verified_candidate(text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,uuid,uuid,text) TO ${STAFF_ENROLLMENT_LOGIN}`);
  const writer=new Pool({connectionString:connectionString({role,value:password}),max:4});
  const deliveryPool=new Pool({connectionString:connectionString({role:dispatchRole,value:password})});
  const enrollmentPool=new Pool({connectionString:connectionString({role:STAFF_ENROLLMENT_LOGIN,value:password})});
+ const directoryPool=new Pool({connectionString:connectionString({role:directoryRole,value:password})});
+ const staffPool=new Pool({connectionString:connectionString({role:staffRole,value:password})});
+ const ownershipPool=new Pool({connectionString:connectionString({role:ownershipRole,value:password})});
  const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
  const http=Fastify({logger:false});
  let preview,browser;
@@ -1367,23 +1385,67 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
   issueCapability:issue,issueInvitationToken:()=>randomBytes(32).toString('base64url'),
   hashInviteeEmail:digest,verifyCredentialRegistration:async()=>{throw Error('fixture_registration_unused');},
   uuid:()=>uuid('d')};
- // Fixture-only authentication injection: the real SQL owner check is not
- // mocked. The production protected-route hook is independently tested.
- const readerId=randomUUID();
+ // Use the real protected-route hook with an isolated Auth provider which
+ // cryptographically verifies the management browser's virtual assertion.
+ const readerId=randomUUID(),invitedUser=randomUUID(),otherUser=randomUUID(),sessionId=randomUUID();
  await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES ($1,'admin','active')",[readerId]);
- registerDurableStaffAdminHttpCandidate(http,{keyring,lifecycleConfig:config,
-  forRoles:roles=>async(req,reply)=>{
-   const role=req.headers['x-fixture-role'],actor=req.headers['x-fixture-actor'];
-   if(!roles.includes(role)||![ownerId,readerId].includes(actor))
-    return reply.code(403).send({error:'forbidden'});
-   req.verifiedIdentity={userId:actor};req.verifiedStaff={userId:actor,role};
-  }});
- const adminPost=(payload,actor=ownerId,role='admin')=>http.inject({
-  method:'POST',url:'/api/v1/staff/lifecycle',
-  headers:{'x-fixture-role':role,'x-fixture-actor':actor},payload});
+ const resolveSubject=createStaffAdminSubjectResolverCandidate({query:(...args)=>writer.query(...args),keyId:lifecycleKeyId,secret:lifecycleSecret,databaseRole:role});
+ // Register all routes before the first inject/listen. The enrollment
+ // fixture is populated only after the actual invitation is dispatched.
+ const origin='https://localhost:4188';
+ let verifiedEnrollment,exchangeFixture;
+ registerStaffEnrollmentHttpCandidate(http,{origin,secret:randomBytes(32),
+  enrollment:{accept:input=>verifiedEnrollment.accept(input),
+   registrationOptions:input=>verifiedEnrollment.registrationOptions(input),
+   register:input=>verifiedEnrollment.register(input)},
+  exchangeInvitation:input=>exchangeFixture(input)});
+ const staffIssuer='https://durable-staff-ci.test/auth/v1';
+ const auth=createStaffPasskeyBrowserFixture({origin,issuer:staffIssuer,kid:lifecycleKeyId,userIds:[ownerId,readerId,invitedUser]});
+ const passkey=createStaffPasskeySession({origin,issuer:staffIssuer,secret:randomBytes(32),provider:auth.provider,getTrustedKeys:auth.getTrustedKeys});
+ const forRoles=createStaffProtectedHooksFromPool({pool:staffPool,issuer:staffIssuer,getTrustedKeys:auth.getTrustedKeys,authenticate:passkey.authenticate});
+ const directory=await createVerifiedStaffDirectoryFromPool({pool:directoryPool,role:directoryRole,
+  issueCapability:createStaffDirectoryCapabilityIssuer({keyId:lifecycleKeyId,secret:lifecycleSecret,databaseRole:directoryRole})});
+ await admin.query("INSERT INTO sabora.order_operation_signing_keys(key_id,hmac_key,not_before,expires_at) VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')",['durable_staff_ownership_ci',lifecycleSecret]);
+ await assertOwnershipRuntimeIdentity({pool:ownershipPool,expectedLogin:ownershipRole});
+ const ownership=createOwnershipGovernanceRepository({
+  withTransaction:createRoleScopedPostgresTransaction({pool:ownershipPool,role:OWNERSHIP_ROLE,allowedSql:new Set([OWNERSHIP_SQL])}),
+  issueCapability:createOwnershipCapabilityIssuer({keyId:'durable_staff_ownership_ci',secret:lifecycleSecret,databaseRole:ownershipRole})});
+ registerStaffDirectoryHttpCandidate(http,{forRoles,directory});
+ registerOwnershipGovernanceHttp(http,{forRoles,repository:ownership});
+ registerDurableStaffAdminHttpCandidate(http,{keyring,lifecycleConfig:config,resolveSubject,forRoles});
+ passkey.register(http,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,
+  ownership:true,staffDirectory:true,staffLifecycle:true}});
+ let manager,nonOwner,ownerHeaders,readerHeaders;
+ const adminPost=(payload,actor=ownerId)=>http.inject({method:'POST',url:'/api/v1/staff/lifecycle',
+  headers:actor===ownerId?ownerHeaders:readerHeaders,payload});
+ async function loginAs(userId){
+  const context=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
+  const page=await context.newPage();
+  await page.goto(origin+'/#equipo');
+  await auth.registerDevice(context,page,userId);
+  await page.getByRole('button',{name:'Entrar con passkey'}).click();
+  await page.getByRole('button',{name:'Cerrar sesión'}).waitFor();
+  const session=await page.evaluate(async()=>fetch('/api/v1/staff/auth/session').then(r=>r.json()));
+  const cookies=await context.cookies(origin);
+  return {page,headers:{host:new URL(origin).host,origin,cookie:cookies.map(c=>c.name+'='+c.value).join('; '),
+   'x-sabora-staff-session':session.sessionId}};
+ }
+ async function selectMember(page){
+  await page.getByPlaceholder('Nombre, correo o código').fill('durable-directory@example.invalid');
+  await page.getByRole('button',{name:'Buscar',exact:true}).click();
+  await page.getByRole('button',{name:/Equipo Durable/}).click();
+  await page.getByRole('heading',{name:'Equipo Durable',exact:true}).waitFor();
+ }
+ const actionResponse=page=>page.waitForResponse(r=>r.url().endsWith('/api/v1/staff/lifecycle')&&r.request().method()==='POST');
  const request={action:'invite',email:'durable-directory@example.invalid',givenName:'Equipo',familyName:'Durable',
   requestedRole:'waiter',correlationId:'directory_durable_001'};
  try{
+  const apiOrigin=await http.listen({host:'127.0.0.1',port:0});
+  preview=await startPublishedManagementPwa({apiOrigin,port:4188,tls:true});
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true});
+  const owner=await loginAs(ownerId),reader=await loginAs(readerId);
+  manager=owner.page;ownerHeaders=owner.headers;nonOwner=reader.page;readerHeaders=reader.headers;
   const deniedId=uuid('d'),token=randomBytes(32).toString('base64url');
   const capability=issue({actorId:ownerId,action:'invite',enrollmentId:deniedId,subjectUserId:null,
    requestedRole:'waiter',inviteeEmailHashHex:digest('missing-envelope@example.invalid'),
@@ -1400,14 +1462,27 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
   await assert.rejects(bad.transition(verified,request),/fixture_key_unavailable/);
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_directory_contacts WHERE email=$1',[request.email])).rows[0].n,0);
   assert.equal((await adminPost(request,readerId)).statusCode,403);
-  assert.equal((await adminPost(request,ownerId,'root')).statusCode,403);
+  const anonymous=await http.inject({method:'POST',url:'/api/v1/staff/lifecycle',
+   headers:{host:new URL(origin).host,origin},payload:request});
+  assert.ok([401,403].includes(anonymous.statusCode));
   assert.equal((await adminPost({...request,actorUserId:ownerId})).statusCode,400);
-  const responses=await Promise.all([adminPost(request),adminPost(request)]);
-  assert.deepEqual(responses.map(r=>r.statusCode).sort(),[200,201]);
-  const attempts=responses.map(r=>r.json());
-  assert.deepEqual(attempts.map(x=>x.repeated).sort(),[false,true]);
-  const id=attempts[0].enrollmentId;
-  assert.equal(attempts[1].enrollmentId,id);
+  await manager.getByLabel('Nombre',{exact:true}).fill(request.givenName);
+  await manager.getByLabel('Apellidos',{exact:true}).fill(request.familyName);
+  await manager.getByLabel('Correo de invitación',{exact:true}).fill(request.email);
+  const createResponse=actionResponse(manager);
+  await manager.getByRole('button',{name:'Invitar y reservar código'}).click();
+  const created=await createResponse;
+  assert.equal(created.status(),201,await created.text());
+  const initial=await created.json(),id=initial.enrollmentId;
+  assert.equal(initial.repeated,false);
+  await manager.getByText('Invitación en cola. Entrega no confirmada.',{exact:true}).waitFor();
+  const replayRequest=created.request().postDataJSON();
+  const responses=await Promise.all([adminPost(replayRequest),adminPost(replayRequest)]);
+  assert.deepEqual(responses.map(r=>r.statusCode),[200,200]);
+  assert.ok(responses.every(r=>r.json().repeated&&r.json().enrollmentId===id));
+  await selectMember(nonOwner);
+  assert.equal(await nonOwner.getByRole('button',{name:'Reenviar invitación'}).count(),0);
+  assert.equal(await nonOwner.getByRole('button',{name:'Revocar acceso'}).count(),0);
   for(const response of responses){
    assert.equal(response.headers['cache-control'],'no-store');
    assert.deepEqual(Object.keys(response.json()).sort(),['enrollmentId','state','repeated','givenName','familyName',
@@ -1425,14 +1500,18 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
   await assert.rejects(writer.query('SELECT * FROM sabora.staff_invitation_custody_candidate'),e=>e.code==='42501');
   await assert.rejects(deliveryPool.query('SELECT * FROM sabora.staff_directory_contacts'),e=>e.code==='42501');
   const oldClaim=await claimCurrentStaffInvitation({withTransaction,repository,jobId:oldJob});
-  const resend=await adminPost({action:'resend',enrollmentId:id,correlationId:'directory_durable_resend_001'});
-  assert.equal(resend.statusCode,200,resend.body);
-  assert.deepEqual(resend.json(),{enrollmentId:id,state:'invited',repeated:false});
+  await selectMember(manager);
+  const resendResponse=actionResponse(manager);
+  await manager.getByRole('button',{name:'Reenviar invitación'}).click();
+  const resend=await resendResponse;
+  assert.equal(resend.status(),200,await resend.text());
+  assert.deepEqual(await resend.json(),{enrollmentId:id,state:'invited',repeated:false});
+  await manager.getByText('Reenvío en cola. Entrega no confirmada.',{exact:true}).waitFor();
   assert.equal((await admin.query('SELECT state FROM sabora.staff_invitation_outbox WHERE id=$1',[oldJob])).rows[0].state,'cancelled');
   assert.equal((await authorizeStaffInvitationDispatch({withTransaction,repository,jobId:oldJob,fence:oldClaim.fence})).authorized,false);
   const jobId=(await admin.query('SELECT id FROM sabora.staff_invitation_outbox WHERE enrollment_id=$1 AND invite_version=2',[id])).rows[0].id;
   const claim=await claimCurrentStaffInvitation({withTransaction,repository,jobId});
-  const origin='https://localhost:4188',providerId='dbec97f1-e3ad-464c-aacf-2c4cddd9b272';
+  const providerId='dbec97f1-e3ad-464c-aacf-2c4cddd9b272';
   const authProof=randomBytes(32).toString('base64url');
   let receivedToken,deliveredUrl;
   const readDelivery=createStaffDirectoryDispatchReaderCandidate({query:(...args)=>deliveryPool.query(...args),keyring,
@@ -1468,8 +1547,7 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
   const authIssuer='https://enrollment-ci.example.test/auth/v1';
   const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
   const jwk={...publicKey.export({format:'jwk'}),alg:'RS256',use:'sig',kid:'enrollment-ci'};
-  const invitedUser=randomUUID(),otherUser=randomUUID(),sessionId=randomUUID();
-  const premature=await adminPost({action:'activate',enrollmentId:id,subjectUserId:invitedUser,
+  const premature=await adminPost({action:'activate',enrollmentId:id,subjectUserId:null,
    correlationId:'directory_premature_activate_001'});
   assert.ok(premature.statusCode>=400);
   assert.equal((await admin.query('SELECT state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0].state,'invited');
@@ -1537,11 +1615,11 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
   assert.equal((await admin.query('SELECT state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0].state,'invited');
   await assert.rejects(accept.registrationOptions({accessToken:acceptedJwt,enrollmentId:id}),e=>e.code==='42501');
   let exchanges=0;
-  registerStaffEnrollmentHttpCandidate(http,{origin,secret:randomBytes(32),enrollment:accept,
-   exchangeInvitation:async supplied=>{
+  verifiedEnrollment=accept;
+  exchangeFixture=async supplied=>{
     exchanges++;assert.deepEqual(supplied,{enrollmentId:id,authProof});
     return {accessToken:acceptedJwt};
-   }});
+  };
   const baseHeaders={host:new URL(origin).host,origin};
   const post=(action,payload,headers=baseHeaders)=>http.inject({method:'POST',url:'/api/v1/staff/enrollment/'+action,headers,payload});
   const acceptBody={enrollmentId:id,inviteToken:receivedToken,authProof,correlationId:input.correlationId};
@@ -1549,10 +1627,6 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
   assert.equal((await post('accept',{...acceptBody,accessToken:acceptedJwt})).statusCode,400);
   assert.equal(exchanges,0);
   assert.equal((await post('options',{})).statusCode,403);
-  const apiOrigin=await http.listen({host:'127.0.0.1',port:0});
-  preview=await startPublishedManagementPwa({apiOrigin,port:4188,tls:true});
-  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
-  browser=await chromium.launch({headless:true});
   const context=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
   const page=await context.newPage();
   await page.goto(deliveredUrl);
@@ -1618,30 +1692,49 @@ test('PG17 + Fastify + Chromium: durable invitation, verified acceptance and pas
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[invitedUser])).rows[0].n,0);
   await assert.rejects(accept.register(regInput),e=>e.code==='42501');
   assert.equal(providerRegistrations,1);
-  const activate={action:'activate',enrollmentId:id,subjectUserId:invitedUser,correlationId:'directory_durable_activate_001'};
+  const activate={action:'activate',enrollmentId:id,subjectUserId:null,correlationId:'directory_durable_activate_001'};
   assert.equal((await adminPost(activate,readerId)).statusCode,403);
-  assert.equal((await adminPost({...activate,subjectUserId:null})).statusCode,400);
+  assert.equal((await adminPost({...activate,subjectUserId:invitedUser})).statusCode,400);
   assert.ok((await adminPost({...activate,subjectUserId:otherUser,correlationId:'directory_wrong_subject_001'})).statusCode>=400);
   assert.equal((await admin.query('SELECT state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0].state,'registered');
-  const activation=await adminPost(activate);
-  assert.equal(activation.statusCode,200,activation.body);
-  assert.deepEqual(activation.json(),{enrollmentId:id,state:'active',repeated:false});
-  assert.equal((await adminPost(activate)).json().repeated,true);
+  await assert.rejects(writer.query(STAFF_ADMIN_SUBJECT_SQL,[lifecycleKeyId,ownerId,id,'activate','directory_unsigned_subject',Date.now(),Date.now()+10000,null]),e=>e.code==='42501');
+  await selectMember(manager);
+  const activationResponse=actionResponse(manager);
+  await manager.getByRole('button',{name:'Activar acceso'}).click();
+  const activation=await activationResponse;
+  assert.equal(activation.status(),200,await activation.text());
+  assert.deepEqual(await activation.json(),{enrollmentId:id,state:'active',repeated:false});
+  const activatedRequest=activation.request().postDataJSON();
+  assert.equal(activatedRequest.subjectUserId,null);
+  assert.equal((await adminPost(activatedRequest)).json().repeated,true);
+  await manager.getByText('Acceso activado.',{exact:true}).waitFor();
+  const staff=await loginAs(invitedUser);
+  assert.equal(await staff.page.evaluate(async()=>(await fetch('/api/v1/staff/auth/session')).status),200);
   assert.equal((await admin.query('SELECT state FROM sabora.staff_members WHERE user_id=$1',[invitedUser])).rows[0].state,'active');
-  const suspend={action:'suspend',enrollmentId:id,subjectUserId:invitedUser,reason:'Suspensión de prueba',
+  const suspend={action:'suspend',enrollmentId:id,subjectUserId:null,reason:'Suspensión de prueba',
    correlationId:'directory_durable_suspend_001'};
   assert.equal((await adminPost(suspend,readerId)).statusCode,403);
-  const suspension=await adminPost(suspend);
-  assert.equal(suspension.statusCode,200,suspension.body);
-  assert.deepEqual(suspension.json(),{enrollmentId:id,state:'suspended',repeated:false});
+  await selectMember(manager);
+  await manager.getByLabel('Motivo de suspensión').fill(suspend.reason);
+  const suspensionResponse=actionResponse(manager);
+  await manager.getByRole('button',{name:'Suspender acceso'}).click();
+  const suspension=await suspensionResponse;
+  assert.equal(suspension.status(),200,await suspension.text());
+  assert.deepEqual(await suspension.json(),{enrollmentId:id,state:'suspended',repeated:false});
+  await manager.getByText('Acceso suspendido.',{exact:true}).waitFor();
+  assert.equal(await staff.page.evaluate(async()=>(await fetch('/api/v1/staff/auth/session')).status),403);
   assert.equal((await admin.query('SELECT state FROM sabora.staff_members WHERE user_id=$1',[invitedUser])).rows[0].state,'suspended');
-  const revocation=await adminPost({action:'revoke',enrollmentId:id,subjectUserId:null,reason:'Revocación de prueba',
-   correlationId:'directory_durable_revoke_001'});
-  assert.equal(revocation.statusCode,200,revocation.body);
-  assert.deepEqual(revocation.json(),{enrollmentId:id,state:'revoked',repeated:false});
+  await selectMember(manager);
+  await manager.getByLabel('Motivo de revocación').fill('Revocación de prueba');
+  const revocationResponse=actionResponse(manager);
+  await manager.getByRole('button',{name:'Revocar acceso'}).click();
+  const revocation=await revocationResponse;
+  assert.equal(revocation.status(),200,await revocation.text());
+  assert.deepEqual(await revocation.json(),{enrollmentId:id,state:'revoked',repeated:false});
+  await manager.getByText('Acceso revocado.',{exact:true}).waitFor();
   assert.equal((await admin.query('SELECT state FROM sabora.staff_members WHERE user_id=$1',[invitedUser])).rows[0].state,'revoked');
-  assert.notEqual((await adminPost(activate)).statusCode,200);
+  assert.notEqual((await adminPost(activatedRequest)).statusCode,200);
   assert.equal((await readDelivery({jobId,fence:claim.fence})).authorized,false);
   await assert.rejects(accept.accept(input),e=>e.code==='42501');
- }finally{await browser?.close();await preview?.close();await Promise.all([writer.end(),deliveryPool.end(),enrollmentPool.end(),http.close()]);}
+ }finally{await browser?.close();await preview?.close();await Promise.all([writer.end(),deliveryPool.end(),enrollmentPool.end(),directoryPool.end(),staffPool.end(),ownershipPool.end(),http.close()]);}
 });

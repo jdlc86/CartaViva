@@ -6,7 +6,7 @@ export type StaffSession = {
   role: 'root' | 'admin' | 'waiter' | 'kitchen';
   expiresAt: number;
   features: {tableChange: boolean; waiterCalls: boolean; management: boolean; ownership: boolean;
-    staffDirectory?: boolean; staffRevocation?: boolean};
+    staffDirectory?: boolean; staffRevocation?: boolean; staffLifecycle?: boolean};
 };
 
 export function supportsStaffPasskey() {
@@ -34,7 +34,7 @@ async function readSession(response: Response): Promise<StaffSession> {
       value.expiresAt * 1000 <= Date.now() || !['root', 'admin', 'waiter', 'kitchen'].includes(value.role) ||
       !value.features || !['tableChange', 'waiterCalls', 'management', 'ownership']
         .every(feature => typeof value.features[feature] === 'boolean') ||
-      !['staffDirectory','staffRevocation'].every(feature =>
+      !['staffDirectory','staffRevocation','staffLifecycle'].every(feature =>
         value.features[feature] === undefined || typeof value.features[feature] === 'boolean')) {
     throw new StaffAuthenticationError(503);
   }
