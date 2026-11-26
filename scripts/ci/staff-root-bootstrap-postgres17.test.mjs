@@ -379,28 +379,28 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await run('confirm_link',{a:link})).outcome,'link_confirmed');
    assert.equal((await run('challenge',{a:link,b:challenge})).outcome,'challenge_created');
    const wrong=hash('code','000000'),grant=hash('grant',generateRootRecoveryToken());
-   const attempt=(b=wrong,a=challenge)=>run('attempt',{a,b,c:grant});
-   assert.equal((await attempt(wrong,hash('challenge',generateRootRecoveryToken()))).failures,'0');
-   const concurrent=await Promise.all(Array.from({length:12},()=>attempt()));
+   const recoveryAttempt=(b=wrong,a=challenge)=>run('attempt',{a,b,c:grant});
+   assert.equal((await recoveryAttempt(wrong,hash('challenge',generateRootRecoveryToken()))).failures,'0');
+   const concurrent=await Promise.all(Array.from({length:12},()=>recoveryAttempt()));
    assert.equal(concurrent.filter(r=>r.outcome==='denied').length,3);
    assert.equal(concurrent.filter(r=>r.outcome==='blocked').length,9);
    const third=concurrent.find(r=>r.failures==='3'&&r.outcome==='denied');
    assert.ok(Math.abs(Date.parse(third.blockedUntil)-Date.now()-900000)<10000);
    kernel=createRootRecoveryKernelCandidate(config); // restart does not reset
-   const blocked=await attempt();assert.deepEqual(blocked,{...third,outcome:'blocked'});
+   const blocked=await recoveryAttempt();assert.deepEqual(blocked,{...third,outcome:'blocked'});
    assert.equal((await state()).statusCode,200); // existing ROOT session unaffected
    // Only the disposable DBA advances timestamps, never the restricted login.
    const expireBlock=()=>admin.query("UPDATE sabora.root_recovery_state_candidate SET blocked_until=clock_timestamp()-interval '1 second' WHERE singleton");
    await expireBlock();
-   assert.equal((await attempt()).failures,'4');
-   const fifth=await attempt();assert.equal(fifth.failures,'5');
+   assert.equal((await recoveryAttempt()).failures,'4');
+   const fifth=await recoveryAttempt();assert.equal(fifth.failures,'5');
    assert.ok(Math.abs(Date.parse(fifth.blockedUntil)-Date.now()-3600000)<10000);
    await expireBlock();
-   for(let n=6;n<=10;n++)assert.equal((await attempt()).failures,String(n));
-   const tenth=await attempt();assert.equal(tenth.outcome,'blocked');
+   for(let n=6;n<=10;n++)assert.equal((await recoveryAttempt()).failures,String(n));
+   const tenth=await recoveryAttempt();assert.equal(tenth.outcome,'blocked');
    assert.ok(Math.abs(Date.parse(tenth.blockedUntil)-Date.now()-86400000)<10000);
    await expireBlock();
-   const eleventh=await attempt();assert.equal(eleventh.failures,'11');
+   const eleventh=await recoveryAttempt();assert.equal(eleventh.failures,'11');
    assert.ok(Math.abs(Date.parse(eleventh.blockedUntil)-Date.now()-86400000)<10000);
    await admin.query("UPDATE sabora.root_recovery_state_candidate SET link_expires_at=clock_timestamp()+interval '1 hour' WHERE singleton");
    const failedLink=hash('link',generateRootRecoveryToken());
@@ -411,16 +411,16 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await run('prepare_link',{a:nextLink})).outcome,'link_prepared');
    assert.equal((await run('confirm_link',{a:failedLink})).outcome,'denied');
    assert.equal((await run('confirm_link',{a:nextLink})).failures,'11');
-   assert.equal((await attempt()).outcome,'blocked');
+   assert.equal((await recoveryAttempt()).outcome,'blocked');
    assert.equal((await run('reset')).outcome,'reset');
    assert.equal((await run('challenge',{a:link,b:challenge})).outcome,'denied');
    const renewed=hash('challenge',generateRootRecoveryToken());
    assert.equal((await run('challenge',{a:nextLink,b:renewed})).outcome,'challenge_created');
    await admin.query("UPDATE sabora.root_recovery_state_candidate SET challenge_expires_at=clock_timestamp()-interval '1 second' WHERE singleton");
-   assert.equal((await attempt(hash('code',recoveryCode),renewed)).outcome,'denied');
+   assert.equal((await recoveryAttempt(hash('code',recoveryCode),renewed)).outcome,'denied');
    const finalChallenge=hash('challenge',generateRootRecoveryToken());
    assert.equal((await run('challenge',{a:nextLink,b:finalChallenge})).outcome,'challenge_created');
-   const successful=await attempt(hash('code',recoveryCode),finalChallenge);
+   const successful=await recoveryAttempt(hash('code',recoveryCode),finalChallenge);
    assert.equal(successful.outcome,'authorized');
    const granted=(await admin.query('SELECT grant_expires_at FROM sabora.root_recovery_state_candidate')).rows[0];
    assert.ok(Math.abs(granted.grant_expires_at.getTime()-Date.now()-300000)<10000);
