@@ -39,17 +39,19 @@ export async function dispatchStaffInvitation({withTransaction,repository,jobId,
     throw Error('invalid_staff_dispatch_config');
   const decision=await authorizeStaffInvitationDispatch({withTransaction,repository,jobId,fence});
   if(!decision.authorized)return decision;
-  let outcome='unknown';
+  let outcome='unknown',providerId=null;
   try{
     const delivery=await readDelivery({jobId,fence});
     if(delivery?.authorized===true){
       const receipt=await send({jobId,recipient:delivery.recipient,enrollmentUrl:delivery.enrollmentUrl});
-      if(['accepted','permanent_failure'].includes(receipt?.outcome))outcome=receipt.outcome;
+      if(receipt?.outcome==='accepted'&&typeof receipt.providerId==='string'&&UUID.test(receipt.providerId)){
+        outcome='accepted';providerId=receipt.providerId;
+      }else if(receipt?.outcome==='permanent_failure')outcome='permanent_failure';
     }else if(delivery?.authorized===false){
       outcome='permanent_failure';
     }
   }catch{
     // Do not automatically reschedule after a definitive dispatch fence.
   }
-  return recordOutcome({jobId,fence,outcome});
+  return recordOutcome({jobId,fence,outcome,...(providerId?{providerId}:{})});
 }

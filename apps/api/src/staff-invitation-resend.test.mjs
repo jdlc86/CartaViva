@@ -24,7 +24,8 @@ test('Resend dispatch calls the fixed endpoint once per authorized fence and rec
   }:null,
   authorizeDispatch:async()=>{state='dispatching';return {authorized:true};},
   lockDispatchingDelivery:async()=>state==='dispatching'?{}:null,
-  finishDispatchingDelivery:async(_query,_id,_fence,next,outcome)=>{
+  finishDispatchingDelivery:async(_query,_id,_fence,next,outcome,receiptId)=>{
+   assert.equal(receiptId,providerId);
    assert.equal(outcome,'accepted');state=next;return {finished:true};
   }
  };

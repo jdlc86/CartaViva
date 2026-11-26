@@ -91,22 +91,24 @@ export function createStaffInvitationOutboxRepository() {
       }
       return result.rows.length === 1;
     },
-    async finishDispatchingDelivery(query, jobId, fence, nextState, outcome) {
+    async finishDispatchingDelivery(query, jobId, fence, nextState, outcome,providerId=null) {
       if (typeof query !== 'function' || !UUID.test(jobId) || !UUID.test(fence) ||
           !['delivered', 'failed'].includes(nextState) ||
           !['accepted', 'permanent_failure', 'unknown'].includes(outcome) ||
-          (nextState === 'delivered') !== (outcome === 'accepted')) {
+          (nextState === 'delivered') !== (outcome === 'accepted') ||
+          (providerId!==null&&(outcome!=='accepted'||typeof providerId!=='string'||!UUID.test(providerId)))) {
         throw Error('invalid_staff_delivery_sql_input');
       }
       const result = await query({
         text: `UPDATE sabora.staff_invitation_outbox
           SET state = $3::text, provider_outcome = $4::text,
+            ${providerId===null?'':'provider_message_id = $5::uuid,'}
             delivered_at = CASE WHEN $3::text = 'delivered'
               THEN clock_timestamp() ELSE NULL END,
             updated_at = clock_timestamp()
           WHERE id = $1::uuid AND fence = $2::uuid AND state = 'dispatching'
           RETURNING id`,
-        values: [jobId.toLowerCase(), fence.toLowerCase(), nextState, outcome],
+        values: [jobId.toLowerCase(), fence.toLowerCase(), nextState, outcome,...(providerId===null?[]:[providerId.toLowerCase()])],
       });
       if (!Array.isArray(result?.rows) || result.rows.length > 1 ||
           (result.rows.length === 1 &&

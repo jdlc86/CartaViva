@@ -11,10 +11,15 @@ import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {setTimeout as delay} from 'node:timers/promises';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
-import {createStaffLifecycleCapabilityIssuer} from '../../apps/api/src/staff-lifecycle-capability.mjs';
+import {createStaffLifecycleCapabilityIssuer,createStaffLifecycleDirectoryCapabilityIssuer} from '../../apps/api/src/staff-lifecycle-capability.mjs';
+import {createStaffLifecycleRepository} from '../../apps/api/src/staff-lifecycle-repository.mjs';
+import {createStaffLifecycleCoordinator,STAFF_INVITATION_DELIVERY_TOKEN} from '../../apps/api/src/staff-lifecycle-coordinator.mjs';
+import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
+import {createDurableStaffLifecycleRepositoryCandidate,createStaffDirectoryDispatchReaderCandidate,DIRECTORY_OUTBOX_SQL} from '../../apps/api/src/staff-invitation-durable-lifecycle-candidate.mjs';
+import {createStaffInvitationResendSender} from '../../apps/api/src/staff-invitation-resend.mjs';
 import {preflightStaffInvitationEnqueueIdentity} from '../../apps/api/src/staff-invitation-enqueue-identity-preflight.mjs';
 import {claimCurrentStaffInvitation} from '../../apps/api/src/staff-invitation-claim-candidate.mjs';
-import {authorizeStaffInvitationDispatch} from '../../apps/api/src/staff-invitation-dispatch-guard.mjs';
+import {authorizeStaffInvitationDispatch,dispatchStaffInvitation} from '../../apps/api/src/staff-invitation-dispatch-guard.mjs';
 import {recordStaffInvitationDeliveryOutcome} from '../../apps/api/src/staff-invitation-delivery-outcome-candidate.mjs';
 import {reconcileStaffInvitationJob} from '../../apps/api/src/staff-invitation-reconciliation-candidate.mjs';
 import {createStaffInvitationOutboxRepository} from '../../apps/api/src/staff-invitation-outbox-repository-candidate.mjs';
@@ -1325,4 +1330,99 @@ test('PG17 signed maintenance grant is consumed once and purges only terminal ci
     sabora.staff_invitation_outbox WHERE id=$1`,[jobId]);
   assert.equal(outbox.rows[0].n,1);
   authority.close();
+});
+
+test('PG17 directory lifecycle, encrypted custody and fenced Resend receipt are atomic',async()=>{
+ const overlay=await readFile(new URL('../../docs/security/sql-candidates/staff_invitation_directory_outbox_pg17.sql',import.meta.url),'utf8');
+ await admin.query(overlay);
+ const role='sabora_ci_directory_durable',dispatchRole='sabora_ci_directory_dispatch';
+ const password='sabora_ci_directory_durable_ephemeral';
+ for(const login of [role,dispatchRole]){
+  await admin.query(`CREATE ROLE ${login} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${password}'; GRANT USAGE ON SCHEMA sabora TO ${login}`);
+ }
+ await admin.query(`GRANT EXECUTE ON FUNCTION sabora.transition_staff_lifecycle_with_directory_outbox_candidate(
+ text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text) TO ${role};
+ GRANT EXECUTE ON FUNCTION sabora.store_staff_invitation_custody_restricted_candidate(uuid,uuid,integer,text,text,text,text,text) TO ${role};
+ GRANT EXECUTE ON FUNCTION sabora.read_staff_invitation_directory_dispatch_candidate(uuid,uuid) TO ${dispatchRole}`);
+ const writer=new Pool({connectionString:connectionString({role,value:password}),max:4});
+ const deliveryPool=new Pool({connectionString:connectionString({role:dispatchRole,value:password})});
+ const key=randomBytes(32),keyId='directory_durable_custody_001',keyring={
+  active:()=>({keyId,key}),resolveKey:id=>id===keyId?key:null};
+ const issue=createStaffLifecycleDirectoryCapabilityIssuer({keyId:lifecycleKeyId,secret:lifecycleSecret,databaseRole:role});
+ const durable=createDurableStaffLifecycleRepositoryCandidate({keyring});
+ const verified={verifiedIdentity:{userId:ownerId},verifiedStaff:{userId:ownerId,role:'admin'}};
+ const config={withTransaction:createPostgresTransaction({pool:writer}),repository:durable,
+  issueCapability:issue,issueInvitationToken:()=>randomBytes(32).toString('base64url'),
+  hashInviteeEmail:digest,verifyCredentialRegistration:async()=>{throw Error('fixture_registration_unused');},
+  uuid:()=>uuid('d')};
+ const lifecycle=createStaffLifecycleCoordinator(config);
+ const request={action:'invite',email:'durable-directory@example.invalid',givenName:'Equipo',familyName:'Durable',
+  requestedRole:'waiter',correlationId:'directory_durable_001'};
+ try{
+  const deniedId=uuid('d'),token=randomBytes(32).toString('base64url');
+  const capability=issue({actorId:ownerId,action:'invite',enrollmentId:deniedId,subjectUserId:null,
+   requestedRole:'waiter',inviteeEmailHashHex:digest('missing-envelope@example.invalid'),
+   inviteTokenHashHex:digest(token),credentialEvidenceHashHex:null,reason:null,
+   givenName:'Prueba',familyName:'Rollback',inviteeEmail:'missing-envelope@example.invalid',
+   correlationId:'directory_missing_custody_001'});
+  await assert.rejects(createStaffLifecycleRepository().transition(
+    (_sql,args)=>writer.query(DIRECTORY_OUTBOX_SQL,args),capability),
+    e=>e.code==='23514'&&/staff_invitation_custody_required/.test(e.message));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_enrollments WHERE id=$1',[deniedId])).rows[0].n,0);
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_lifecycle_audit WHERE enrollment_id=$1',[deniedId])).rows[0].n,0);
+  const bad=createStaffLifecycleCoordinator({...config,repository:createDurableStaffLifecycleRepositoryCandidate({
+    keyring:{active:()=>{throw Error('fixture_key_unavailable');}}})});
+  await assert.rejects(bad.transition(verified,request),/fixture_key_unavailable/);
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_directory_contacts WHERE email=$1',[request.email])).rows[0].n,0);
+  const attempts=await Promise.all([lifecycle.transition(verified,request),lifecycle.transition(verified,request)]);
+  assert.deepEqual(attempts.map(x=>x.repeated).sort(),[false,true]);
+  const id=attempts[0].enrollmentId;
+  assert.equal(attempts[1].enrollmentId,id);
+  assert.equal(attempts[0][STAFF_INVITATION_DELIVERY_TOKEN],undefined);
+  const rows=(await admin.query(`SELECT o.id,c.email,e.requested_role,o.state,
+   (s.job_id IS NOT NULL) AS has_custody FROM sabora.staff_invitation_outbox o
+   JOIN sabora.staff_enrollments e ON e.id=o.enrollment_id
+   JOIN sabora.staff_directory_contacts c ON c.enrollment_id=e.id
+   LEFT JOIN sabora.staff_invitation_custody_candidate s ON s.job_id=o.id
+   WHERE e.id=$1`,[id])).rows;
+  assert.equal(rows.length,1);
+  assert.deepEqual({...rows[0],id:undefined},{id:undefined,email:request.email,requested_role:'waiter',state:'pending',has_custody:true});
+  const oldJob=rows[0].id;
+  await assert.rejects(writer.query('SELECT * FROM sabora.staff_invitation_custody_candidate'),e=>e.code==='42501');
+  await assert.rejects(deliveryPool.query('SELECT * FROM sabora.staff_directory_contacts'),e=>e.code==='42501');
+  const oldClaim=await claimCurrentStaffInvitation({withTransaction,repository,jobId:oldJob});
+  const resend=await lifecycle.transition(verified,{action:'resend',enrollmentId:id,correlationId:'directory_durable_resend_001'});
+  assert.equal(resend.inviteVersion,2);
+  assert.equal((await admin.query('SELECT state FROM sabora.staff_invitation_outbox WHERE id=$1',[oldJob])).rows[0].state,'cancelled');
+  assert.equal((await authorizeStaffInvitationDispatch({withTransaction,repository,jobId:oldJob,fence:oldClaim.fence})).authorized,false);
+  const jobId=(await admin.query('SELECT id FROM sabora.staff_invitation_outbox WHERE enrollment_id=$1 AND invite_version=2',[id])).rows[0].id;
+  const claim=await claimCurrentStaffInvitation({withTransaction,repository,jobId});
+  const origin='https://gestion-sabora.example.test',providerId='dbec97f1-e3ad-464c-aacf-2c4cddd9b272';
+  const readDelivery=createStaffDirectoryDispatchReaderCandidate({query:(...args)=>deliveryPool.query(...args),keyring,
+   // Explicit test link, not an Auth provider implementation.
+   createEnrollmentUrl:async({token,enrollmentId,recipient})=>{
+    assert.equal(recipient,request.email);assert.equal(enrollmentId,id);
+    return origin+'/#enrolamiento?token='+token;
+   }});
+  assert.deepEqual(await readDelivery({jobId,fence:claim.fence}),{authorized:false});
+  let sends=0;
+  const send=createStaffInvitationResendSender({managementOrigin:origin,from:'sab@example.test',
+   apiKey:'re_only_isolated_fixture',fetchImpl:async(url,options)=>{
+    sends++;assert.equal(url,'https://api.resend.com/emails');
+    assert.equal(JSON.parse(options.body).to[0],request.email);
+    assert.equal(options.headers['Idempotency-Key'],'sabora-staff-invitation/'+jobId);
+    return Response.json({id:providerId});
+   }});
+  const dispatch={withTransaction,repository,jobId,fence:claim.fence,readDelivery,send,
+   recordOutcome:input=>recordStaffInvitationDeliveryOutcome({withTransaction,repository,...input})};
+  assert.deepEqual(await dispatchStaffInvitation(dispatch),{recorded:true,state:'delivered',retryable:false,ambiguous:false});
+  assert.equal((await dispatchStaffInvitation(dispatch)).authorized,false);
+  assert.equal(sends,1);
+  const result=(await admin.query('SELECT provider_message_id,provider_outcome,state FROM sabora.staff_invitation_outbox WHERE id=$1',[jobId])).rows[0];
+  assert.deepEqual(result,{provider_message_id:providerId,provider_outcome:'accepted',state:'delivered'});
+  assert.equal((await admin.query('SELECT state FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0].state,'invited');
+  await lifecycle.transition(verified,{action:'revoke',enrollmentId:id,subjectUserId:null,reason:'Revocación de prueba',
+   correlationId:'directory_durable_revoke_001'});
+  assert.equal((await readDelivery({jobId,fence:claim.fence})).authorized,false);
+ }finally{await Promise.all([writer.end(),deliveryPool.end()]);}
 });
