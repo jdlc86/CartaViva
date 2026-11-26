@@ -98,3 +98,26 @@ Estado: publicado y verificado el documento; no consta envío a Codex ni ejecuci
 ## S54-08 — Resultado de implementación y revisión
 
 La configuración de correo desde gestión, el fence transaccional y el despacho candidato se incorporan al mismo Draft #92. El [informe S54](../reviews/SABORA_S54_ROOT_RECOVERY_H1_A_REVIEW_2026-11-26.md) registra los estados A54-01–09, la prueba PG17 + Chromium, la propuesta V2 y el ensayo ficticio pendiente de autorización. H1-A permanece parcial. El siguiente corte requiere demostrar registro y reconciliación en el mismo UUID de Auth y verificar el delta con el DBA no-superusuario antes de cualquier decisión operativa.
+
+
+## S54-09 — Contraste del resultado Codex y reanudación (26-11-2026)
+
+El propietario aporta mensaje final de Codex. Consulta directa GitHub confirma #92 abierto/Draft, HEAD de código e informe `0090a15dae6947fb8e478e13bac113bb43f207b9`, rama `fix/sabora-s51-first-deploy-20261124`. Se lee íntegramente el [informe S54](https://github.com/jdlc86/CartaViva/blob/0090a15dae6947fb8e478e13bac113bb43f207b9/docs/reviews/SABORA_S54_ROOT_RECOVERY_H1_A_REVIEW_2026-11-26.md). Este corte sustituye la indicación histórica de S54-07 de que no constaba ejecución. El apartado S54-08 ya publicado por Codex se conserva.
+
+**CI verificada por API:** los siete controles aplicables del SHA indicado están completados con éxito (cuatro requeridos y tres adicionales); [CI y web-publication](https://github.com/jdlc86/CartaViva/actions/runs/45887033537), [Bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/45887033767), [gate funcional](https://github.com/jdlc86/CartaViva/actions/runs/45887033483), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/45887033520), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/45887033363), [instalabilidad](https://github.com/jdlc86/CartaViva/actions/runs/45887033542); [CV005+B2](https://github.com/jdlc86/CartaViva/actions/runs/45887033503) SKIPPED, aceptación visual final omitida según PR/informe. El PR declara árbol `92191d68db179723f568b6516d027b2ec5a4013d` idéntico al merge de prueba `b3b14f7d911d408f41aa1bd1b8fbb31933104266`, y prefijo original de 103 migraciones `634d7e863554ba4d5704275164abbd30213d16b7`. La lista de archivos cambiados no incluye supabase/migrations; no se recalcularon árboles ni se reejecutaron pruebas ni consultaron proveedores en esta revisión.
+
+| Hallazgo | Estado según informe contrastado |
+| --- | --- |
+| A54-01 | Parcial: alta/cambio de correo desde PWA con ceremonia nueva, confirmación explícita, código inicial una vez. Faltan respaldo y recuperación pública. |
+| A54-02 | Pendiente: registro del mismo UUID, atribución de credencial, reconciliación y revocación Auth. |
+| A54-03 | Resuelto en laboratorio: fence transaccional de titularidad y primer ADMIN; carrera denegada sin cambio de titular ni auditoría de éxito según ensayo. |
+| A54-04 | Parcial: sobre de despacho de 10 min separado de vigencia del enlace; unknown terminal y nuevo job con enlace distinto tras enfriamiento de 15 min, no reenvío a ciegas. Falta prueba alojada de incertidumbre. |
+| A54-05 | Parcial: composición de worker candidato en proceso, LOGIN y HMAC separados, preflight y limpieza. Falta conectar alertas al receptor durable. |
+| A54-06 | Parcial: cinco overlays y cuatro dependencias de custodia/outbox ordenados en laboratorio; falta delta atómico, DBA no-superusuario y aprobación de extensión V2. |
+| A54-07 | Preparación documental; sin autorización ni ejecución de ensayo alojado. |
+| A54-08 | Parcial: custodia y limpieza acotadas; retención de metadatos/invitaciones y recuperación no ROOT pendientes. |
+| A54-09 | Parcial: CI verde exacta; revisión propia, escáner no pudo resolver HEAD, auditoría independiente/aceptación pendientes. |
+
+**Prioridad siguiente:** resolver la frontera Auth del mismo UUID. El informe identifica una limitación material: una diferencia entre listados de passkeys no atribuye inequívocamente una credencial a una ceremonia cuando se pierde respuesta de registro o existe cambio concurrente directo en Auth. No aprobar recuperación por suposición, no sustituir passkeys ni añadir bypass. Preparar ensayo ficticio autorizado y control de clave privilegiada limitado al adaptador; definir alcance exacto antes de ejecutar. En paralelo se puede continuar el delta append-only y laboratorio DBA no-superusuario, alertas y componentes independientes sin nueva autorización real, preservando genesis y V2. No repetir alta/cambio de correo ni el fence ya probado salvo regresiones. El informe propone además decidir modalidad de invitaciones ordinarias, retención y recuperación no ROOT; ninguna queda aprobada por recepción del informe. No crear otro PR ni otro encargo redundante.
+
+**Dictamen:** H1-A parcial; NO-GO técnico para integrar el hito completo y NO-GO operativo. Este registro documenta resultado de Codex y comprobación de metadatos/CI; no equivale a auditoría independiente ni nueva validación funcional. Cambio exclusivamente documental; sin código, normativa, merge, despliegue, SQL/Auth/Resend real, VPS o Fleetia. Mantener continuidad S54.
