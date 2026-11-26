@@ -163,3 +163,16 @@ activación/revocación continúan pasando.
 Evidencia local posterior: 14/14 casos de ciclo dentro de 87/87 casos del
 harness PostgreSQL 17 y 892/892 pruebas raíz. El cambio permanece candidato y
 no crea login, clave ni grant operativo.
+
+
+## Adenda S52 — recuperación ROOT (26-11-2026)
+
+Se ha aprobado el contrato normativo de recuperación excepcional de ROOT en
+[SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md](../architecture/SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md#adenda-s52--recuperación-excepcional-de-root-aprobada-26-11-2026):
+segunda passkey de respaldo y recuperación por correo de seguridad
+(desafío reciente, enlace periódico rotatorio) más código independiente
+mostrado una sola vez, sin acceso operativo hasta nueva passkey verificada.
+La recuperación conserva el ROOT existente y no utiliza el alta ordinaria
+de personal ni la concesión genesis. Esta referencia no aprueba un mecanismo
+equivalente para ADMIN, camarero o cocina, ni fija retención/intervalos.
+Pendiente implementación, integración, pruebas y autorizaciones operativas.

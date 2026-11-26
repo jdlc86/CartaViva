@@ -43,3 +43,77 @@ El propietario aprobó el flujo excepcional de inicialización: una autorizació
 Antes de existir el primer ADMIN titular, ROOT puede autorizar exclusivamente la incorporación excepcional del primer ADMIN, mediante el ciclo de invitación, aceptación, registro de passkey y activación, con revocación desde el primer registro durable. Una vez activo, ROOT le asigna la titularidad por el mecanismo de gobierno existente. La excepción queda inutilizada al completar el arranque. ROOT nunca se convierte en titular ni adquiere escritura administrativa ordinaria; no se alteran los permisos del ciclo posterior. La implementación debe impedir carreras, altas paralelas por la excepción, replay y activación sin credencial verificada; cualquier reanudación antes de finalizar conserva la auditoría y no permite reactivar un registro revocado.
 
 Esta decisión se incorpora como candidata en el PR #92 hasta integración autorizada. No autoriza crear usuarios, aplicar SQL, desplegar ni configurar proveedores. El primer incremento técnico de ROOT se mantiene en SQL desechable; las decisiones de retención/recuperación y extensión de V2 se resuelven separadamente.
+
+
+## Adenda S52 — recuperación excepcional de ROOT aprobada (26-11-2026)
+
+El propietario aprueba expresamente la combinación de una segunda passkey como
+respaldo ordinario y recuperación excepcional mediante **correo de seguridad
+independiente + código secreto de recuperación custodiado fuera de ese correo**.
+Esta decisión amplía el punto 4 de los invariantes, sin alterar el ROOT único,
+la titularidad ADMIN ni el arranque inicial de un solo uso. La recuperación
+conserva la identidad ROOT existente; no crea otro ROOT.
+
+### Requisitos aprobados
+
+- ROOT configura un correo de recuperación desde la PWA de gestión, tras
+  autenticarse y volver a verificar una passkey. El cambio de correo exige
+  verificación reciente, comprobación del nuevo destinatario y aviso al
+  correo anterior. ADMIN y otros roles no pueden consultar o cambiar estos
+  factores ni autorizar la recuperación de ROOT.
+- Desde Seguridad de ROOT, el servidor genera un código de recuperación
+  criptográficamente aleatorio de alta entropía, tras una nueva verificación
+  por passkey. Se muestra una única vez para guardarlo fuera del correo
+  (por ejemplo, impreso o en un gestor independiente). Solo se conserva
+  un verificador criptográfico, nunca el código en claro ni en emails,
+  logs, URLs, auditoría, copias de datos en claro o almacenamiento web.
+  El código permanece estable hasta sustitución expresa o uso exitoso.
+- Al configurar el correo (día 0) y cada N semanas se envía automáticamente
+  un enlace rotatorio al buzón de seguridad. N es configurable; no se ha
+  fijado un intervalo definitivo. Solo la generación vigente puede iniciar
+  el flujo; la sustitución controlada invalida la anterior. Un fallo de
+  envío no debe invalidar prematuramente la generación anterior dentro de
+  su vigencia ni renovar indefinidamente una autorización; debe alertarse.
+- El enlace periódico **no es una credencial de acceso**. Abrirlo, incluido
+  el escaneo automático de correo, no consume factores ni concede sesión.
+  Permite iniciar una recuperación y solicitar una comprobación reciente de
+  posesión del correo mediante desafío de corta duración. Son necesarios
+  dicha comprobación y el código independiente; ninguno basta por sí solo.
+- Solo tras validar ambos factores se concede una autorización restringida,
+  de corta duración y de un solo uso para registrar una nueva passkey de
+  la misma identidad ROOT; no otorga acceso operativo, no permite invitar
+  personal, reasignar titularidad ni eludir la verificación por passkey.
+  El éxito exige registro verificable y nueva autenticación por passkey.
+- Una recuperación exitosa invalida el código empleado, el enlace y las
+  autorizaciones de recuperación anteriores, revoca credenciales y sesiones
+  anteriores, emite un código nuevo para guardar una sola vez y notifica
+  la recuperación. Los mecanismos de revocación deben ser efectivos también
+  frente a sesiones y JWT aún no caducados. Ningún ADMIN adquiere autoridad
+  sobre ROOT. La segunda passkey previamente registrada es el mecanismo
+  ordinario, sin consumir este procedimiento excepcional.
+
+### Condiciones técnicas de aceptación, no decisiones operativas
+
+El diseño debe prevenir intentos concurrentes, replay, abuso de solicitudes,
+enumeración, fuga de secretos, autorización caducada tras locks, modificación
+del destinatario y bypass mediante Auth directo o sesión de correo.
+Auditoría durable sin secretos; límites de intentos y vigencias acotadas.
+Reutilizar el transporte durable de correo previsto para Sabora sin añadir
+infraestructura de despliegue. La frontera entre registro/revocación en Auth
+y la transacción SQL es distribuida: no asumir atomicidad de proveedor;
+ante respuesta incierta, impedir sesión operativa hasta reconciliación
+verificable, sin repetir acciones destructivas ni perder los factores por
+un GET o un registro fallido. No reabrir genesis ni alterar las 103
+migraciones originales.
+
+El intervalo N, vigencias exactas, almacenamiento temporal de material de
+correo, retención, parámetros antiabuso y resolución de fallo total (pérdida
+del correo y del código y de todas las passkeys) siguen pendientes de
+concreción. No existe bypass por correo solo ni procedimiento de emergencia
+inventado. La recuperación de roles no ROOT, la modalidad de generación y
+entrega de las invitaciones ordinarias y el delta V2 son decisiones separadas.
+
+La aprobación es de diseño para implementar en el PR #92. No acredita
+implementación, prueba alojada, aceptación visual, aprovisionamiento,
+modificación de usuarios, envío real, SQL operativo, integración en main
+ni despliegue. No afecta a Fleetia.

@@ -213,3 +213,25 @@ Se añade lectura firmada de estado genesis limitada al ROOT del recibo y login 
 ## S52-22 — Evidencia S52-19/20 y corrección del contrato del harness
 
 S52-19 `b6499e7fdbce1e13c276dd8814b635236c1bbb6d`: 7/7 controles aplicables PASS ([CI](https://github.com/jdlc86/CartaViva/actions/runs/45768824751), [Bootstrap](https://github.com/jdlc86/CartaViva/actions/runs/45768824773)). S52-20 `cf0082eca4d06dd2f1ca40ce145a3dc974be617b`: 7/7 PASS ([CI](https://github.com/jdlc86/CartaViva/actions/runs/45770609548), [Bootstrap](https://github.com/jdlc86/CartaViva/actions/runs/45770609729)). En ambos, CV005+B2 opt-in omitido y aceptación visual diferida; proveedores simulados. S52-21 `e9a2bff7445ff38fb3e2478c412f36793c722c1d`: 5/7 PASS, validate y generate-lockfile fallan por la misma aserción #961 de tests/issue61-focused-pg17-gate.test.mjs:23 ([CI](https://github.com/jdlc86/CartaViva/actions/runs/45771860837), [Bootstrap](https://github.com/jdlc86/CartaViva/actions/runs/45771860878)); no se llegó a ejecutar el nuevo ensayo genesis Chromium. Se corrige el contrato para exigir salida de scope issue61 anterior a cualquier instalación full, Chromium único antes del ensayo ROOT y éste antes de las otras suites. Verificación directa de las posiciones y patrones sobre el script exacto: correcta. No se rebaja la cobertura, no se modifica el harness ni se añade instalación. CI nuevo SHA pendiente. H1-A parcial, NO-GO; no se promueve ni aplica SQL real.
+
+## S52-23 — Decisión normativa de recuperación excepcional ROOT (26-11-2026)
+
+HEAD 9d2f7ac9fb2c7129a91a0ac70e7797fc353c20b0: 7/7 controles aplicables PASS,
+CV005+B2 opt-in omitido. [CI](https://github.com/jdlc86/CartaViva/actions/runs/45775038867)
+y [Bootstrap](https://github.com/jdlc86/CartaViva/actions/runs/45775038744/job/139756543392)
+confirman el caso integrado PG17/Fastify/Chromium de ROOT y primer ADMIN
+y 26/26 outbox con recorrido ordinario. Proveedores de registro/envío simulados.
+
+El propietario aprueba expresamente el diseño discutido: segunda passkey
+como respaldo ordinario; correo de seguridad con enlace enviado día 0 y
+rotación cada N semanas; desafío reciente de correo y código aleatorio
+independiente, emitido desde PWA tras verificación reciente por passkey,
+mostrado una sola vez, estable hasta sustitución o uso exitoso, verificador
+no reversible en servidor. Recuperación excepcional permite únicamente
+registrar nueva passkey del mismo ROOT; al éxito invalida factores usados
+y credenciales/sesiones anteriores. La decisión se registra en el contrato
+normativo de ROOT, no se deriva solo de continuidad. Se mantienen por
+concretar N, caducidades, retención, antiabuso y pérdida total de factores.
+No se aprueban por inferencia recuperación de otros roles, modalidad de
+invitación ordinaria, delta V2 o operaciones reales. Bloque documental;
+no se implementa recuperación todavía. H1-A parcial/NO-GO.
