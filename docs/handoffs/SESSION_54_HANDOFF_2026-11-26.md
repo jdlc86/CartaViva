@@ -203,3 +203,8 @@ El SHA `25ac3ef0` acredita [job 140202634645](https://github.com/jdlc86/CartaViv
 ## S54-27 — Corrección de carrera en fixture SSH de copias
 
 El run `45906678456`, job `140204971989`, superó bloques 1/2A y falló en 2B dentro de `loseAcknowledgement`, `sabora-vps-backup-ssh-lab.mjs:205`: `JSON.parse` recibió cadena vacía. El fixture publicaba `ack-ready` mediante writeFile mientras el observador solo esperaba lstat; ventana entre creación y escritura. Se publica en `ack-ready.pending` con wx/0600 y rename atómico al nombre observado, mismo directorio. Se conserva la comprobación del ACK real, manifest, estado, desconexión y denegación de replay. No se modifica transporte/receptor de producción ni se añaden esperas arbitrarias. Diagnóstico sustentado por código y log; pendiente confirmación CI integral. El ensayo Auth real con credencial admin sigue sin ejecutarse. Sin merge/despliegue ni modificaciones de VPS/Supabase/Fleetia.
+
+
+## S54-28 — Endurecimiento de la prueba manual Auth
+
+Auditado `555c7e81`: propuesta CI privilegiada bloqueada antes de publicación; no conocemos causa exacta ni se reintenta el control. Se corrigen aislamiento del entorno de Chromium, preflight de Auth vacío, reconciliación de alta incierta por correo aleatorio exacto sin repetir creación, validación UUID/email en limpieza y diagnóstico HTTP reducido. Se mantienen CI prohibida para este ensayo y el workflow ordinario intacto. Añadidos tests focalizados de dos invariantes, pendientes de CI. La sonda anterior es la única evidencia alojada; ensayo manual y cierre integrado H1-A pendientes. Sin acceso al secreto, ni cambios reales de Auth, SQL, VPS, Fleetia, merge o despliegue.

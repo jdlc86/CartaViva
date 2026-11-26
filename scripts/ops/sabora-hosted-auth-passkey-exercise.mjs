@@ -5,6 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {resolve} from 'node:path';
 import {verifySupabaseAccessToken} from '../../apps/api/src/auth.mjs';
+import {isolatedBrowserEnvironment,findDisposableIdentity,isDisposableIdentity} from './sabora-hosted-auth-exercise-safety.mjs';
 const issuer='https://byhvmumqivmunkmomhup.supabase.co/auth/v1';
 const origin='https://gestion-sabora.allaiso.com:8443',rpId=new URL(origin).hostname;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -29,21 +30,28 @@ async function call(path,{method='GET',admin=false,token,data,deny=[]}={}){
   let body=null;try{body=await response.json();}catch{}
   return {denied:true,code:typeof body?.error_code==='string'&&/^[a-z_]{1,80}$/.test(body.error_code)?body.error_code:'unknown'};
  }
- if(!response.ok)throw Error('auth_http_'+response.status);
+ if(!response.ok){
+  let body=null;try{body=await response.json();}catch{}
+  const code=typeof body?.error_code==='string'&&/^[a-z_]{1,80}$/.test(body.error_code)?body.error_code:'unknown';
+  throw Error('auth_http_'+response.status+'_'+code);
+ }
  if(response.status===204)return null;
  const body=await response.text();return body?JSON.parse(body):null;
 }
 async function verifyUser(token,passkey){
  const id=verifySupabaseAccessToken(token,{issuer,keys,requirePasskey:passkey,requireEnrollmentSession:!passkey});
  check(id.userId===subject,'uuid_mismatch');
+ // Track only a cryptographically verified token for this exact subject,
+ // even if the subsequent provider user lookup fails.
+ sessions.add(token);
  const user=await call('/user',{token});
  check(user?.id===subject&&user.email===email&&user.is_anonymous===false&&
   typeof user.email_confirmed_at==='string','confirmed_email_mismatch');
- sessions.add(token);return id;
+ return id;
 }
 async function exchange(type){
  const result=await call('/admin/generate_link',{admin:true,method:'POST',data:{type,email,redirect_to:origin}});
- check(UUID.test(result?.id??'')&&result.email===email,'generated_link_identity_mismatch');
+ check(isDisposableIdentity(result,email),'generated_link_identity_mismatch');
  if(type==='invite')subject=result.id;
  check(subject===result.id&&result.verification_type===type&&typeof result.hashed_token==='string','generated_link_purpose_mismatch');
  const verified=await call('/verify',{method:'POST',data:{type,token_hash:result.hashed_token}});
@@ -97,7 +105,11 @@ async function list(){
 }
 try{
  keys=(await call('/.well-known/jwks.json')).keys;check(Array.isArray(keys),'jwks_invalid');
- browser=await chromium.launch({headless:true});
+ // This temporary exercise is designed for the still-empty Auth project.
+ // Do not inspect or mutate existing identities if that assumption changes.
+ const initial=await call('/admin/users?page=1&per_page=1',{admin:true});
+ check(Array.isArray(initial?.users)&&initial.users.length===0,'auth_project_not_empty');
+ browser=await chromium.launch({headless:true,env:isolatedBrowserEnvironment(process.env,[pub,secret])});
  const first=await device(),second=await device();
  console.log('Disposable identity: '+email);
  stage='invite';creationAttempted=true;
@@ -127,11 +139,19 @@ try{
  console.error('AUTH_EXERCISE FAIL stage='+stage+' code='+(/^[a-z0-9_]+$/.test(error?.message??'')?error.message:'unclassified'));
  process.exitCode=1;
 }finally{
+ // A lost create response is not proof that nothing was created. Never
+ // replay the invitation. Reconcile only the exact random fixture address.
+ if(creationAttempted&&!subject){
+  try{
+   const result=await call('/admin/users?page=1&per_page=100',{admin:true});
+   subject=findDisposableIdentity(result?.users,email);
+  }catch{/* unresolved: report exact fixture address and fail below */}
+ }
  if(subject){
   for(const token of sessions){try{await call('/logout?scope=local',{method:'POST',token,deny:[401,403]});}catch{/* deletion below remains mandatory */}}
   try{
    const current=await call('/admin/users/'+subject,{admin:true,deny:[404]});
-   check(current?.denied||current?.id===subject&&current.email===email,'cleanup_identity_mismatch');
+   check(current?.denied===true||isDisposableIdentity(current,email,subject),'cleanup_identity_mismatch');
    if(!current?.denied)await call('/admin/users/'+subject,{admin:true,method:'DELETE'});
    cleaned=(await call('/admin/users/'+subject,{admin:true,deny:[404]}))?.denied===true;
   }catch{/* report exact fictitious email for reconciliation; never bulk delete */}

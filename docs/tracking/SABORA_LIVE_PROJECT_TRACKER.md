@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S54-28 · H1-A.** Ensayo manual Auth endurecido (entorno Chromium, reconciliación exacta, preflight vacío); pruebas focalizadas añadidas, ejecución alojada pendiente. CI ordinaria intacta; no se intenta sortear bloqueo de workflow privilegiado.
+
 > **S54-27 · CI H6.** Fallo 2B de `c992e1cd` localizado en lectura prematura de ACK de fixture SSH; publicación atómica corregida, CI pendiente. Auth proveedor inicial PASS; registro/recuperación real no ejecutados.
 
 > **S54-25 · H1-A.** Sonda real Auth/JWKS/opciones RP PASS en `25ac3ef0`; regresión CI de orden por job temporal corregida restaurando workflow. Ensayo real de registro/recuperación/revocación proveedor-only preparado, no ejecutado. Requiere custodia de clave admin; SQL/PWA/Resend pendientes.
