@@ -84,6 +84,21 @@ export function createGatewayPasskeyProvider({publishableKey,...config}){
   registrationOptions:token=>call('/passkeys/registration/options','POST',{token,data:{}}),
   verifyRegistration:(token,challengeId,credential)=>call('/passkeys/registration/verify','POST',
    {token,data:{challenge_id:challengeId,credential}}),
+  // Trusted enrollment/recovery caller must bind this proof to a current
+  // durable invitation and verify issuer, UUID, session and confirmed email
+  // afterwards. Never use this result to issue an operational staff cookie.
+  async exchangeEmailProof({purpose,tokenHash}={}){
+   if(!['invite','recovery'].includes(purpose)||typeof tokenHash!=='string'||
+      !/^[A-Za-z0-9_-]{32,512}$/.test(tokenHash))
+    throw Error('invalid_staff_auth_email_proof');
+   const result=await call('/verify','POST',{data:{type:purpose,token_hash:tokenHash}});
+   if(result===null)return null;
+   if(typeof result?.access_token!=='string'||result.access_token.length>3700||
+      !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(result.access_token))
+    throw Error('staff_auth_provider_unavailable');
+   // Do not return refresh tokens, provider user metadata or email proofs.
+   return Object.freeze({accessToken:result.access_token});
+  },
   user:token=>call('/user','GET',{token}),
   logout:token=>call('/logout?scope=local','POST',{token})
  });

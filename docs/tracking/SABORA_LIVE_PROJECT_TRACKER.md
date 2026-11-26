@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S54-22 · H1-A.** RESTAURANTE real observado read-only: PG17.11, cero Auth/miembros, sin overlays de recuperación. Reutilización gateway Auth y exchange invite/recovery candidato; ajustes panel, proveedor admin, prueba alojada y delta pendientes. CI anterior H6 rojo B3/F12, sin GO.
+
 > **S54-21 · H1-A.** `990306d2` 7/7 PASS. Candidato interno de preparación persistente y fence por huella, recibos ordenados de registro/revocación; proveedor real, fence de escrituras y PWA pendientes. CI nuevo SHA pendiente.
 
 > **S54-19 · H1-A.** `87277ea4` 7/7 PASS. Candidato de entrega cifrada, propósito recuperación, recibo de consumo asociado al UUID/versión/sesión, mismo transporte Resend. Sin registro ni ruta pública habilitados. CI pendiente.
