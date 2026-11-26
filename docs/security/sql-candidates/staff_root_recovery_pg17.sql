@@ -785,6 +785,7 @@ CREATE TABLE sabora.staff_recovery_intent_candidate(
  subject_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id) ON DELETE RESTRICT,
  actor_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id) ON DELETE RESTRICT,
  version integer NOT NULL CHECK(version>0),
+ authorizer_credential_hash text CHECK(authorizer_credential_hash ~ '^[0-9a-f]{64}$'),
  subject_role text NOT NULL CHECK(subject_role IN ('admin','waiter','kitchen')),
  subject_state text NOT NULL CHECK(subject_state IN ('active','suspended')),
  issued_at timestamptz NOT NULL,
@@ -869,6 +870,7 @@ BEGIN
  IF prior.request_id IS NOT NULL THEN
   IF prior.actor_user_id IS DISTINCT FROM p_actor OR prior.enrollment_id IS DISTINCT FROM p_enrollment
    OR prior.subject_user_id IS DISTINCT FROM e.auth_user_id OR prior.subject_role IS DISTINCT FROM e.requested_role
+   OR prior.authorizer_credential_hash IS DISTINCT FROM p_credential
    OR prior.subject_state IS DISTINCT FROM e.state OR prior.expires_at-prior.issued_at<>make_interval(secs=>p_seconds)
    OR prior.version<>v_version OR prior.expires_at<=v_now THEN
    RAISE EXCEPTION 'staff_recovery_intent_conflict' USING ERRCODE='40001';
@@ -876,8 +878,8 @@ BEGIN
   RETURN QUERY SELECT prior.request_id,prior.enrollment_id,prior.version,prior.expires_at,true;RETURN;
  END IF;
  INSERT INTO sabora.staff_recovery_intent_candidate(request_id,enrollment_id,subject_user_id,actor_user_id,
- version,subject_role,subject_state,issued_at,expires_at)
- VALUES(p_request,p_enrollment,e.auth_user_id,p_actor,v_version+1,e.requested_role,e.state,v_now,
+ version,authorizer_credential_hash,subject_role,subject_state,issued_at,expires_at)
+ VALUES(p_request,p_enrollment,e.auth_user_id,p_actor,v_version+1,p_credential,e.requested_role,e.state,v_now,
  v_now+make_interval(secs=>p_seconds))
  RETURNING * INTO prior;
  RETURN QUERY SELECT prior.request_id,prior.enrollment_id,prior.version,prior.expires_at,false;
@@ -886,6 +888,158 @@ $intent$;
 ALTER FUNCTION sabora.authorize_staff_recovery_intent_candidate(text,uuid,text,uuid,uuid,integer,bigint,bigint,text)
  OWNER TO sabora_root_recovery_fn_owner;
 REVOKE ALL ON FUNCTION sabora.authorize_staff_recovery_intent_candidate(text,uuid,text,uuid,uuid,integer,bigint,bigint,text)
+ FROM PUBLIC,anon,authenticated;
+
+
+-- Separate purpose from first enrollment; reuse existing recovery worker,
+-- Resend transport and encrypted invitation envelope. No operational route.
+CREATE TABLE sabora.staff_recovery_delivery_candidate(
+ intent_id uuid PRIMARY KEY REFERENCES sabora.staff_recovery_intent_candidate(request_id) ON DELETE RESTRICT,
+ token_hash text NOT NULL CHECK(token_hash ~ '^[0-9a-f]{64}$'),
+ envelope text CHECK(length(envelope) BETWEEN 32 AND 2048),
+ state text NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','dispatching','delivered','unknown','rejected','cancelled','consumed')),
+ fence uuid,
+ provider_id uuid UNIQUE,
+ consumed_session uuid UNIQUE,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ CHECK((state IN ('queued','dispatching'))=(envelope IS NOT NULL)),
+ CHECK((state IN ('delivered','consumed'))=(provider_id IS NOT NULL)),
+ CHECK((state='consumed')=(consumed_session IS NOT NULL)),
+ CHECK(state NOT IN ('dispatching','delivered','consumed','unknown','rejected') OR fence IS NOT NULL)
+);
+ALTER TABLE sabora.staff_recovery_delivery_candidate ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sabora.staff_recovery_delivery_candidate FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON sabora.staff_recovery_delivery_candidate FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT,UPDATE(state,envelope,fence,provider_id,consumed_session,updated_at)
+ ON sabora.staff_recovery_delivery_candidate TO sabora_root_recovery_fn_owner;
+CREATE POLICY staff_recovery_delivery_owner ON sabora.staff_recovery_delivery_candidate
+ TO sabora_root_recovery_fn_owner USING(true) WITH CHECK(true);
+GRANT SELECT(enrollment_id,email) ON sabora.staff_directory_contacts TO sabora_root_recovery_fn_owner;
+CREATE POLICY staff_recovery_delivery_contact ON sabora.staff_directory_contacts FOR SELECT
+ TO sabora_root_recovery_fn_owner USING(true);
+
+CREATE FUNCTION sabora.staff_recovery_delivery_candidate(
+ p_key_id text,p_action text,p_intent uuid,p_payload text,p_issued bigint,p_expires bigint,p_signature text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $delivery$
+DECLARE v_key bytea;v_key_expiry timestamptz;v_expected bytea;v_given bytea;v_diff integer:=0;v_i integer;
+ v jsonb;v_now timestamptz;v_role text;v_owner uuid;v_genesis text;v_current boolean;
+ i sabora.staff_recovery_intent_candidate%ROWTYPE;d sabora.staff_recovery_delivery_candidate%ROWTYPE;
+ e record;s sabora.root_recovery_state_candidate%ROWTYPE;v_recipient text;v_provider uuid;v_fence uuid;
+BEGIN
+ IF p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
+ OR p_action IS NULL OR p_action NOT IN ('queue','list','claim','finish','consume')
+ OR ((p_action='list')<>(p_intent IS NULL))
+ OR session_user::text IS DISTINCT FROM CASE WHEN p_action IN ('queue','consume')
+  THEN 'sabora_root_recovery_login' ELSE 'sabora_root_recovery_mail_login' END
+ OR p_payload IS NULL OR octet_length(p_payload)>4096
+ OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
+ OR p_issued IS NULL OR p_expires IS NULL OR p_expires::numeric-p_issued::numeric NOT BETWEEN 1 AND 15000
+ OR p_issued::numeric>floor(extract(epoch FROM clock_timestamp())*1000)::numeric+5000
+ OR p_expires<=floor(extract(epoch FROM clock_timestamp())*1000)
+ THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT k.hmac_key,k.expires_at INTO v_key,v_key_expiry FROM sabora.root_recovery_keys_candidate k
+ WHERE k.key_id=p_key_id AND k.purpose=CASE WHEN p_action IN ('queue','consume') THEN 'control' ELSE 'mail_worker' END
+ AND k.expires_at>clock_timestamp();
+ IF NOT FOUND THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
+ v_expected:=extensions.hmac(convert_to(concat_ws(chr(10),'sabora.staff-recovery-delivery.v1',p_key_id,
+ session_user::text,p_action,coalesce(p_intent::text,'-'),p_payload,p_issued::text,p_expires::text),'UTF8'),v_key,'sha256');
+ v_given:=decode(p_signature,'hex');
+ FOR v_i IN 0..31 LOOP v_diff:=v_diff | (get_byte(v_expected,v_i)#get_byte(v_given,v_i)); END LOOP;
+ IF v_diff IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
+ v:=p_payload::jsonb;
+ IF jsonb_typeof(v) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
+ IF p_action='list' THEN
+  IF v<>'{}'::jsonb THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
+  RETURN jsonb_build_object('outcome','listed','jobs',coalesce((SELECT jsonb_agg(q.intent_id)
+   FROM (SELECT x.intent_id FROM sabora.staff_recovery_delivery_candidate x
+   JOIN sabora.staff_recovery_intent_candidate a ON a.request_id=x.intent_id
+   WHERE x.state='queued' OR (x.state='dispatching' AND a.expires_at<=clock_timestamp())
+   ORDER BY x.created_at,x.intent_id LIMIT 20) q),'[]'::jsonb));
+ END IF;
+ SELECT * INTO i FROM sabora.staff_recovery_intent_candidate a WHERE a.request_id=p_intent;
+ IF NOT FOUND THEN RETURN jsonb_build_object('outcome','denied'); END IF;
+ -- Same order as authorization: ownership, enrollment, memberships, ROOT fence.
+ SELECT o.owner_user_id INTO v_owner FROM sabora.admin_write_ownership o WHERE o.singleton FOR UPDATE;
+ SELECT x.auth_user_id,x.requested_role,x.state,x.invitee_email_hash INTO e
+ FROM sabora.staff_enrollments x WHERE x.id=i.enrollment_id FOR UPDATE;
+ PERFORM 1 FROM sabora.staff_members m WHERE m.user_id IN(i.actor_user_id,i.subject_user_id)
+ ORDER BY m.user_id FOR UPDATE;
+ PERFORM pg_advisory_xact_lock(17302101,52426);
+ v_now:=clock_timestamp();
+ IF p_expires<=floor(extract(epoch FROM v_now)*1000) OR v_key_expiry<=v_now
+ OR NOT EXISTS(SELECT 1 FROM sabora.root_recovery_keys_candidate k WHERE k.key_id=p_key_id
+ AND k.hmac_key=v_key AND k.expires_at>v_now)
+ THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT m.role INTO v_role FROM sabora.staff_members m WHERE m.user_id=i.actor_user_id AND m.state='active';
+ v_current:=coalesce(i.expires_at>v_now AND e.auth_user_id=i.subject_user_id AND e.requested_role=i.subject_role
+  AND e.state=i.subject_state AND EXISTS(SELECT 1 FROM sabora.staff_members m WHERE m.user_id=i.subject_user_id
+    AND m.role=i.subject_role AND m.state=i.subject_state)
+  AND NOT EXISTS(SELECT 1 FROM sabora.staff_recovery_intent_candidate a WHERE a.enrollment_id=i.enrollment_id AND a.version>i.version),false);
+ IF v_role='root' THEN
+  SELECT r.credential_hash INTO v_genesis FROM sabora.root_bootstrap_receipt r WHERE r.singleton AND r.root_user_id=i.actor_user_id;
+  SELECT * INTO s FROM sabora.root_recovery_state_candidate WHERE singleton;
+  v_current:=v_current AND coalesce(v_genesis IS NOT NULL AND NOT coalesce(s.registration_pending,false)
+   AND (i.authorizer_credential_hash=coalesce(s.primary_credential_hash,v_genesis)
+     OR i.authorizer_credential_hash=s.backup_credential_hash),false);
+ ELSE
+  v_current:=v_current AND coalesce(v_role='admin' AND v_owner=i.actor_user_id AND i.authorizer_credential_hash IS NULL,false);
+ END IF;
+ SELECT * INTO d FROM sabora.staff_recovery_delivery_candidate x WHERE x.intent_id=p_intent FOR UPDATE;
+ IF p_action='queue' THEN
+  IF NOT v_current OR v->>'actor' IS DISTINCT FROM i.actor_user_id::text
+   OR NOT coalesce(v->>'tokenHash' ~ '^[0-9a-f]{64}$',false)
+   OR NOT coalesce(length(v->>'envelope') BETWEEN 32 AND 2048,false)
+   OR (SELECT count(*) FROM jsonb_object_keys(v))<>3 THEN RETURN jsonb_build_object('outcome','denied'); END IF;
+  IF d.intent_id IS NOT NULL THEN RETURN jsonb_build_object('outcome','existing'); END IF;
+  INSERT INTO sabora.staff_recovery_delivery_candidate(intent_id,token_hash,envelope)
+  VALUES(p_intent,v->>'tokenHash',v->>'envelope');
+  RETURN jsonb_build_object('outcome','queued');
+ ELSIF p_action='claim' THEN
+  IF v<>'{}'::jsonb THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
+  IF d.state='dispatching' AND i.expires_at<=v_now THEN
+   UPDATE sabora.staff_recovery_delivery_candidate SET state='unknown',envelope=NULL,updated_at=v_now WHERE intent_id=p_intent;
+   RETURN jsonb_build_object('outcome','unknown');
+  END IF;
+  IF d.state IS DISTINCT FROM 'queued' THEN RETURN jsonb_build_object('outcome','denied'); END IF;
+  IF NOT v_current THEN
+   UPDATE sabora.staff_recovery_delivery_candidate SET state='cancelled',envelope=NULL,updated_at=v_now WHERE intent_id=p_intent;
+   RETURN jsonb_build_object('outcome','cancelled');
+  END IF;
+  SELECT c.email INTO v_recipient FROM sabora.staff_directory_contacts c WHERE c.enrollment_id=i.enrollment_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('outcome','denied'); END IF;
+  v_fence:=gen_random_uuid();
+  UPDATE sabora.staff_recovery_delivery_candidate SET state='dispatching',fence=v_fence,updated_at=v_now WHERE intent_id=p_intent;
+  RETURN jsonb_build_object('outcome','claimed','fence',v_fence,'enrollmentId',i.enrollment_id,
+    'version',i.version,'recipient',v_recipient,'emailHash',encode(e.invitee_email_hash,'hex'),
+    'tokenHash',d.token_hash,'envelope',d.envelope);
+ ELSIF p_action='finish' THEN
+  IF d.state IS DISTINCT FROM 'dispatching' OR d.fence::text IS DISTINCT FROM v->>'fence'
+   OR NOT coalesce(v->>'result' IN ('accepted','unknown','rejected'),false)
+   OR ((v->>'result'='accepted')<>(v->>'providerId' IS NOT NULL))
+   OR (SELECT count(*) FROM jsonb_object_keys(v))<>3 THEN RETURN jsonb_build_object('outcome','denied'); END IF;
+  v_provider:=(v->>'providerId')::uuid;
+  UPDATE sabora.staff_recovery_delivery_candidate SET state=CASE WHEN v->>'result'='accepted' THEN 'delivered' ELSE v->>'result' END,
+   provider_id=v_provider,envelope=NULL,updated_at=v_now WHERE intent_id=p_intent;
+  RETURN jsonb_build_object('outcome',v->>'result');
+ ELSIF p_action='consume' THEN
+  -- Only the exact live, verified Auth UUID and email may consume the
+  -- current token. This is a receipt, not an operational session or grant.
+  IF NOT v_current OR d.state IS DISTINCT FROM 'delivered'
+   OR v->>'subject' IS DISTINCT FROM i.subject_user_id::text
+   OR v->>'emailHash' IS DISTINCT FROM encode(e.invitee_email_hash,'hex')
+   OR v->>'tokenHash' IS DISTINCT FROM d.token_hash OR v->>'session' IS NULL
+   OR (SELECT count(*) FROM jsonb_object_keys(v))<>4 THEN RETURN jsonb_build_object('outcome','denied'); END IF;
+  UPDATE sabora.staff_recovery_delivery_candidate SET state='consumed',consumed_session=(v->>'session')::uuid,
+   updated_at=v_now WHERE intent_id=p_intent;
+  RETURN jsonb_build_object('outcome','consumed','enrollmentId',i.enrollment_id,'version',i.version);
+ END IF;
+ RETURN jsonb_build_object('outcome','denied');
+END;
+$delivery$;
+ALTER FUNCTION sabora.staff_recovery_delivery_candidate(text,text,uuid,text,bigint,bigint,text)
+ OWNER TO sabora_root_recovery_fn_owner;
+REVOKE ALL ON FUNCTION sabora.staff_recovery_delivery_candidate(text,text,uuid,text,bigint,bigint,text)
  FROM PUBLIC,anon,authenticated;
 
 COMMIT;

@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S54-19 · H1-A.** `87277ea4` 7/7 PASS. Candidato de entrega cifrada, propósito recuperación, recibo de consumo asociado al UUID/versión/sesión, mismo transporte Resend. Sin registro ni ruta pública habilitados. CI pendiente.
+
 > **S54-17 · H1-A.** Autorización durable candidata de recuperación no ROOT, bloqueos de titularidad/ficha/membresías, UUID y versión inmutables, replay; sin correo, registro ni sesión habilitados. CI pendiente. H1-A parcial.
 
 > **S54-16 · H1-A.** `acd8ddbf` 7/7 PASS; clasificador firmado candidato distingue alta, reenvío, recuperación y alta incompleta desde PG17, permisos ROOT/ADMIN titular; prueba ampliada pendiente. Sin envío, registro de credenciales ni interfaz de recuperación habilitados. H1-A parcial.

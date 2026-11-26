@@ -15,7 +15,7 @@ function createStaffResendTransport({apiKey,from,managementOrigin,fetchImpl}){
  const sender=normalizeStaffInviteeEmail(from);
  return async function send({jobId,recipient,kind,subject,text}){
   const recipientEmail=normalizeStaffInviteeEmail(recipient);
-  if(!UUID.test(jobId??'')||!['invitation','root-recovery'].includes(kind))throw Error('invalid_staff_resend_delivery');
+  if(!UUID.test(jobId??'')||!['invitation','root-recovery','staff-recovery'].includes(kind))throw Error('invalid_staff_resend_delivery');
   try {
    const response=await fetchImpl(RESEND_EMAILS,{method:'POST',redirect:'error',
     headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json',
@@ -72,5 +72,18 @@ export function createRootRecoveryResendSender(config){
    challenge:['Verificación de recuperación ROOT','Este desafío caduca en diez minutos. Solo sirve junto con tu código secreto independiente.']
   }[purpose];
   return send({jobId,recipient,kind:'root-recovery',subject:message[0],text:message[1]+'\n\n'+url.href});
+ };
+}
+
+export function createStaffRecoveryResendSender(config){
+ const send=createStaffResendTransport(config);
+ return async({jobId,recipient,intentId,token})=>{
+  if(jobId!==intentId||!UUID.test(intentId??'')||typeof token!=='string'||
+   !/^[A-Za-z0-9_-]{43}$/.test(token)||Buffer.from(token,'base64url').toString('base64url')!==token)
+   throw Error('invalid_staff_recovery_delivery');
+  const url=new URL(config.managementOrigin);
+  url.hash='recuperacion-personal?'+new URLSearchParams({intentId,token}).toString();
+  return send({jobId,recipient,kind:'staff-recovery',subject:'Recuperación de acceso a Sabora Gestión',
+   text:'Se ha autorizado la recuperación de tu cuenta de personal. Este enlace no crea otra cuenta ni concede una sesión operativa:\n\n'+url.href});
  };
 }

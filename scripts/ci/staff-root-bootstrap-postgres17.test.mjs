@@ -8,6 +8,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createStaffRootSecurityCandidate} from '../../apps/api/src/staff-root-security-candidate.mjs';
+import {createStaffRecoveryDeliveryCandidate} from '../../apps/api/src/staff-recovery-delivery-candidate.mjs';
 import {createStaffInvitationClassificationCandidate,createStaffRecoveryIntentCandidate} from '../../apps/api/src/staff-invitation-classification-candidate.mjs';
 import {registerRootRecoveryFactorHttpCandidate,ROOT_RECOVERY_PATH} from '../../apps/api/src/staff-root-recovery-http-candidate.mjs';
 import {createVerifiedRootRecoveryCandidate} from '../../apps/api/src/staff-root-recovery-composition.mjs';
@@ -24,7 +25,7 @@ import {createStaffInvitationOutboxRepository} from '../../apps/api/src/staff-in
 import {claimCurrentStaffInvitation} from '../../apps/api/src/staff-invitation-claim-candidate.mjs';
 import {dispatchStaffInvitation} from '../../apps/api/src/staff-invitation-dispatch-guard.mjs';
 import {recordStaffInvitationDeliveryOutcome} from '../../apps/api/src/staff-invitation-delivery-outcome-candidate.mjs';
-import {createStaffInvitationResendSender,createRootRecoveryResendSender} from '../../apps/api/src/staff-invitation-resend.mjs';
+import {createStaffInvitationResendSender,createRootRecoveryResendSender,createStaffRecoveryResendSender} from '../../apps/api/src/staff-invitation-resend.mjs';
 import {createRootRecoveryMailCandidate,ROOT_MAIL_LOGIN} from '../../apps/api/src/staff-root-recovery-mail-candidate.mjs';
 import {FIRST_ADMIN_BOOTSTRAP_LOGIN} from '../../apps/api/src/staff-lifecycle-coordinator.mjs';
 import {createStaffLifecycleRepository} from '../../apps/api/src/staff-lifecycle-repository.mjs';
@@ -107,12 +108,12 @@ test.before(async()=>{
  dispatchPool=new Pool({connectionString:connection(dispatchLogin)});
   await admin.query("CREATE ROLE sabora_root_recovery_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+password+"'");
   await admin.query('GRANT USAGE ON SCHEMA sabora TO '+ROOT_RECOVERY_LOGIN);
-  await admin.query('GRANT EXECUTE ON FUNCTION sabora.root_recovery_transition_candidate(text,text,uuid,uuid,text,text,text,integer,bigint,bigint,text), sabora.root_recovery_access_candidate(text,uuid,text,bigint,bigint,text), sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text), sabora.classify_staff_invitation_candidate(text,uuid,text,text,uuid,bigint,bigint,text), sabora.authorize_staff_recovery_intent_candidate(text,uuid,text,uuid,uuid,integer,bigint,bigint,text) TO '+ROOT_RECOVERY_LOGIN);
+  await admin.query('GRANT EXECUTE ON FUNCTION sabora.root_recovery_transition_candidate(text,text,uuid,uuid,text,text,text,integer,bigint,bigint,text), sabora.root_recovery_access_candidate(text,uuid,text,bigint,bigint,text), sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text), sabora.classify_staff_invitation_candidate(text,uuid,text,text,uuid,bigint,bigint,text), sabora.authorize_staff_recovery_intent_candidate(text,uuid,text,uuid,uuid,integer,bigint,bigint,text), sabora.staff_recovery_delivery_candidate(text,text,uuid,text,bigint,bigint,text) TO '+ROOT_RECOVERY_LOGIN);
   await admin.query("INSERT INTO sabora.root_recovery_keys_candidate(key_id,hmac_key,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour')",[recoveryKey,recoverySigning]);
   recoveryPool=new Pool({connectionString:connection(ROOT_RECOVERY_LOGIN),max:12});
   await admin.query(`CREATE ROLE ${ROOT_MAIL_LOGIN} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${password}';
    GRANT USAGE ON SCHEMA sabora TO ${ROOT_MAIL_LOGIN};
-   GRANT EXECUTE ON FUNCTION sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text) TO ${ROOT_MAIL_LOGIN}`);
+   GRANT EXECUTE ON FUNCTION sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text), sabora.staff_recovery_delivery_candidate(text,text,uuid,text,bigint,bigint,text) TO ${ROOT_MAIL_LOGIN}`);
   await admin.query("INSERT INTO sabora.root_recovery_keys_candidate(key_id,hmac_key,expires_at,purpose) VALUES($1,$2,clock_timestamp()+interval '1 hour','mail_worker')",[mailKey,mailSigning]);
   mailPool=new Pool({connectionString:connection(ROOT_MAIL_LOGIN),max:4});
 
@@ -444,6 +445,45 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const existing=(await admin.query('SELECT auth_user_id,state,employee_code FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0];
   assert.deepEqual(existing,{auth_user_id:otherId,state:'active',employee_code:winner.employeeCode});
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[otherId])).rows[0].n,1);
+  // Real PG17 authorization + encrypted delivery + Resend/verified Auth fixtures.
+  const recoveryDelivery=createStaffRecoveryDeliveryCandidate({...recoveryConfig,keyring,hashInviteeEmail:hashEmail,
+   issuer,getTrustedKeys:async()=>[jwk],provider:{user:async token=>token===accessToken?
+    {id:otherId,email:confirmedEmail,is_anonymous:false,email_confirmed_at:new Date(Date.now()-1000).toISOString()}:null}});
+  const recoveryDispatch=createStaffRecoveryDeliveryCandidate({pool:mailPool,keyId:mailKey,signingSecret:mailSigning,
+   keyring,hashInviteeEmail:hashEmail,mode:'worker'});
+  const queueRecovery=createStaffRecoveryIntentCandidate({...recoveryConfig,ttlSeconds:600,delivery:recoveryDelivery});
+  const staleRequest={enrollmentId:id,requestId:randomUUID()},latestRequest={enrollmentId:id,requestId:randomUUID()};
+  await queueRecovery(rootAuthority,staleRequest);
+  await queueRecovery(rootAuthority,latestRequest);
+  assert.equal((await queueRecovery(rootAuthority,latestRequest)).repeated,true);
+  assert.ok((await recoveryDispatch.list()).includes(latestRequest.requestId));
+  const staffInbox=[];
+  const recoverySender=createStaffRecoveryResendSender({managementOrigin:origin,from:'sab@example.test',apiKey:'re_staff_recovery_fixture',
+   fetchImpl:async(url,options)=>{
+    assert.equal(url,'https://api.resend.com/emails');
+    assert.match(options.headers['Idempotency-Key'],/^sabora-staff-staff-recovery\//);
+    const body=JSON.parse(options.body),link=new URL(body.text.split('\n\n').at(-1));
+    assert.equal(body.to[0],current.email);
+    assert.equal(link.hash.split('?')[0],'#recuperacion-personal');
+    const params=new URLSearchParams(link.hash.split('?')[1]);
+    staffInbox.push({intentId:params.get('intentId'),token:params.get('token')});
+    return Response.json({id:randomUUID()});
+   }});
+  assert.equal((await recoveryDispatch.dispatch(staleRequest.requestId,recoverySender)).outcome,'cancelled');
+  const sent=await Promise.all(Array.from({length:3},()=>recoveryDispatch.dispatch(latestRequest.requestId,recoverySender)));
+  assert.equal(sent.filter(x=>x.outcome==='accepted').length,1);
+  assert.equal(staffInbox.length,1);
+  assert.equal(staffInbox[0].intentId,latestRequest.requestId);
+  const stored=(await admin.query('SELECT state,envelope FROM sabora.staff_recovery_delivery_candidate WHERE intent_id=$1',[latestRequest.requestId])).rows[0];
+  assert.deepEqual(stored,{state:'delivered',envelope:null});
+  const recoveryInput={...staffInbox[0],accessToken};
+  await assert.rejects(recoveryDelivery.consume({...recoveryInput,token:generateRootRecoveryToken()}),e=>e.code==='42501');
+  confirmedEmail='wrong@example.invalid';await assert.rejects(recoveryDelivery.consume(recoveryInput),e=>e.code==='42501');
+  confirmedEmail=current.email;
+  assert.deepEqual(await recoveryDelivery.consume(recoveryInput),{outcome:'consumed',enrollmentId:id,version:4});
+  await assert.rejects(recoveryDelivery.consume(recoveryInput),e=>e.code==='42501');
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[otherId])).rows[0].n,1);
+  assert.equal((await admin.query('SELECT owner_user_id FROM sabora.admin_write_ownership WHERE singleton')).rows[0].owner_user_id,otherId);
   // Recovery kernel uses the same disposable genesis ROOT after the full
   // browser path. No new staff identity or hosted provider is created.
   try{
