@@ -6,27 +6,6 @@ on:
 permissions:
   contents: read
 jobs:
-
-  # S54-24: owner-authorized one-off hosted Auth probe. Only the existing
-  # same-repository PR #92 can run it. A publishable key is not an admin
-  # secret; no environment credentials or database rights are supplied.
-  hosted-auth-provider-probe:
-    if: github.event_name == 'pull_request' && github.repository == 'jdlc86/CartaViva' && github.event.pull_request.number == 92 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/sabora-s51-first-deploy-20261124'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 3
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Probe the real RESTAURANTE Auth endpoint
-        env:
-          SABORA_PROBE_PUBLISHABLE_KEY: 'sb_publishable_TmW84tv_vK0TBRj-tYGIeg_tGjQdh_U'
-        run: node scripts/ci/sabora-hosted-auth-probe.mjs
   validate:
     runs-on: ubuntu-24.04
     timeout-minutes: 20

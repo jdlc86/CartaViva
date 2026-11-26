@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S54-25 · H1-A.** Sonda real Auth/JWKS/opciones RP PASS en `25ac3ef0`; regresión CI de orden por job temporal corregida restaurando workflow. Ensayo real de registro/recuperación/revocación proveedor-only preparado, no ejecutado. Requiere custodia de clave admin; SQL/PWA/Resend pendientes.
+
 > **S54-22 · H1-A.** RESTAURANTE real observado read-only: PG17.11, cero Auth/miembros, sin overlays de recuperación. Reutilización gateway Auth y exchange invite/recovery candidato; ajustes panel, proveedor admin, prueba alojada y delta pendientes. CI anterior H6 rojo B3/F12, sin GO.
 
 > **S54-21 · H1-A.** `990306d2` 7/7 PASS. Candidato interno de preparación persistente y fence por huella, recibos ordenados de registro/revocación; proveedor real, fence de escrituras y PWA pendientes. CI nuevo SHA pendiente.
