@@ -81,3 +81,16 @@ Controles positivos observados estáticamente: HMAC con dominios, login SQL rest
 Normativa y fuentes: [AGENTS](../../AGENTS.md), [RF](../REQUISITOS_FUNCIONALES.md), [NF](../architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md), [contrato visual](../DESIGN_SYSTEM_CONTRACT.md), [estilo](../design/APPROVED_VISUAL_STYLE_AUDIT_V1.md), [home](../design/screens/SABORA_HOME_IMPLEMENTATION_V1.md), [aprobaciones](../design/APPROVAL_REGISTER.md), [gate visual](../design/VISUAL_CONTROL_GATE.md), [matriz](../design/FUNCTIONAL_UI_COVERAGE.json), [tablero](../tracking/SABORA_LIVE_PROJECT_TRACKER.md), [ROOT/ADMIN](../architecture/SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md), [ciclo personal](../security/SABORA_STAFF_IDENTITY_LIFECYCLE_V1.md), [gate invitaciones](../security/SABORA_STAFF_INVITATION_DELIVERY_DECISION_GATE.md), [V2](../architecture/SABORA_SIMPLIFIED_DEPLOYMENT_V2.md), [autorización](../SABORA_AUTHORIZATION_GATE.md). Antes de usar Antigravity leer íntegramente [guía](../integrations/SABORA_ANTIGRAVITY_FUTURE_SESSIONS_GUIDE_V1.md) y [puente](../integrations/SABORA_ANTIGRAVITY_GITHUB_TASK_BRIDGE_V2.md); no se ha usado ni encargado auditoría externa en S54.
 
 **Dictamen S54-01:** H1-A parcial, NO-GO para integración como hito completo y NO-GO operativo. Cambios propios de este corte: creación de continuidad, revisión de código y consultas de GitHub/CI; sin cambios de código, normas, estados funcionales del tablero, main, merge, SQL/Auth/Resend real, VPS, secretos, despliegue ni Fleetia. Se eligió registrar la auditoría dentro de esta continuidad para evitar informes duplicados; no se introduce requisito normativo nuevo.
+
+
+## S54-07 — Encargo integral a Codex publicado
+
+El propietario solicita documento de encargo y prompt corto. Se publica [encargo S54 de cierre ROOT/H1-A](https://github.com/jdlc86/CartaViva/blob/c432f9b252b06fa385f29b778b44940f482f4752/docs/assignments/CODEX_S54_ROOT_RECOVERY_H1_A_CLOSURE_2026-11-26.md) en commit `c432f9b252b06fa385f29b778b44940f482f4752` de #92. Actualiza la ejecución pendiente del encargo H1-A de S52; no reimplementa lo completado ni abre otro PR. Prioridad A54-01..05 conjuntamente, después preparación/cierre de A54-06..09 dentro de decisiones y autorizaciones vigentes. Incluye criterios de prueba integrada PWA/API/PG17, revisión diferencial, delta append-only y propuesta mínima V2, preparación de prueba alojada (sin ejecución real), informe de hallazgos y actualización S54/tablero/matriz. Se preservan las decisiones ROOT aprobadas y se agrupan solo las restantes imprescindibles.
+
+Prompt entregado:
+
+> Ejecuta íntegramente el encargo: https://github.com/jdlc86/CartaViva/blob/c432f9b252b06fa385f29b778b44940f482f4752/docs/assignments/CODEX_S54_ROOT_RECOVERY_H1_A_CLOSURE_2026-11-26.md
+>
+> Continúa en el PR #92. Cierra por bloques completos la recuperación ROOT y H1-A, resuelve los hallazgos S54, ejecuta las pruebas integradoras y documenta evidencias. No te limites a otro plan. Respeta todas las restricciones del encargo.
+
+Estado: publicado y verificado el documento; no consta envío a Codex ni ejecución. No se modifica código, normativa, estados funcionales, main, SQL/Auth/Resend real, VPS ni Fleetia. H1-A parcial / NO-GO. Revalidar HEAD y CI al retomar; el nuevo commit es documental.
