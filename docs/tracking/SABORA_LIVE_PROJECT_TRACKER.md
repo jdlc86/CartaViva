@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S54-27 · CI H6.** Fallo 2B de `c992e1cd` localizado en lectura prematura de ACK de fixture SSH; publicación atómica corregida, CI pendiente. Auth proveedor inicial PASS; registro/recuperación real no ejecutados.
+
 > **S54-25 · H1-A.** Sonda real Auth/JWKS/opciones RP PASS en `25ac3ef0`; regresión CI de orden por job temporal corregida restaurando workflow. Ensayo real de registro/recuperación/revocación proveedor-only preparado, no ejecutado. Requiere custodia de clave admin; SQL/PWA/Resend pendientes.
 
 > **S54-22 · H1-A.** RESTAURANTE real observado read-only: PG17.11, cero Auth/miembros, sin overlays de recuperación. Reutilización gateway Auth y exchange invite/recovery candidato; ajustes panel, proveedor admin, prueba alojada y delta pendientes. CI anterior H6 rojo B3/F12, sin GO.

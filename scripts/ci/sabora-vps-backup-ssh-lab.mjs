@@ -80,7 +80,7 @@ export async function startBackupSshLab({fixture,scope,sourceSha,entryPath}){
  await put('receiver-fixture.mjs',`
  import {spawn} from 'node:child_process';
  import {once} from 'node:events';
- import {access,writeFile} from 'node:fs/promises';
+ import {access,writeFile,rename} from 'node:fs/promises';
  import {join} from 'node:path';
  import {setTimeout as delay} from 'node:timers/promises';
  const [entry,control]=process.argv.slice(2);
@@ -94,7 +94,11 @@ export async function startBackupSshLab({fixture,scope,sourceSha,entryPath}){
  else if(hold){
   const ack=Buffer.concat(chunks);
   if(!ack.length)throw Error('fixture_ack_missing');
-  await writeFile(join(control,'ack-ready'),ack,{mode:0o600,flag:'wx'});
+  // Publish the completed ACK atomically. The observer polls ack-ready;
+  // exposing a newly opened zero-length file races with its JSON parser.
+  const pending=join(control,'ack-ready.pending');
+  await writeFile(pending,ack,{mode:0o600,flag:'wx'});
+  await rename(pending,join(control,'ack-ready'));
   // Wait until the test closes the actual SSH client; never send the ACK.
   for(let i=0;i<400;i++){if(await has(join(control,'ack-release')))break;await delay(25);}
   process.exitCode=1;
