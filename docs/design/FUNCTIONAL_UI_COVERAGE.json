@@ -222,9 +222,50 @@
           "kind": "browser-management",
           "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
           "marker": "manager.getByRole('button',{name:'Marcar atendida'})"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "managementContext.setOffline(false)"
         }
       ],
-      "note": "H1/F07 del inventario único. El ensayo usa ambas PWA productivas, proveedor de passkeys local, Fastify y PostgreSQL 17. Pendientes el proveedor alojado, los recordatorios fuera de la PWA y la aceptación humana. Véase el informe SABORA_FINAL_CLOSURE_H1_FUNCTIONAL_CONNECTION_REVIEW_2026-11-25.md."
+      "note": "H1-B/F07. Ambas PWA productivas, passkeys de laboratorio, Fastify y PG17. S55 amplía el ensayo de reconexión de sala. Pendientes proveedor alojado, recordatorios fuera de la vista, push y aceptación humana. Véase SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md."
+    },
+    {
+      "id": "H1-C-cambio-mesa",
+      "status": "CANDIDATO_TECNICO",
+      "surfaces": ["client", "management"],
+      "ui": [
+        {"surface": "client", "path": "apps/client/src/App.tsx", "marker": "Solicitar cambio de mesa"},
+        {"surface": "management", "path": "apps/management/src/views/ConfigurationView.tsx", "marker": "Guardar plazo"}
+      ],
+      "api": [
+        {"path": "apps/api/src/table-change-http-candidate.mjs", "marker": "registerTableChangeStaffHttp"},
+        {"path": "apps/api/src/m3-management-http.mjs", "marker": "/api/v1/admin/table-change-window"}
+      ],
+      "evidence": [
+        {"kind": "postgres17", "path": "scripts/ci/table-change-root-postgres17.test.mjs", "marker": "the server must enforce the normative 90-second response window"},
+        {"kind": "browser-client", "path": "scripts/ci/table-change-root-postgres17.test.mjs", "marker": "Solicitar cambio de mesa"},
+        {"kind": "browser-management", "path": "scripts/ci/ownership-governance-postgres17.test.mjs", "marker": "Guardar plazo"}
+      ],
+      "note": "F08/H6/B3. El delta candidato habilita la escritura del plazo al ADMIN titular y conserva vencimientos existentes. Véase SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md."
+    },
+    {
+      "id": "H1-D-despacho-agrupado",
+      "status": "PENDIENTE",
+      "surfaces": ["client", "management"],
+      "ui": [
+        {"surface": "client", "path": "apps/client/src/App.tsx", "marker": "Confirmar pedido"},
+        {"surface": "management", "path": "apps/management/src/views/OrdersView.tsx", "marker": "Confirmar recepción"}
+      ],
+      "api": [
+        {"path": "apps/api/src/operational-activation-manifest.mjs", "marker": "groupedDispatchWithoutStripe"}
+      ],
+      "evidence": [
+        {"kind": "postgres17", "path": "scripts/ci/table-change-root-postgres17.test.mjs", "marker": "two workers may not duplicate dispatch events"}
+      ],
+      "blockers": ["Acreditar desde ambas PWA el despacho agrupado y la recepción reconstruida tras reconexión"],
+      "note": "F21 reutiliza el scheduler H6 y el vencimiento SQL. Delta candidato y opt-in sin Stripe. Véase SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md."
     },
     {
       "id": "H1-identidad-personal",
@@ -288,6 +329,10 @@
         {
           "path": "apps/api/src/staff-recovery-http-candidate.mjs",
           "marker": "registerStaffRecoveryAdminHttpCandidate"
+        },
+        {
+          "path": "apps/api/src/m2-restaurant-candidate.mjs",
+          "marker": "rootRecovery?.staffRecoveryHttp?.register"
         }
       ],
       "evidence": [

@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S55 · H1 parcial / NO-GO técnico y operativo.** El Draft #92 conecta la composición opt-in de recuperación no ROOT, recupera la bandeja de llamadas al reconectar, incorpora el plazo de cambio de mesa en gestión y habilita por manifiesto el despacho agrupado sin Stripe. Deltas H1-C/D probados con DBA no-superusuario en PG17 desechable. Permanecen abiertas la recuperación ROOT, reconciliación Auth, entrega de avisos y aceptación del despacho en ambas PWA. AP-01 a AP-09 y Resend real NOT RUN. [Inventario, pruebas y dictamen](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md).
+
 > **S54-35 · H1-A.** Autoridad de recuperación de personal ligada a credencial vigente del ADMIN titular, incluidas autorizaciones antiguas y pasos diferidos. Harness integrado ampliado; CI pendiente. Sin montaje operativo. AP-01 a AP-09 aplazados; H1-A parcial.
 
 > **S54-34 · H1-A.** Cola de recuperación no ROOT conectada al trabajador candidato existente y AAD separado por propósito/intención. Ensayo PG17 ampliado con competencia de trabajadores y replay; CI pendiente. H1-A parcial, proveedor alojado aplazado y runtime aún cerrado.
