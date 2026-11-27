@@ -145,7 +145,8 @@ export function ManagementApp({
   const hasOperationalChannel = Boolean(operationsGateway);
   const visibleSections = sections.filter(({id}) => {
     if (staffRole && !areasByRole[staffRole].includes(id)) return false;
-    if (id === 'configuracion') return financeAllowed || commsAllowed || (staffRole==='root'&&Boolean(rootSecurityGateway));
+    if (id === 'configuracion') return financeAllowed || commsAllowed ||
+      Boolean(financeGateway?.readTableChangeWindow) || (staffRole==='root'&&Boolean(rootSecurityGateway));
     if (!staffRole) return true;
     if (id === 'catalogo') return Boolean(catalogManagementGateway);
     if (id === 'mesas') return Boolean(tablesGateway || tableChangeGateway);
@@ -342,6 +343,7 @@ export function mountAuthenticatedManagementApp({
   reconnectDelayMs,
   enableTableChangeQueue = false,
   enableM3Management = false,
+  enableTableChangeWindow = false,
   enableWaiterCalls = false,
   enableOwnershipGovernance = false,
   enableStaffDirectory = false,
@@ -363,6 +365,7 @@ export function mountAuthenticatedManagementApp({
   enableTableChangeQueue?: boolean;
   /** Opt-in only after both M3 SQL capability preflights succeed. */
   enableM3Management?:boolean;
+  enableTableChangeWindow?:boolean;
   /** Opt-in only after isolated ownership runtime/SQL preflight succeeds. */
   enableOwnershipGovernance?:boolean;
   enableStaffDirectory?:boolean;
@@ -382,7 +385,9 @@ export function mountAuthenticatedManagementApp({
   const operationsGateway = createAuthenticatedOrderOperationsGateway({
     ...auth, fetchImpl, reconnectDelayMs, enableWaiterCalls,
   });
-  const m3Gateway=enableM3Management?createM3AuthenticatedManagementGateway({...auth,fetchImpl}):undefined;
+  const m3Gateway=enableM3Management?createM3AuthenticatedManagementGateway({
+    ...auth,fetchImpl,tableChangeWindow:enableTableChangeWindow
+  }):undefined;
   const ownershipGateway=enableOwnershipGovernance?createAuthenticatedOwnershipGovernanceGateway({...auth,fetchImpl}):undefined;
   const directoryRequests=new AbortController();
   const sendStaff: typeof fetch | undefined=cookieSession&&fetchImpl
@@ -492,6 +497,7 @@ function startStaffLogin(element: HTMLElement, rootEmailProof: string|null) {
       enableTableChangeQueue: session.features.tableChange && ['admin', 'waiter'].includes(session.role),
       enableWaiterCalls: session.features.waiterCalls && session.role === 'waiter',
       enableM3Management: session.features.management && session.role !== 'kitchen',
+      enableTableChangeWindow: session.features.tableChangeWindow===true && ['root','admin'].includes(session.role),
       enableOwnershipGovernance: session.features.ownership && ['root', 'admin'].includes(session.role),
       enableStaffDirectory: session.features.staffDirectory === true && session.role !== 'root',
       enableStaffRevocation: session.features.staffRevocation === true && session.role === 'admin',

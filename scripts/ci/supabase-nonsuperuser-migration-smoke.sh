@@ -390,4 +390,20 @@ docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$da
   'sabora.request_h6_dispatch_without_stripe_candidate(uuid)'::regprocedure
  )")" == t ]] || exit 1
 echo 'sabora_s55_dispatch_delta_nonsuperuser_verified'
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ < docs/security/sql-candidates/table_change_response_window_pg17.sql
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc "
+ SELECT NOT pg_has_role(current_user,'sabora_m3_management_fn_owner','SET')
+ AND NOT has_schema_privilege('sabora_m3_management_fn_owner','sabora','CREATE')
+ AND p.prosecdef AND pg_get_userbyid(p.proowner)='sabora_m3_management_fn_owner'
+ AND has_function_privilege('sabora_m3_tables_runtime',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('sabora_m3_catalog_runtime',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('service_role',p.oid,'EXECUTE')
+ AND NOT has_table_privilege('sabora_m3_tables_runtime','sabora.restaurant_settings','UPDATE')
+ AND NOT has_column_privilege('sabora_m3_tables_runtime','sabora.restaurant_settings','table_change_response_seconds','UPDATE')
+ FROM pg_proc p WHERE p.oid='sabora.table_change_window_m3_candidate(jsonb,integer,integer)'::regprocedure
+ ")" == t ]] || exit 1
+echo 'sabora_s55_table_change_window_delta_nonsuperuser_verified'
 echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"

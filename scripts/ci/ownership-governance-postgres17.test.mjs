@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {readFile} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {randomUUID,randomBytes,generateKeyPairSync,sign,createHash} from 'node:crypto';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -20,7 +21,7 @@ import {createM3ManagementCapabilityIssuer} from '../../apps/api/src/m3-manageme
 import {M3_TABLES_ROLE,M3_CATALOG_ROLE,assertM3TablesCapability,
  assertM3CatalogCapability} from '../../apps/api/src/m3-runtime-capabilities.mjs';
 import {createM3TablesRepository,createM3CatalogRepository,createM3FinanceRepository,
- READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,
+ READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,TABLE_CHANGE_WINDOW_M3_SQL,
  READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL,READ_M3_FINANCE_SQL}
  from '../../apps/api/src/m3-management-repository.mjs';
 import {registerM3ManagementHttp} from '../../apps/api/src/m3-management-http.mjs';
@@ -61,9 +62,12 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
  const admin=new Pool({connectionString:target,max:3});
  const [a,b,c,d]=[randomUUID(),randomUUID(),randomUUID(),randomUUID()];
  const secret=randomBytes(32),pools=[];
- let api,vite,clientVite,browser,clientContext,shortApi,originalOwner=null;
+ let api,vite,clientVite,browser,clientContext,shortApi,originalOwner=null,originalSeconds;
  try{
   originalOwner=(await admin.query('SELECT owner_user_id FROM sabora.admin_write_ownership WHERE singleton')).rows[0].owner_user_id;
+  originalSeconds=(await admin.query('SELECT table_change_response_seconds FROM sabora.restaurant_settings WHERE singleton')).rows[0].table_change_response_seconds;
+  await admin.query(await readFile(new URL(
+   '../../docs/security/sql-candidates/table_change_response_window_pg17.sql',import.meta.url),'utf8'));
   let root=(await admin.query("SELECT user_id FROM sabora.staff_members WHERE role='root' AND state='active'")).rows[0]?.user_id;
   if(!root){root=randomUUID();await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'root','active')",[root]);}
   await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'admin','active'),($2,'admin','active'),($3,'admin','active'),($4,'admin','active')",[a,b,c,d]);
@@ -113,7 +117,7 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
     options:'-c statement_timeout=15000'}));
   }
   await assertOwnershipRuntimeIdentity({pool:pools[0],expectedLogin:login});
-  await assertM3TablesCapability({pool:pools[4],expectedLogin:tablesLogin});
+  await assertM3TablesCapability({pool:pools[4],expectedLogin:tablesLogin,tableChangeWindow:true});
   await assertM3CatalogCapability({pool:pools[5],expectedLogin:catalogLogin});
   await assertM5CommunicationsCapability({pool:pools[6],expectedLogin:commsAdminLogin,kind:'admin'});
   await assertM5CommunicationsCapability({pool:pools[7],expectedLogin:commsPublicLogin,kind:'public'});
@@ -158,7 +162,7 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   // H35-P1 is exercised in this *existing* real PG17 + verified JWT/HMAC +
   // Fastify + two-PWA Chromium journey, not a disconnected browser mock.
   const tablesTx=createRoleScopedPostgresTransaction({pool:pools[4],role:M3_TABLES_ROLE,
-   allowedSql:new Set([READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL])});
+   allowedSql:new Set([READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,TABLE_CHANGE_WINDOW_M3_SQL])});
   const catalogTx=createRoleScopedPostgresTransaction({pool:pools[5],role:M3_CATALOG_ROLE,
    allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL,READ_M3_FINANCE_SQL])});
   const tablesRepository=createM3TablesRepository({withTransaction:tablesTx,
@@ -168,7 +172,7 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
    issueCapability:catalogIssuer});
   const financeRepository=createM3FinanceRepository({withTransaction:catalogTx,
    issueCapability:catalogIssuer,timeZone:'Europe/Madrid'});
-  registerM3ManagementHttp(api,{forRoles,tables:tablesRepository,catalog:catalogRepository,
+  registerM3ManagementHttp(api,{forRoles,tables:tablesRepository,catalog:catalogRepository,tableChangeWindow:true,
    finance:financeRepository,qr:{secret:'h35_owner_composition_qr_test_secret_32_bytes_minimum',
     origin:'https://sabora.example',restaurantCode:'SABORA_CI'}});
   const commsTx=createRoleScopedPostgresTransaction({pool:pools[6],role:M5_COMMS_ADMIN_ROLE,
@@ -431,7 +435,7 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
    const app=await import('/src/main.tsx');
    window.ownershipClose=app.mountAuthenticatedManagementApp({
     element:document.getElementById('root'),getAccessToken:async()=>token,
-    enableOwnershipGovernance:true});
+    enableOwnershipGovernance:true,enableM3Management:true,enableTableChangeWindow:true,staffRole:'admin'});
   },jwt(owner));
   await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
   await page.getByText('Titular: '+(owner===b?'Bruno Romero · BR-Z9B':'Clara Rivera · CR-Z9C')+' (tu cuenta)').waitFor({timeout:20000});
@@ -455,6 +459,32 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   assert.equal((await admin.query(
    "SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",
    [owner,d])).rows[0].n,1,'signed offer to legacy ADMIN must persist');
+  const windowPath='/api/v1/admin/table-change-window';
+  const changeWindow=(id,payload)=>api.inject({method:'POST',url:windowPath,
+   headers:{authorization:'Bearer '+jwt(id)},payload});
+  const seconds=originalSeconds===120?121:120;
+  const rejected={requestId:randomUUID(),expectedSeconds:originalSeconds,seconds};
+  for(const actor of [a,root,waiterId])assert.equal((await changeWindow(actor,rejected)).statusCode,403);
+  assert.equal((await changeWindow(owner,{...rejected,seconds:601})).statusCode,400);
+  await page.getByRole('link',{name:'Configuración'}).click();
+  await page.getByRole('button',{name:'Cambio de mesa'}).click();
+  await page.getByLabel('Plazo de respuesta en segundos').fill(String(seconds));
+  const [savedWindow]=await Promise.all([
+   page.waitForResponse(response=>response.url().endsWith(windowPath)&&response.request().method()==='POST'),
+   page.getByRole('button',{name:'Guardar plazo'}).click()
+  ]);
+  assert.equal(savedWindow.status(),200,await savedWindow.text());
+  await page.getByText('Plazo guardado para nuevas solicitudes.').waitFor();
+  const savedWindowInput=savedWindow.request().postDataJSON();
+  assert.equal((await changeWindow(owner,savedWindowInput)).json().replayed,true);
+  assert.equal((await changeWindow(owner,{...savedWindowInput,requestId:randomUUID()})).statusCode,409);
+  assert.equal((await changeWindow(owner,{...savedWindowInput,seconds:originalSeconds})).statusCode,409);
+  const recorded=(await admin.query(`SELECT actor_user_id,result
+   FROM sabora.management_mutation_receipts_m3 WHERE request_id=$1`,[savedWindowInput.requestId])).rows;
+  assert.deepEqual(recorded,[{actor_user_id:owner,result:{
+   previousSeconds:originalSeconds,seconds,replayed:false}}]);
+  assert.equal((await admin.query('SELECT table_change_response_seconds FROM sabora.restaurant_settings WHERE singleton')).rows[0].table_change_response_seconds,seconds);
+  await page.getByRole('link',{name:'Equipo'}).click();
 
   // Full PWA session replacement: A's deferred token must not send a new
   // governance action after ROOT takes over, even without calling A's disposer.
@@ -751,6 +781,14 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   await shortApi?.close().catch(()=>{});
   await api?.close().catch(()=>{});
   for(const pool of pools)await pool.end().catch(()=>{});
+  if(originalSeconds!==undefined){
+   await admin.query('UPDATE sabora.restaurant_settings SET table_change_response_seconds=$1 WHERE singleton',[originalSeconds]);
+   await admin.query(`DROP FUNCTION IF EXISTS sabora.table_change_window_m3_candidate(jsonb,integer,integer);
+    DROP POLICY IF EXISTS m3_table_change_window_read ON sabora.restaurant_settings;
+    DROP POLICY IF EXISTS m3_table_change_window_write ON sabora.restaurant_settings;
+    REVOKE SELECT(singleton,table_change_response_seconds),UPDATE(table_change_response_seconds)
+    ON sabora.restaurant_settings FROM sabora_m3_management_fn_owner`);
+  }
   await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
   await admin.end().catch(()=>{});
  }

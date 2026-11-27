@@ -73,7 +73,7 @@ import {assertM2CustomerEventCapability,assertM2AccountCloseCapability,
 import {assertM3TablesCapability,assertM3CatalogCapability,
  M3_TABLES_ROLE,M3_CATALOG_ROLE} from './m3-runtime-capabilities.mjs';
 import {createM3TablesRepository,createM3CatalogRepository,READ_M3_TABLES_SQL,
- MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,READ_M3_CATALOG_SQL,
+ MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,TABLE_CHANGE_WINDOW_M3_SQL,READ_M3_CATALOG_SQL,
  MANAGE_M3_CATALOG_SQL,createM3FinanceRepository,READ_M3_FINANCE_SQL} from './m3-management-repository.mjs';
 import {registerM3ManagementHttp} from './m3-management-http.mjs';
 import {OWNERSHIP_ROLE,OWNERSHIP_SQL,assertOwnershipRuntimeIdentity,
@@ -166,6 +166,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
        typeof management.expectedCatalogLogin!=='string'||
        typeof management.issueTablesCapability!=='function'||
        typeof management.issueCatalogCapability!=='function'||
+       (management.tableChangeWindow!==undefined&&typeof management.tableChangeWindow!=='boolean')||
        typeof management.qr?.secret!=='string'||typeof management.qr?.origin!=='string'||
        typeof management.qr?.restaurantCode!=='string'||
        (management.communications!==undefined&&(
@@ -266,7 +267,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
     expectedLogin:h6.expectedEventLogin});
    if(management){
     await assertM3TablesCapability({pool:management.tablesPool,
-     expectedLogin:management.expectedTablesLogin});
+     expectedLogin:management.expectedTablesLogin,tableChangeWindow:management.tableChangeWindow});
     await assertM3CatalogCapability({pool:management.catalogPool,
      expectedLogin:management.expectedCatalogLogin});
     if(management.ownership){
@@ -369,7 +370,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    tableChange:true,waiterCalls:Boolean(waiterCalls),management:Boolean(management),
    ownership:Boolean(management?.ownership),staffDirectory:Boolean(staffDirectory),
    staffRevocation:Boolean(staffRevocation),...(rootRecovery?{rootSecurity:true}:{}),
-   ...(rootRecovery?.staffRecoveryHttp?{staffRecovery:true}:{})
+   ...(rootRecovery?.staffRecoveryHttp?{staffRecovery:true}:{}),
+   ...(management?.tableChangeWindow?{tableChangeWindow:true}:{})
   }});
   const h4Operations=createOrderOperationsCoordinator({withTransaction:h4Tx,
    repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
@@ -379,7 +381,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   if(management){
    const tablesTx=createRoleScopedPostgresTransaction({pool:management.tablesPool,
     role:M3_TABLES_ROLE,allowedSql:new Set([READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,
-     OCCUPANCY_M3_TABLE_SQL])});
+     OCCUPANCY_M3_TABLE_SQL,...(management.tableChangeWindow?[TABLE_CHANGE_WINDOW_M3_SQL]:[])])});
    const catalogTx=createRoleScopedPostgresTransaction({pool:management.catalogPool,
     role:M3_CATALOG_ROLE,allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL,READ_M3_FINANCE_SQL])});
    m3Tables=createM3TablesRepository({withTransaction:tablesTx,
@@ -446,7 +448,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   registerPublishedCustomerFeatures(app,{tableChange:true,waiterCalls:Boolean(waiterCalls),
    isAvailable:()=>operational});
   if(management)registerM3ManagementHttp(app,{forRoles:oneGuard,tables:m3Tables,
-   catalog:m3Catalog,finance:m3Finance,qr:management.qr,observeFailure});
+   catalog:m3Catalog,finance:m3Finance,qr:management.qr,
+   tableChangeWindow:management.tableChangeWindow,observeFailure});
   if(ownershipGovernance)registerOwnershipGovernanceHttp(app,{
    forRoles:oneGuard,repository:ownershipGovernance});
   if(m5Communications){

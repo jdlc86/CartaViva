@@ -63,11 +63,13 @@ const failure=(reply,error,kind,observeFailure)=>{
 const deriveEntropy=(secret,operation,requestId)=>createHmac('sha256',secret)
  .update(`sabora-qr-v1\0${operation}\0${requestId}`,'utf8').digest();
 
-export function registerM3ManagementHttp(app,{forRoles,tables,catalog,finance=null,qr,observeFailure=()=>{}}={}){
+export function registerM3ManagementHttp(app,{forRoles,tables,catalog,finance=null,qr,
+ tableChangeWindow=false,observeFailure=()=>{}}={}){
  if(!app||typeof app.get!=='function'||typeof app.post!=='function'||
     typeof forRoles!=='function'||!tables||!catalog||!qr||typeof observeFailure!=='function'||
     typeof qr.secret!=='string'||Buffer.byteLength(qr.secret,'utf8')<32||
-    typeof qr.origin!=='string'||typeof qr.restaurantCode!=='string')
+    typeof qr.origin!=='string'||typeof qr.restaurantCode!=='string'||typeof tableChangeWindow!=='boolean'||
+    (tableChangeWindow&&typeof tables.changeResponseWindow!=='function'))
   throw Error('invalid_m3_management_http');
  // Validate the complete public QR contract before any route can commit a
  // table mutation. A bad origin/code must fail startup, never after SQL has
@@ -77,6 +79,24 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,finance=nu
   allowInsecureLoopback:qr.allowInsecureLoopback===true});
  const floor=forRoles(['admin','root','waiter']);
  const admin=forRoles(['admin','root']);
+ if(tableChangeWindow){
+  const path='/api/v1/admin/table-change-window';
+  app.get(path,{preHandler:admin},async(request,reply)=>{
+   reply.header('Cache-Control','no-store');
+   if(request.url.includes('?'))return reply.code(400).send({error:'invalid_table_change_window_request'});
+   try{return await tables.changeResponseWindow(verified(request));}
+   catch(error){return failure(reply,error,'table_change_window',observeFailure);}
+  });
+  app.post(path,{preHandler:forRoles(['admin']),bodyLimit:1024},async(request,reply)=>{
+   reply.header('Cache-Control','no-store');
+   if(request.url.includes('?')||!exact(request.body,['requestId','expectedSeconds','seconds'])||
+    !UUID.test(request.body.requestId??'')||![request.body.expectedSeconds,request.body.seconds].every(
+     value=>Number.isInteger(value)&&value>=1&&value<=600))
+    return reply.code(400).send({error:'invalid_table_change_window_request'});
+   try{return await tables.changeResponseWindow(verified(request),request.body);}
+   catch(error){return failure(reply,error,'table_change_window',observeFailure);}
+  });
+ }
  app.get('/api/v1/admin/tables',{preHandler:floor},async(request,reply)=>{
   reply.header('Cache-Control','no-store');
   const query=request.query??{};

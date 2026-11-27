@@ -1,10 +1,13 @@
 import {createStaffGatewayAuth} from './staff-gateway-auth.js';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const windowSeconds=value=>Number.isInteger(value)&&value>=1&&value<=600;
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
 
-export function createM3AuthenticatedManagementGateway({getAccessToken,cookieSession,fetchImpl=globalThis.fetch}={}){
+export function createM3AuthenticatedManagementGateway({
+ getAccessToken,cookieSession,fetchImpl=globalThis.fetch,tableChangeWindow=false
+}={}){
  if(typeof fetchImpl!=='function')
   throw Error('invalid_m3_management_auth_transport');
  const auth=createStaffGatewayAuth({getAccessToken,cookieSession},{
@@ -35,6 +38,22 @@ export function createM3AuthenticatedManagementGateway({getAccessToken,cookieSes
   }
  };
  return Object.freeze({
+  ...(tableChangeWindow?{
+   async readTableChangeWindow({signal}={}){
+    const value=await send('/api/v1/admin/table-change-window',{signal});
+    if(!windowSeconds(value.seconds)||typeof value.canWrite!=='boolean')
+     throw Error('m3_management_unavailable');
+    return {seconds:value.seconds,canWrite:value.canWrite};
+   },
+   async saveTableChangeWindow({requestId,expectedSeconds,seconds,signal}={}){
+    if(!UUID.test(requestId??'')||!windowSeconds(expectedSeconds)||!windowSeconds(seconds))
+     throw Error('invalid_m3_table_change_window_request');
+    const value=await send('/api/v1/admin/table-change-window',{method:'POST',
+     body:{requestId,expectedSeconds,seconds},signal});
+    if(value.seconds!==seconds||!windowSeconds(value.previousSeconds)||typeof value.replayed!=='boolean')
+     throw Error('m3_management_unavailable');
+   }
+  }:{}),
   listTables({afterNumber=0,limit=24,signal}={}){
    if(!Number.isSafeInteger(afterNumber)||afterNumber<0||!Number.isSafeInteger(limit)||limit<1||limit>100)
     throw Error('invalid_admin_tables_page_request');

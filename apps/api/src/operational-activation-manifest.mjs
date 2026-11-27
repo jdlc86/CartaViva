@@ -122,7 +122,7 @@ export function validateOperationalActivationManifest(manifest){
     (manifest.listener.host==='0.0.0.0'&&manifest.listener.exposure!=='container_private')||
     (manifest.listener.host==='127.0.0.1'&&manifest.listener.exposure!=='loopback'))throw invalid();
  if(!exactKeys(manifest.features,['ownership','communications','waiterCalls'],
-   ['staffDirectory','staffRevocation','groupedDispatchWithoutStripe'])||
+   ['staffDirectory','staffRevocation','groupedDispatchWithoutStripe','tableChangeWindow'])||
     Object.values(manifest.features).some(value=>typeof value!=='boolean'))throw invalid();
  if(!exactKeys(manifest.activationEvidence,PILOT_ACTIVATION_REQUIREMENTS)||
     Object.values(manifest.activationEvidence).some(value=>typeof value!=='boolean'))throw invalid();
@@ -378,6 +378,7 @@ export async function materializeOperationalM3Options({manifest,Pool,resolveSecr
   options.management.issueCatalogCapability=createM3ManagementCapabilityIssuer({
    keyId:config.signing.keyId,secret:capabilitySecret,databaseRole:login('management.catalogPool')});
   options.management.dashboardTimeZone='Europe/Madrid';
+  options.management.tableChangeWindow=config.features.tableChangeWindow===true;
   options.management.qr={secret:qrSecret,origin:config.origins.client,
    restaurantCode:config.restaurantCode};
   if(config.features.ownership){
