@@ -44,7 +44,7 @@ import {preflightOrderTransitionStaffIdentity}
  from './order-operations-identity-preflight.mjs';
 import {createOrderOperationsCoordinator} from './order-operations-coordinator.mjs';
 import {createOrderOperationsRepository,TRANSITION_ORDER_LINE_SQL,
- READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL}
+ READ_H6_DELIVERY_BOARD_SQL,READ_H6_DISPATCH_BOARD_SQL,READ_ORDER_HISTORY_SQL}
  from './order-operations-repository.mjs';
 import {registerOrderOperationsHttp} from './order-operations-http.mjs';
 import {assertH6RuntimeIdentity} from './h6-sql-preflight.mjs';
@@ -254,7 +254,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
     pool:staff.revocation.pool,role:staff.revocation.expectedLogin
    });
    await assertM2H4OperationsCapability({pool:h4.operationsPool,
-    expectedLogin:h4.expectedOperationsLogin});
+    expectedLogin:h4.expectedOperationsLogin,dispatchSnapshot:dispatchWithoutStripe});
    await assertH6RuntimeIdentity({pool:h6.customerPool,
     expectedLogin:h6.expectedCustomerLogin,capability:'sabora_h6_customer_runtime'});
    await assertH6RuntimeIdentity({pool:h6.providerPool,
@@ -320,7 +320,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    role:M2_CUSTOMER_EVENT_ROLE,allowedSql:new Set([READ_CUSTOMER_EVENTS_H6_SQL])});
   const h4Tx=createRoleScopedPostgresTransaction({pool:h4.operationsPool,
    role:M2_H4_OPERATIONS_ROLE,allowedSql:new Set([TRANSITION_ORDER_LINE_SQL,
-    READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
+    dispatchWithoutStripe?READ_H6_DISPATCH_BOARD_SQL:READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
   const provider=createH6ProviderRepository({withTransaction:providerTx});
   // Signed ingress is optional and restricted to test-mode webhooks.
   // server.mjs remains health-only; no route is exposed by default.
@@ -374,7 +374,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    ...(management?.tableChangeWindow?{tableChangeWindow:true}:{})
   }});
   const h4Operations=createOrderOperationsCoordinator({withTransaction:h4Tx,
-   repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
+   repository:createOrderOperationsRepository({deliveryBoardCandidate:true,dispatchSnapshot:dispatchWithoutStripe}),
    issueTransitionCapability:h4.issueTransitionCapability,
    issueReadCapability:h4.issueReadCapability});
   let m3Tables,m3Catalog,m3Finance,m5Communications,ownershipGovernance;

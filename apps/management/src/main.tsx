@@ -21,6 +21,7 @@ import {SummaryView} from './views/SummaryView';
 import {FinanceDashboardView} from './views/FinanceDashboardView';
 import {createRootSecurityGateway,readRootEmailVerification,type RootSecurityGateway} from './staff-root-security-gateway';
 import {ConfigurationView} from './views/ConfigurationView';
+import {FloorAlerts} from './views/FloorAlerts';
 import {TablesView} from './views/TablesView';
 import type {TableChangeQueueGateway} from './views/TableChangeRequestsPanel';
 import {TeamView} from './views/TeamView';
@@ -217,6 +218,8 @@ export function ManagementApp({
         {onSignOut && <button type="button" className="button" onClick={onSignOut}>Cerrar sesión</button>}
       </header>
 
+      {staffRole==='waiter'&&operationsGateway&&activeArea!=='comandas'?
+        <FloorAlerts gateway={operationsGateway} onOpen={()=>selectArea('comandas')}/>:null}
       <div className="management-layout">
         <aside className="management-sidebar">
           <div className="sidebar-heading">

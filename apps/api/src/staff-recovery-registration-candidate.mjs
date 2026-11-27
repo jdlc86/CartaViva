@@ -14,11 +14,11 @@ export function createStaffRecoveryRegistrationCandidate({pool,keyId,signingSecr
  if(!/^[A-Za-z0-9_-]{8,64}$/.test(keyId??'')||!(signingSecret instanceof Uint8Array)||signingSecret.byteLength!==32||
   typeof clock!=='function')throw Error('invalid_staff_recovery_registration_config');
  const key=Buffer.from(signingSecret),tx=createPostgresTransaction({pool});
- return async(action,{intentId,subjectId=null,sessionId=null,credentialHash=null,evidenceHash=null,details=null,deadlineMs=Number.MAX_SAFE_INTEGER}={})=>{
-  const inspect=action==='inspect';
-  if(!['prepare','record_registration','record_revocation','complete','inspect'].includes(action)||
-   !UUID.test(intentId??'')||!Number.isSafeInteger(deadlineMs)||
-   (inspect?[subjectId,sessionId,credentialHash,evidenceHash,details].some(x=>x!==null):
+ return async(action,{intentId=null,subjectId=null,sessionId=null,credentialHash=null,evidenceHash=null,details=null,deadlineMs=Number.MAX_SAFE_INTEGER}={})=>{
+  const inspect=action==='inspect',list=action==='list_ready';
+  if(!['prepare','record_registration','record_revocation','complete','inspect','list_ready'].includes(action)||
+   (list?intentId!==null:!UUID.test(intentId??''))||!Number.isSafeInteger(deadlineMs)||
+   (inspect||list?[subjectId,sessionId,credentialHash,evidenceHash,details].some(x=>x!==null):
     ![subjectId,sessionId].every(x=>UUID.test(x??''))||!HASH.test(credentialHash??'')||
     (action==='complete'?evidenceHash!==null:!HASH.test(evidenceHash??''))))
    throw Error('invalid_staff_recovery_registration_command');
@@ -36,12 +36,19 @@ export function createStaffRecoveryRegistrationCandidate({pool,keyId,signingSecr
   const issued=clock(),expires=Math.min(issued+15000,deadlineMs);
   if(!Number.isSafeInteger(issued)||!Number.isSafeInteger(expires)||expires<=issued)
    throw Object.assign(Error('staff_recovery_registration_expired'),{code:'42501'});
-  const args=[keyId,action,intentId.toLowerCase(),subjectId?.toLowerCase()??null,sessionId?.toLowerCase()??null,
+  const args=[keyId,action,intentId?.toLowerCase()??null,subjectId?.toLowerCase()??null,sessionId?.toLowerCase()??null,
    credentialHash,evidence,issued,expires];
   const signature=createHmac('sha256',key).update(['sabora.staff-recovery-registration.v1',keyId,ROOT_RECOVERY_LOGIN,
    ...args.slice(1).map(x=>x===null?'-':String(x))].join('\n')).digest('hex');
   const result=await tx(q=>q(SQL,[...args,signature])),outcome=result?.rows?.[0]?.outcome;
   if(result?.rows?.length!==1)throw Error('invalid_staff_recovery_registration_result');
+  if(list){
+   const ids=JSON.parse(outcome);
+   if(!Array.isArray(ids)||ids.length>100||ids.some((id,index)=>
+    typeof id!=='string'||!UUID.test(id)||(index>0&&id<=ids[index-1])))
+    throw Error('invalid_staff_recovery_registration_result');
+   return Object.freeze(ids);
+  }
   if(inspect&&outcome!=='denied'){
    const row=JSON.parse(outcome);
    if(row?.outcome!=='inspected'||row.intentId!==args[2]||

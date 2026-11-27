@@ -171,6 +171,8 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
    item.name==='__Host-sabora-staff'&&item.httpOnly&&item.secure&&item.sameSite==='Strict'));
   await manager.reload();
   await manager.getByRole('button',{name:'Cerrar sesión'}).waitFor();
+  await manager.getByRole('complementary',{name:'Avisos de sala'})
+   .getByText('Llamadas pendientes de atender: 1.').waitFor();
   assert.equal(await manager.getByRole('link',{name:/Configuración/}).count(),0);
   assert.equal(await manager.getByRole('link',{name:/Equipo/}).count(),0);
   await manager.getByRole('link',{name:/Comandas/}).click();
@@ -189,6 +191,8 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.waiter_call_events WHERE call_id=$1',[call.id])).rows[0].n,2);
   await client.getByRole('button',{name:'Consultar llamada'}).click();
   await client.getByText('Puedes avisar a sala',{exact:false}).waitFor({timeout:12000});
+  await manager.getByRole('link',{name:/Resumen/}).click();
+  assert.equal(await manager.getByRole('complementary',{name:'Avisos de sala'}).count(),0);
   await manager.getByRole('button',{name:'Cerrar sesión'}).click();
   await manager.getByText('Sesión cerrada.').waitFor();
   await manager.reload();

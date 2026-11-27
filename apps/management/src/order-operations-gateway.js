@@ -57,10 +57,10 @@ async function pickupMutation(send,path,{lineId,expectedVersion,correlationId}={
    `/api/v1/operations/order-lines/${lineId}/${path}`,{expectedVersion,correlationId}));
 }
 
-function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnectDelayMs) {
+function createEventSubscription(send,{onEvent,onResync,onUnavailable,onReconnected},reconnectDelayMs) {
   if(typeof onEvent!=='function'||typeof onResync!=='function'||typeof onUnavailable!=='function')
     throw Error('invalid_order_event_subscription');
-  const abort=new AbortController();let cursor=0,timer=null,activeReader=null;
+  const abort=new AbortController();let cursor=0,timer=null,activeReader=null,reconnecting=false;
   const run=async()=>{
     try{
       const response=await send('/api/v1/operations/events',{method:'GET',cache:'no-store',redirect:'error',
@@ -70,6 +70,7 @@ function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnect
       const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',pendingCR=false;
       activeReader=reader;
       if(abort.signal.aborted){void reader.cancel().catch(()=>{});return;}
+      if(reconnecting){reconnecting=false;onReconnected?.();}
       while(!abort.signal.aborted){
        const part=await reader.read();if(part.done)break;const chunk=decoder.decode(part.value,{stream:true});
        // Normalize CRLF even when the CR and LF arrive in separate chunks.
@@ -92,7 +93,7 @@ function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnect
          else if(line.startsWith('data:'))data+=line.slice(5).trim();
         }
         if(eventType==='resync-required'){onResync();continue;}
-        if(eventType==='access-revoked'){onUnavailable();abort.abort();return;}
+        if(eventType==='access-revoked'){onUnavailable('access-revoked');abort.abort();return;}
         const id=Number(eventId);let value;
         try{value=JSON.parse(data);}catch{continue;}
         if(!Number.isSafeInteger(id)||id<=cursor||!H6_EVENT.test(eventType)||!value||
@@ -106,7 +107,7 @@ function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnect
       }
       if(!abort.signal.aborted)throw Error('event_stream_ended');
     }catch{
-      if(abort.signal.aborted)return;onUnavailable();timer=setTimeout(run,reconnectDelayMs);
+      if(abort.signal.aborted)return;reconnecting=true;onUnavailable('transport');timer=setTimeout(run,reconnectDelayMs);
     }finally{
       if(activeReader){const reader=activeReader;activeReader=null;
         void reader.cancel().catch(()=>{});}

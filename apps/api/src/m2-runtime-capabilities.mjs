@@ -87,6 +87,7 @@ export const assertM2CustomerEventCapability=options=>assertM2SingleFunctionCapa
 export const assertM2AccountCloseCapability=options=>assertM2SingleFunctionCapability({
  ...options,role:M2_ACCOUNT_CLOSE_ROLE,signature:M2_ACCOUNT_CLOSE_SIGNATURE
 });
-export const assertM2H4OperationsCapability=options=>assertM2ExactFunctionCapability({
- ...options,role:M2_H4_OPERATIONS_ROLE,signatures:M2_H4_OPERATIONS_SIGNATURES
+export const assertM2H4OperationsCapability=({dispatchSnapshot=false,...options}={})=>assertM2ExactFunctionCapability({
+ ...options,role:M2_H4_OPERATIONS_ROLE,signatures:dispatchSnapshot?[...M2_H4_OPERATIONS_SIGNATURES,
+  'sabora.read_order_operations_dispatch_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)']:M2_H4_OPERATIONS_SIGNATURES
 });

@@ -394,14 +394,19 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
             description={gateway ? 'No hay líneas autorizadas en este estado.' : 'La vista permanecerá vacía hasta recibir una proyección autorizada; no se simulan comandas ni tiempos.'}/>
         ) : (
           <div className="order-board" aria-live="polite">
-            {orders.map((order) => (
+            {orders.map((order) => {
+              const confirmed=order.lines.filter(line=>line.status==='confirmed');
+              const pendingDispatchId=confirmed.some(line=>line.pendingDispatchId!==undefined)
+                ? confirmed.find(line=>line.pendingDispatchId)?.pendingDispatchId
+                : confirmed.length>0?h6ByOrder.get(order.orderId)?.dispatchId:undefined;
+              return (
               <article className="order-card" key={order.orderId}>
                 <header className="order-card__header">
                   <div><span>Mesa {order.tableNumber}</span><strong>{order.customerLabel}</strong></div>
                   <div className="button-row">
-                    {h6ByOrder.get(order.orderId)?.dispatchId&&order.lines.some(line=>line.status==='confirmed')?
+                    {pendingDispatchId&&(board?.role==='admin'||board?.role==='kitchen')?
                       <button className="button button--primary" type="button" disabled={Boolean(pendingOperation)}
-                        onClick={()=>void acknowledgeDispatch(h6ByOrder.get(order.orderId)!.dispatchId!)}>Confirmar recepción</button>:null}
+                        onClick={()=>void acknowledgeDispatch(pendingDispatchId)}>Confirmar recepción</button>:null}
                     <button className="filter-button" type="button" onClick={() => void showHistory(order.orderId)}>Ver historial</button>
                   </div>
                 </header>
@@ -420,7 +425,7 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
                           </span> : line.pickup?.state === 'ready' ? <span className="pickup-assignment">Aviso activo para sala</span> : null}
                         </div>
                         {action ? (
-                          <button className="button button--primary order-line__action" type="button" disabled={pending} onClick={() => void transition(line)}>
+                          <button className="button button--primary order-line__action" type="button" disabled={pending||Boolean(line.pendingDispatchId)} onClick={() => void transition(line)}>
                             {pending ? 'Confirmando…' : action.label}
                           </button>
                         ) : pickupActions.length ? <div className="button-row order-line__pickup-actions">
@@ -444,7 +449,7 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
                   </>:<button className="filter-button" type="button" onClick={()=>setIncidentOrderId(order.orderId)}>Registrar incidencia</button>}
                 </div>:null}
               </article>
-            ))}
+            );})}
           </div>
         )}
 

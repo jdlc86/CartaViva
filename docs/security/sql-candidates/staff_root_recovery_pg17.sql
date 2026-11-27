@@ -1139,10 +1139,10 @@ DECLARE v_key bytea;v_expiry timestamptz;v_expected bytea;v_given bytea;v_diff i
 BEGIN
  IF session_user::text IS DISTINCT FROM 'sabora_root_recovery_login'
  OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
- OR p_action IS NULL OR p_action NOT IN ('prepare','record_registration','record_revocation','complete','inspect')
- OR p_intent IS NULL
- OR (p_action='inspect' AND (p_subject IS NOT NULL OR p_session IS NOT NULL OR p_credential IS NOT NULL OR p_evidence IS NOT NULL))
- OR (p_action<>'inspect' AND (p_subject IS NULL OR p_session IS NULL OR p_credential IS NULL OR p_credential !~ '^[0-9a-f]{64}$'))
+ OR p_action IS NULL OR p_action NOT IN ('prepare','record_registration','record_revocation','complete','inspect','list_ready')
+ OR (p_action='list_ready') IS DISTINCT FROM (p_intent IS NULL)
+ OR (p_action IN ('inspect','list_ready') AND (p_subject IS NOT NULL OR p_session IS NOT NULL OR p_credential IS NOT NULL OR p_evidence IS NOT NULL))
+ OR (p_action NOT IN ('inspect','list_ready') AND (p_subject IS NULL OR p_session IS NULL OR p_credential IS NULL OR p_credential !~ '^[0-9a-f]{64}$'))
  OR (p_action='complete' AND p_evidence IS NOT NULL)
  OR (p_action='record_revocation' AND (p_evidence IS NULL OR p_evidence !~ '^[0-9a-f]{64}$'))
  OR (p_action IN ('prepare','record_registration') AND (p_evidence IS NULL OR octet_length(p_evidence)>49152))
@@ -1155,11 +1155,20 @@ BEGIN
  WHERE k.key_id=p_key_id AND k.purpose='control' AND k.expires_at>clock_timestamp();
  IF NOT FOUND THEN RAISE EXCEPTION 'staff_recovery_registration_forbidden' USING ERRCODE='42501'; END IF;
  v_expected:=extensions.hmac(convert_to(concat_ws(chr(10),'sabora.staff-recovery-registration.v1',p_key_id,
- session_user::text,p_action,p_intent::text,coalesce(p_subject::text,'-'),coalesce(p_session::text,'-'),coalesce(p_credential,'-'),coalesce(p_evidence,'-'),
+ session_user::text,p_action,coalesce(p_intent::text,'-'),coalesce(p_subject::text,'-'),coalesce(p_session::text,'-'),coalesce(p_credential,'-'),coalesce(p_evidence,'-'),
  p_issued::text,p_expires::text),'UTF8'),v_key,'sha256');
  v_given:=decode(p_signature,'hex');
  FOR v_i IN 0..31 LOOP v_diff:=v_diff | (get_byte(v_expected,v_i)#get_byte(v_given,v_i)); END LOOP;
  IF v_diff IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'staff_recovery_registration_forbidden' USING ERRCODE='42501'; END IF;
+ IF p_action='list_ready' THEN
+  IF p_expires<=floor(extract(epoch FROM clock_timestamp())*1000) OR v_expiry<=clock_timestamp()
+  THEN RAISE EXCEPTION 'staff_recovery_registration_forbidden' USING ERRCODE='42501'; END IF;
+  RETURN (SELECT coalesce(jsonb_agg(x.intent_id ORDER BY x.intent_id),'[]'::jsonb)::text
+   FROM (SELECT a.intent_id FROM sabora.staff_recovery_registration_candidate a
+    WHERE a.completed_at IS NULL AND a.registration_receipt_hash IS NOT NULL
+     AND a.revocation_receipt_hash IS NOT NULL
+    ORDER BY a.intent_id LIMIT 100) x);
+ END IF;
  SELECT * INTO i FROM sabora.staff_recovery_intent_candidate a WHERE a.request_id=p_intent;
  IF NOT FOUND OR (p_action<>'inspect' AND i.subject_user_id IS DISTINCT FROM p_subject) THEN RETURN 'denied'; END IF;
  SELECT o.owner_user_id INTO v_owner FROM sabora.admin_write_ownership o WHERE o.singleton FOR UPDATE;

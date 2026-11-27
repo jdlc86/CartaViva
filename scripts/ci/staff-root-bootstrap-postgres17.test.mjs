@@ -688,9 +688,12 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.match(durableSnapshot.revocationReceiptHash,/^[0-9a-f]{64}$/);
   assert.equal(await rootKernel.allowsAccess(otherId,staffOldHash),false);
   assert.equal(await rootKernel.allowsAccess(otherId,staffNewHash),false);
-  const recoveryResults=await Promise.all(Array.from({length:2},()=>
-   createStaffRecoveryReceiptReconcilerCandidate({registration:createStaffRecoveryRegistrationCandidate(recoveryConfig)})(latestRequest.requestId)));
-  assert.deepEqual(recoveryResults.map(x=>x.outcome).sort(),['already_completed','completed']);
+  assert.deepEqual(await staffRegistration('list_ready'),[latestRequest.requestId]);
+  const restartedWorkers=await Promise.all(Array.from({length:2},()=>createVerifiedRootRecoveryCandidate(staffWorkerConfig)));
+  try{
+   await Promise.all(restartedWorkers.map(worker=>worker.start()));
+  }finally{await Promise.all(restartedWorkers.map(worker=>worker.close()));}
+  assert.deepEqual(await staffRegistration('list_ready'),[]);
   assert.equal((await staffRegistration('inspect',{intentId:latestRequest.requestId})).completed,true);
   assert.deepEqual([registrationCalls,revocationCalls,logoutCalls],[1,1,1]);
   assert.deepEqual(providerIds,[newProviderId]);
@@ -759,6 +762,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.deepEqual(unknownSnapshot.previousProviderIds,[waiterOldProviderId]);
   assert.equal(unknownSnapshot.replacementProviderId,null);
   assert.equal(unknownSnapshot.registrationReceiptHash,null);
+  assert.deepEqual(await staffRegistration('list_ready'),[]);
   const unknownResume=createStaffRecoveryReceiptReconcilerCandidate({registration:createStaffRecoveryRegistrationCandidate(recoveryConfig)});
   assert.deepEqual(await Promise.all([unknownResume(freshIntent.intentId),unknownResume(freshIntent.intentId)]),
    [{outcome:'requires_provider_evidence'},{outcome:'requires_provider_evidence'}]);

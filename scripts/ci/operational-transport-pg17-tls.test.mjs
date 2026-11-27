@@ -186,7 +186,7 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
     listener:{host:'0.0.0.0',port:4100,exposure:'container_private'},
     origins:{client:'https://sabora.allaiso.com:8443',management:'https://gestion-sabora.allaiso.com:8443'},
     auth:{issuer,connectHost:'sabora-egress',connectPort:authGatewayPort},
-    features:{ownership:false,communications:false,waiterCalls:false,groupedDispatchWithoutStripe:true},
+    features:{ownership:false,communications:false,waiterCalls:false,groupedDispatchWithoutStripe:true,tableChangeWindow:true},
     network:{allowedTlsHosts:[actorCertificate,'project.supabase.co'],
      egressGatewayHost:'sabora-egress'},
     database:{slots,notifiers:{
@@ -234,6 +234,8 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
    let labDiagnostic='before_real_sql_start';
    const category=error=>{
     const message=String(error?.message??'');
+    if(error?.stage==='function-surface'&&error.code==='M2_RUNTIME_CAPABILITY_REJECTED')return 'm2_function_surface_missing';
+    if(error?.stage==='function-surface'&&error.code==='M3_RUNTIME_CAPABILITY_REJECTED')return 'm3_function_surface_missing';
     if(error?.code==='H6_SQL_CAPABILITIES_REJECTED'&&[
      'function-surface:sabora_h6_provider_runtime','dispatch-without-stripe-surface',
      'identity-policy','query:42501','query:42702'
@@ -265,11 +267,21 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
        }})
     });
    await assert.rejects(start);
+   assert.equal(labDiagnostic,'m2_function_surface_missing',
+    'the dispatch opt-in must require the authorized kitchen snapshot');
+   await admin.query(await readFile(new URL(
+    '../../docs/security/sql-candidates/h6_dispatch_board_snapshot_pg17.sql',import.meta.url),'utf8'));
+   await assert.rejects(start);
    assert.equal(labDiagnostic,'invalid_h6_sql_capabilities:function-surface:sabora_h6_provider_runtime',
     'a Stripe-disabled dispatch opt-in must fail before the candidate SQL delta exists');
    try{
     await admin.query(await readFile(new URL(
      '../../docs/security/sql-candidates/h6_grouped_dispatch_without_stripe_pg17.sql',import.meta.url),'utf8'));
+    await assert.rejects(start);
+    assert.equal(labDiagnostic,'m3_function_surface_missing',
+     'the change-window opt-in must require its candidate SQL delta');
+    await admin.query(await readFile(new URL(
+     '../../docs/security/sql-candidates/table_change_response_window_pg17.sql',import.meta.url),'utf8'));
     apiRuntime=await start();
    }catch(error){
     // No raw driver errors, account identifiers, URLs or SQL may be logged.
@@ -340,7 +352,14 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
   }finally{
    await apiRuntime?.close().catch(()=>{});
    await admin.query(`DROP FUNCTION IF EXISTS sabora.list_h6_rounds_without_stripe_candidate(integer),
-    sabora.request_h6_dispatch_without_stripe_candidate(uuid)`);
+    sabora.request_h6_dispatch_without_stripe_candidate(uuid),
+    sabora.read_order_operations_dispatch_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text),
+    sabora.table_change_window_m3_candidate(jsonb,integer,integer);
+    DROP POLICY IF EXISTS m3_table_change_window_read ON sabora.restaurant_settings;
+    DROP POLICY IF EXISTS m3_table_change_window_write ON sabora.restaurant_settings;
+    REVOKE SELECT(singleton,table_change_response_seconds),UPDATE(table_change_response_seconds)
+     ON sabora.restaurant_settings FROM sabora_m3_management_fn_owner;
+    REVOKE SELECT(id) ON sabora.kitchen_dispatches FROM sabora_order_operations_fn_owner`);
    if(keyInserted)
     await admin.query('DELETE FROM sabora.order_operation_signing_keys WHERE key_id=$1',
      [keyId]).catch(()=>{});

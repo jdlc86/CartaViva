@@ -28,7 +28,8 @@ export interface OrderOperationsGateway {
   claimPickup(input: {lineId: string; expectedVersion: number; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
   cancelPickup(input: {lineId: string; expectedVersion: number; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
   correctReady(input: {lineId: string; expectedVersion: number; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
-  subscribeEvents(input: {onEvent: (event: H6OperationEvent) => void; onResync: () => void; onUnavailable: () => void}): () => void;
+  subscribeEvents(input: {onEvent: (event: H6OperationEvent) => void; onResync: () => void;
+    onUnavailable: (reason?: 'access-revoked' | 'transport') => void; onReconnected?:()=>void}): () => void;
 }
 export class OrderOperationsGatewayError extends Error { readonly code: string; readonly details: unknown; }
 export function createOrderOperationsGateway(input: {send: OrderOperationsSender; reconnectDelayMs?: number}): OrderOperationsGateway;

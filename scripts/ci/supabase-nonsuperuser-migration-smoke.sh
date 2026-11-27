@@ -406,4 +406,21 @@ docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$da
  FROM pg_proc p WHERE p.oid='sabora.table_change_window_m3_candidate(jsonb,integer,integer)'::regprocedure
  ")" == t ]] || exit 1
 echo 'sabora_s55_table_change_window_delta_nonsuperuser_verified'
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ < docs/security/sql-candidates/h6_dispatch_board_snapshot_pg17.sql
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc "
+ SELECT NOT pg_has_role(current_user,'sabora_order_operations_fn_owner','SET')
+ AND NOT has_schema_privilege('sabora_order_operations_fn_owner','sabora','CREATE')
+ AND p.prosecdef AND pg_get_userbyid(p.proowner)='sabora_order_operations_fn_owner'
+ AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']
+ AND has_function_privilege('sabora_b3_h4_transition_runtime',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('service_role',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE')
+ AND NOT has_column_privilege('sabora_b3_h4_transition_runtime','sabora.kitchen_dispatches','id','SELECT')
+ FROM pg_proc p WHERE p.oid=
+  'sabora.read_order_operations_dispatch_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+ ")" == t ]] || exit 1
+echo 'sabora_s55_dispatch_board_snapshot_nonsuperuser_verified'
 echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"

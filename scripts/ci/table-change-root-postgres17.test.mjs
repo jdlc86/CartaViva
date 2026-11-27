@@ -17,7 +17,7 @@ import {createH6OperationsRepository,createH6CustomerEventRepository,
  READ_CUSTOMER_EVENTS_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
-import {createOrderOperationsRepository,TRANSITION_ORDER_LINE_SQL,READ_H6_DELIVERY_BOARD_SQL,
+import {createOrderOperationsRepository,TRANSITION_ORDER_LINE_SQL,READ_H6_DELIVERY_BOARD_SQL,READ_H6_DISPATCH_BOARD_SQL,
  READ_ORDER_HISTORY_SQL} from '../../apps/api/src/order-operations-repository.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
 import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
@@ -3013,16 +3013,19 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // Reuse the existing H4 signed RPC; this route is transition-only and
   // explicitly forbids retired physical pickup. The kitchen actor is
   // verified by JWT, PostgreSQL staff membership and the H4 HMAC.
+  const dispatchSnapshot=process.env.SABORA_CI_F21_FULL_WINDOW==='true';
+  if(dispatchSnapshot)await admin.query(await readFile(new URL(
+   '../../docs/security/sql-candidates/h6_dispatch_board_snapshot_pg17.sql',import.meta.url),'utf8'));
   const h4KitchenTx=createRoleScopedPostgresTransaction({pool:pools[11],
    role:specs[11].role,allowedSql:new Set([TRANSITION_ORDER_LINE_SQL,
-    READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
+    dispatchSnapshot?READ_H6_DISPATCH_BOARD_SQL:READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
   const h4KitchenIssuer=createOrderOperationCapabilityIssuer({
    keyId:staffSigningKeyId,secret:staffSigningSecret,databaseRole:specs[11].login});
   const h4ReadIssuer=createOrderOperationReadCapabilityIssuer({
    keyId:staffSigningKeyId,secret:staffSigningSecret,databaseRole:specs[11].login});
   const h4KitchenOperations=createOrderOperationsCoordinator({
    withTransaction:h4KitchenTx,
-   repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
+   repository:createOrderOperationsRepository({deliveryBoardCandidate:true,dispatchSnapshot}),
    issueTransitionCapability:h4KitchenIssuer,issueReadCapability:h4ReadIssuer
   });
   const signedStripeSecret='whsec_B3F20IsolatedCandidate_0001';
@@ -7508,7 +7511,55 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(dispatches.length,3);
     assert.ok(dispatches.every(row=>row.state==='requested'
      &&row.account_id===first.accountId&&row.origin===httpFixture.naturalTable));
-    for(const [index,dispatch] of dispatches.entries()){
+    // The kitchen PWA reopens with an empty local state and no stream events.
+    // It must recover the exact acknowledgement ID via the authorized board.
+    const kitchenTarget=dispatches.find(row=>row.order_id===grouped.orderId);
+    const managementVite=await createServer({
+     root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+     mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+      proxy:{'/api':{target:'http://127.0.0.1:'+http.server.address().port,changeOrigin:false}}}
+    });
+    let kitchenContext;
+    try{
+     await managementVite.listen();
+     kitchenContext=await browser.newContext({serviceWorkers:'block'});
+     await kitchenContext.route('**/api/v1/operations/events',route=>route.abort());
+     const kitchen=await kitchenContext.newPage();
+     const mount=async()=>{
+      await kitchen.goto(managementVite.resolvedUrls.local[0]+'#comandas');
+      await kitchen.evaluate(async token=>{
+       const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+       mountAuthenticatedManagementApp({element:document.getElementById('root'),
+        getAccessToken:async()=>token,staffRole:'kitchen'});
+      },jwtKitchen);
+     };
+     const groupedLines=(await admin.query('SELECT id FROM sabora.order_lines WHERE order_id=$1',
+      [grouped.orderId])).rows;
+     assert.equal(groupedLines.length,1);
+     const line=kitchen.locator('[data-line-id="'+groupedLines[0].id+'"]');
+     const card=kitchen.locator('.order-card').filter({has:line});
+     await mount();
+     await card.getByRole('button',{name:'Confirmar recepción'}).waitFor();
+     await mount(); // another page and staff context, without event history
+     await card.getByRole('button',{name:'Confirmar recepción'}).waitFor();
+     assert.equal(await line.getByRole('button',{name:'Iniciar preparación'}).isDisabled(),true);
+     const path='/api/v1/operations/dispatches/'+kitchenTarget.id+'/ack';
+     const [response]=await Promise.all([
+      kitchen.waitForResponse(r=>r.url().endsWith(path)),
+      card.getByRole('button',{name:'Confirmar recepción'}).click()
+     ]);
+     assert.equal(response.status(),200,await response.text());
+     assert.equal((await response.json()).state,'acknowledged');
+     const replay=await http.inject({method:'POST',url:path,
+      headers:{authorization:'Bearer '+jwtKitchen},payload:response.request().postDataJSON()});
+     assert.equal(replay.statusCode,200,replay.body);
+     await card.getByRole('button',{name:'Confirmar recepción'}).waitFor({state:'hidden'});
+     assert.equal(await line.getByRole('button',{name:'Iniciar preparación'}).isEnabled(),true);
+    }finally{
+     await kitchenContext?.close();
+     await managementVite.close();
+    }
+    for(const [index,dispatch] of dispatches.filter(row=>row!==kitchenTarget).entries()){
      const ack=await http.inject({method:'POST',
       url:'/api/v1/operations/dispatches/'+dispatch.id+'/ack',
       headers:{authorization:'Bearer '+jwtKitchen,'content-type':'application/json'},
@@ -7577,7 +7628,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     if(browser)await browser.close();
     await clientVite.close();
     await admin.query(`DROP FUNCTION sabora.list_h6_rounds_without_stripe_candidate(integer),
-     sabora.request_h6_dispatch_without_stripe_candidate(uuid)`);
+     sabora.request_h6_dispatch_without_stripe_candidate(uuid),
+     sabora.read_order_operations_dispatch_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text);
+     REVOKE SELECT(id) ON sabora.kitchen_dispatches FROM sabora_order_operations_fn_owner`);
    }
   }
   }finally{await http.close();}

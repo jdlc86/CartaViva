@@ -6,6 +6,8 @@ import {createRootRecoveryResendSender,createStaffRecoveryResendSender} from './
 import {createStaffRecoveryDeliveryCandidate} from './staff-recovery-delivery-candidate.mjs';
 import {createStaffRootSecurityCandidate} from './staff-root-security-candidate.mjs';
 import {createStaffRecoveryHttpComposition} from './staff-recovery-http-candidate.mjs';
+import {createStaffRecoveryRegistrationCandidate,createStaffRecoveryReceiptReconcilerCandidate}
+ from './staff-recovery-registration-candidate.mjs';
 
 const OWNER='sabora_root_recovery_fn_owner';
 const MAIL=['sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text)',OWNER];
@@ -64,6 +66,8 @@ export async function createVerifiedRootRecoveryCandidate({control,worker,factor
  const staffRecoveryHttp=staffRecovery?createStaffRecoveryHttpComposition({
   ...staffRecovery,origin:resend.managementOrigin,control,keyring:custody,hashInviteeEmail
  }):null;
+ const registration=createStaffRecoveryRegistrationCandidate(control);
+ const reconcile=createStaffRecoveryReceiptReconcilerCandidate({registration});
  const readiness=()=>Promise.all([
   preflightStaffRestrictedIdentity({pool:control.pool,role:ROOT_RECOVERY_LOGIN,routines:CONTROL,tables:TABLES,requiredTriggers:TRIGGERS}),
   preflightStaffRestrictedIdentity({pool:worker.pool,role:ROOT_MAIL_LOGIN,routines:[MAIL,STAFF_MAIL],tables:TABLES,requiredTriggers:TRIGGERS}),
@@ -97,6 +101,16 @@ export async function createVerifiedRootRecoveryCandidate({control,worker,factor
   // Failure of either queue must not prevent processing the other.
   try{await runRoot();}catch{report();}
   try{await runStaff();}catch{report('staff_recovery_mail_worker_unavailable');}
+  if(!closed)try{
+   for(const intentId of await registration('list_ready')){
+    if(closed)break;
+    try{
+     const result=await reconcile(intentId);
+     if(!['completed','already_completed'].includes(result.outcome))
+      report('staff_recovery_receipt_reconciliation_pending');
+    }catch{report('staff_recovery_receipt_reconciliation_pending');}
+   }
+  }catch{report('staff_recovery_receipt_reconciliation_unavailable');}
  }
  function report(code='root_recovery_mail_worker_unavailable'){
   try{observeFailure(Error(typeof code==='string'?code:'root_recovery_mail_worker_unavailable'));}catch{}
