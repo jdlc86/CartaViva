@@ -508,7 +508,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   // ADMIN's credential changes. Use the existing enrollment flow, not
   // fabricated memberships. Keep one job queued and consume the other.
   const oldEnrollmentContext={enrollmentSession,enrollmentUserId,accessToken,confirmedEmail};
-  async function activateForRecovery(enrollmentId){
+  async function activateForRecovery(enrollmentId,expectedRole){
    const invitation=await deliver(enrollmentId,1);
    enrollmentUserId=randomUUID();enrollmentSession=randomUUID();accessToken=mintEnrollment();
    confirmedEmail=invitation.email;
@@ -519,14 +519,22 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await enrollment.register({accessToken,enrollmentId,ticket:opt.ticket,credential:{
     type:'public-key',id:raw,rawId:raw,response:{clientDataJSON:enc({type:'webauthn.create',origin,challenge:nonce}),
     attestationObject:enc('provider-fixture-only')}},correlationId:correlation()})).state,'registered');
-   const activation=await ordinary({action:'activate',enrollmentId,subjectUserId:enrollmentUserId,correlationId:correlation()},adminHeaders);
+   // The HTTP boundary resolves the subject from the durable enrollment.
+   // A caller-supplied UUID must be rejected, even when it is correct.
+   const supplied=await ordinary({action:'activate',enrollmentId,subjectUserId:enrollmentUserId,correlationId:correlation()},adminHeaders);
+   assert.equal(supplied.statusCode,400,supplied.body);
+   assert.equal(supplied.json().error,'invalid_staff_lifecycle_request');
+   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[enrollmentUserId])).rows[0].n,0);
+   const activation=await ordinary({action:'activate',enrollmentId,subjectUserId:null,correlationId:correlation()},adminHeaders);
    assert.equal(activation.statusCode,200,activation.body);
+   assert.equal(activation.json().state,'active');
+   assert.deepEqual((await admin.query('SELECT role,state FROM sabora.staff_members WHERE user_id=$1',[enrollmentUserId])).rows,[{role:expectedRole,state:'active'}]);
    return {enrollmentId,subjectId:enrollmentUserId,sessionId:enrollmentSession};
   }
-  const queuedTarget=await activateForRecovery(ordinaryWaiter.json().enrollmentId);
+  const queuedTarget=await activateForRecovery(ordinaryWaiter.json().enrollmentId,'waiter');
   const kitchen=await ordinary(inviteBody('recovery-kitchen@demo.invalid','kitchen'),adminHeaders);
   assert.equal(kitchen.statusCode,201,kitchen.body);
-  const consumedTarget=await activateForRecovery(kitchen.json().enrollmentId);
+  const consumedTarget=await activateForRecovery(kitchen.json().enrollmentId,'kitchen');
   const queuedByAdmin={enrollmentId:queuedTarget.enrollmentId,requestId:randomUUID()};
   const consumedByAdmin={enrollmentId:consumedTarget.enrollmentId,requestId:randomUUID()};
   const preRecoveryAdmin=authority(otherId,'admin',hashRootCredentialId(genesisCredential));
