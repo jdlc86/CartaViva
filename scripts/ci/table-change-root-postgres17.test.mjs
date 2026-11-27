@@ -6495,14 +6495,24 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      rejectVite=await createRejectVite({
       root:rejectFileURLToPath(new URL('../../apps/client/',import.meta.url)),
       mode:'test',logLevel:'error',
-      server:{host:'127.0.0.1',port:0,strictPort:false,
+      // Freeze dev-server dependency discovery for this multi-device journey.
+      // A late optimization/full reload can destroy a page.evaluate context
+      // after a durable request has already been created. Keep every real
+      // browser gesture, SQL race and assertion; no navigation retry.
+      optimizeDeps:{noDiscovery:true,include:[
+       'react','react-dom','react-dom/client','react/jsx-runtime','react/jsx-dev-runtime'
+      ]},
+      server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,
        proxy:{'/api':{target:'http://127.0.0.1:'+http.server.address().port,
         changeOrigin:false}}}
      });
      rejectManageVite=await createRejectManageVite({
       root:rejectFileURLToPath(new URL('../../apps/management/',import.meta.url)),
       logLevel:'error',
-      server:{host:'127.0.0.1',port:0,strictPort:false,
+      optimizeDeps:{noDiscovery:true,include:[
+       'react','react-dom','react-dom/client','react/jsx-runtime','react/jsx-dev-runtime','qrcode'
+      ]},
+      server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,
        proxy:{'/api':{target:'http://127.0.0.1:'+http.server.address().port,
         changeOrigin:false}}}
      });
