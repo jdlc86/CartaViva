@@ -1,6 +1,6 @@
-// Candidate-only delivery and consumption. No Auth session issuance, public
-// route or credential mutation. The same worker and Resend transport can
-// dispatch these version-bound invitations without changing enrollment state.
+// Candidate-only delivery and fenced server-side Auth proof exchange.
+// No public route, operational session or credential mutation. The existing
+// worker and Resend transport dispatch version-bound Sabora invitations.
 import {createHmac,randomBytes} from 'node:crypto';
 import {createPostgresTransaction} from './postgres-transaction.mjs';
 import {ROOT_RECOVERY_LOGIN} from './staff-root-recovery-candidate.mjs';
@@ -14,7 +14,7 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH=/^[0-9a-f]{64}$/;
 const forbidden=()=>Object.assign(Error('staff_recovery_delivery_forbidden'),{code:'42501'});
 export function createStaffRecoveryDeliveryCandidate({pool,keyId,signingSecret,keyring,hashInviteeEmail,
- mode='control',clock=Date.now,issuer,provider,getTrustedKeys}={}){
+ mode='control',clock=Date.now,issuer,recoveryProviderFor,getTrustedKeys}={}){
  if(!/^[A-Za-z0-9_-]{8,64}$/.test(keyId??'')||!(signingSecret instanceof Uint8Array)||signingSecret.byteLength!==32||
   !['control','worker'].includes(mode)||typeof keyring?.active!=='function'||typeof keyring?.resolveKey!=='function'||
   typeof hashInviteeEmail!=='function'||typeof clock!=='function')throw Error('invalid_staff_recovery_delivery_config');
@@ -45,24 +45,42 @@ export function createStaffRecoveryDeliveryCandidate({pool,keyId,signingSecret,k
    if(!['queued','existing'].includes(result.outcome))throw forbidden();
    return Object.freeze({outcome:result.outcome});
   },
-  async consume({intentId,token,accessToken}={}){
+  async exchange({intentId,token}={}){
    if(!UUID.test(intentId??'')||typeof token!=='string'||! /^[A-Za-z0-9_-]{43}$/.test(token)||
     Buffer.from(token,'base64url').toString('base64url')!==token||
-    typeof accessToken!=='string'||accessToken.length>3700||typeof provider?.user!=='function'||
-    typeof getTrustedKeys!=='function'||typeof issuer!=='string')throw forbidden();
+    typeof recoveryProviderFor!=='function'||typeof getTrustedKeys!=='function'||typeof issuer!=='string')throw forbidden();
+   const tokenHash=hashStaffInvitationToken(token);
+   const claim=await run('claim_exchange',intentId,{tokenHash});
+   if(claim.outcome!=='exchange_claimed'||![claim.exchangeId,claim.subjectId,claim.enrollmentId].every(id=>UUID.test(id??''))||
+    !Number.isSafeInteger(claim.version)||claim.version<1||!HASH.test(claim.emailHash??''))throw forbidden();
+   let recipient;
+   try{recipient=normalizeStaffInviteeEmail(claim.recipient);}catch{throw forbidden();}
+   if(hashInviteeEmail(recipient)!==claim.emailHash)throw forbidden();
+   // The only provider subject comes from the one-use durable claim.
+   // Generate and exchange the provider proof server-side; neither proof
+   // nor JWT is sent in the recovery email or exposed as response JSON.
+   const provider=await recoveryProviderFor({subjectId:claim.subjectId,email:recipient});
+   if(!['generateRecoveryProof','exchangeRecoveryProof','user'].every(name=>typeof provider?.[name]==='function'))
+    throw Error('invalid_staff_recovery_provider');
+   const proof=await provider.generateRecoveryProof();
+   if(typeof proof?.authProof!=='string'||! /^[A-Za-z0-9_-]{32,512}$/.test(proof.authProof))throw forbidden();
+   const {accessToken}=(await provider.exchangeRecoveryProof(proof.authProof))??{};
+   if(typeof accessToken!=='string'||accessToken.length>3700)throw forbidden();
    let identity;
    try{identity=verifySupabaseAccessToken(accessToken,{issuer,keys:await getTrustedKeys(),now:clock,requireEnrollmentSession:true});}
    catch{throw forbidden();}
+   if(identity.userId.toLowerCase()!==claim.subjectId.toLowerCase())throw forbidden();
    const user=await provider.user(accessToken),confirmed=Date.parse(user?.email_confirmed_at??'');
    if(user?.id!==identity.userId||user.is_anonymous!==false||!Number.isFinite(confirmed)||confirmed>clock())throw forbidden();
    let emailHash;
    try{emailHash=hashInviteeEmail(normalizeStaffInviteeEmail(user.email));}catch{throw forbidden();}
-   if(!HASH.test(emailHash??''))throw forbidden();
+   if(emailHash!==claim.emailHash)throw forbidden();
    const result=await run('consume',intentId,{subject:identity.userId.toLowerCase(),session:identity.sessionId.toLowerCase(),
-    emailHash,tokenHash:hashStaffInvitationToken(token)},identity.expiresAt*1000);
-   if(result.outcome!=='consumed'||!UUID.test(result.enrollmentId??'')||
-    !Number.isSafeInteger(result.version)||result.version<1)throw forbidden();
-   return Object.freeze({outcome:'consumed',enrollmentId:result.enrollmentId,version:result.version});
+    emailHash,tokenHash,exchangeId:claim.exchangeId},identity.expiresAt*1000);
+   if(result.outcome!=='consumed'||result.enrollmentId!==claim.enrollmentId||result.version!==claim.version)throw forbidden();
+   const session={outcome:'consumed',enrollmentId:result.enrollmentId,version:result.version};
+   Object.defineProperty(session,'accessToken',{value:accessToken,enumerable:false});
+   return Object.freeze(session);
   }
  });
  return Object.freeze({
