@@ -1,5 +1,6 @@
 import https from 'node:https';
 import tls from 'node:tls';
+import {normalizeStaffInviteeEmail} from './staff-lifecycle-capability.mjs';
 
 const HOST=/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const INTERNAL=/^[a-z][a-z0-9-]{0,62}$/;
@@ -101,5 +102,87 @@ export function createGatewayPasskeyProvider({publishableKey,...config}){
   },
   user:token=>call('/user','GET',{token}),
   logout:token=>call('/logout?scope=local','POST',{token})
+ });
+}
+
+
+// Candidate-only, per-subject Auth boundary. Instantiate only from trusted
+// durable recovery data; never pass browser-supplied identity or mount this
+// provider as an unrestricted administrative HTTP proxy. Key provisioning,
+// custody, actual delivery and deployment authorization are external gates.
+const RECOVERY_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const RECOVERY_JWT=/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+const RECOVERY_SECRET=/^sb_secret_[A-Za-z0-9_-]{20,150}$/;
+const recoveryError=()=>Error('staff_recovery_auth_provider_unavailable');
+export function createGatewayRecoveryProvider({subjectId,email,managementOrigin,secretKey,publishableKey,...config}={}){
+ const origin=new URL(managementOrigin);
+ if(origin.protocol!=='https:'||origin.origin!==managementOrigin||!RECOVERY_UUID.test(subjectId??'')||
+  !RECOVERY_SECRET.test(secretKey??'')||!isStaffAuthPublishableKey(publishableKey))throw recoveryError();
+ const subject=subjectId.toLowerCase(),recipient=normalizeStaffInviteeEmail(email);
+ const publicProvider=createGatewayPasskeyProvider({publishableKey,...config});
+ const request=createAuthGatewayRequest(config),userPath='/admin/users/'+subject;
+ const sameUser=user=>user?.id===subject&&user.email===recipient&&user.is_anonymous===false&&
+  typeof user.email_confirmed_at==='string'&&Number.isFinite(Date.parse(user.email_confirmed_at))&&
+  Date.parse(user.email_confirmed_at)<=Date.now();
+ const assertSubject=id=>{if(typeof id!=='string'||id.toLowerCase()!==subject)throw recoveryError();};
+ const assertToken=token=>{if(typeof token!=='string'||token.length>3700||!RECOVERY_JWT.test(token))throw recoveryError();};
+ async function call(path,method,{admin=false,token,data,expected=200}={}){
+  const body=data===undefined?undefined:JSON.stringify(data);
+  try{
+   const response=await request('/auth/v1'+path,{method,signal:AbortSignal.timeout(5000),body,
+    headers:{apikey:admin?secretKey:publishableKey,...(token?{Authorization:'Bearer '+token}:{}),
+     ...(body?{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}:{})}});
+   if(response.status!==expected)throw recoveryError();
+   if(expected===204)return true;
+   return JSON.parse(await response.text());
+  }catch{throw recoveryError();}
+ }
+ async function user(token){
+  assertToken(token);
+  const result=await publicProvider.user(token);
+  if(!sameUser(result))return null;
+  return Object.freeze({id:subject,email:recipient,is_anonymous:false,email_confirmed_at:result.email_confirmed_at});
+ }
+ async function requireUser(token){if(!await user(token))throw recoveryError();}
+ return Object.freeze({
+  // Generate, but do not send or exchange, a proof for the existing exact
+  // Auth identity. Never fall back to invite/signup/create-user.
+  async generateRecoveryProof(){
+   if(!sameUser(await call(userPath,'GET',{admin:true})))throw recoveryError();
+   const result=await call('/admin/generate_link','POST',{admin:true,data:{type:'recovery',email:recipient,redirect_to:origin.origin}});
+   if(!sameUser(result)||result.verification_type!=='recovery'||
+    ![origin.origin,origin.origin+'/'].includes(result.redirect_to)||
+    typeof result.hashed_token!=='string'||! /^[A-Za-z0-9_-]{32,512}$/.test(result.hashed_token))throw recoveryError();
+   return Object.freeze({authProof:result.hashed_token});
+  },
+  async exchangeRecoveryProof(authProof){
+   const result=await publicProvider.exchangeEmailProof({purpose:'recovery',tokenHash:authProof});
+   if(!result||!await user(result.accessToken))throw recoveryError();
+   return Object.freeze({accessToken:result.accessToken});
+  },
+  user,
+  async registrationOptions(token){await requireUser(token);return publicProvider.registrationOptions(token);},
+  async verifyRegistration(token,challenge,credential){
+   if(!RECOVERY_UUID.test(challenge??''))throw recoveryError();
+   await requireUser(token);return publicProvider.verifyRegistration(token,challenge,credential);
+  },
+  async listPasskeys(id){
+   assertSubject(id);
+   const result=await call(userPath+'/passkeys','GET',{admin:true});
+   const items=Array.isArray(result)?result:result?.passkeys;
+   if(!Array.isArray(items)||items.length>1000||!items.every(x=>RECOVERY_UUID.test(x?.id??'')))throw recoveryError();
+   const ids=items.map(x=>x.id.toLowerCase());
+   if(new Set(ids).size!==ids.length)throw recoveryError();
+   return Object.freeze(ids.sort());
+  },
+  async revokePasskey(id,passkeyId){
+   assertSubject(id);
+   if(!RECOVERY_UUID.test(passkeyId??''))throw recoveryError();
+   return call(userPath+'/passkeys/'+passkeyId.toLowerCase(),'DELETE',{admin:true,expected:204});
+  },
+  async logoutAll(token){
+   await requireUser(token);
+   return call('/logout?scope=global','POST',{token,expected:204});
+  }
  });
 }
