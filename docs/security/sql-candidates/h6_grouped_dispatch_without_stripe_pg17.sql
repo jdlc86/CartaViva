@@ -24,8 +24,10 @@ BEGIN
  RETURN QUERY
  SELECT r.order_id,r.grouping_deadline,statement_timestamp()
  FROM sabora.order_rounds r
- JOIN sabora.kitchen_dispatches d ON d.round_id=r.id AND d.state='blocked'
- JOIN sabora.order_revisions v ON v.round_id=r.id AND v.state='current'
+ JOIN sabora.kitchen_dispatches d ON d.round_id=r.id
+  AND d.revision_number=r.revision_number AND d.state='blocked'
+ JOIN sabora.order_revisions v ON v.round_id=r.id
+  AND v.revision_number=r.revision_number AND v.state='current'
  JOIN sabora.customer_accounts a ON a.id=r.account_id AND a.state='open'
  WHERE r.state IN ('grouping','free_grouping')
    AND (r.amount_cents=0 OR r.payment_mode='pay_at_end')
@@ -51,11 +53,11 @@ BEGIN
    OR NOT (v_round.amount_cents=0 OR v_round.payment_mode IS NOT DISTINCT FROM 'pay_at_end')
  THEN RETURN false; END IF;
  SELECT state INTO v_dispatch_state FROM sabora.kitchen_dispatches
-  WHERE round_id=v_round.id FOR UPDATE;
+  WHERE round_id=v_round.id AND revision_number=v_round.revision_number FOR UPDATE;
  v_now:=clock_timestamp();
  IF v_dispatch_state IS DISTINCT FROM 'blocked' OR v_round.grouping_deadline>v_now
    OR NOT EXISTS (SELECT 1 FROM sabora.order_revisions
-    WHERE round_id=v_round.id AND state='current')
+    WHERE round_id=v_round.id AND revision_number=v_round.revision_number AND state='current')
    OR NOT EXISTS (SELECT 1 FROM sabora.customer_accounts
     WHERE id=v_round.account_id AND state='open')
  THEN RETURN false; END IF;
