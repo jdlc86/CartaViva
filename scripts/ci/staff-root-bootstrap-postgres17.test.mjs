@@ -453,9 +453,19 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.deepEqual(existing,{auth_user_id:otherId,state:'active',employee_code:winner.employeeCode});
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[otherId])).rows[0].n,1);
   // Real PG17 authorization + encrypted delivery + Resend/verified Auth fixtures.
-  const recoveryDelivery=createStaffRecoveryDeliveryCandidate({...recoveryConfig,keyring,hashInviteeEmail:hashEmail,
-   issuer,getTrustedKeys:async()=>[jwk],provider:{user:async token=>token===accessToken?
-    {id:enrollmentUserId,email:confirmedEmail,is_anonymous:false,email_confirmed_at:new Date(Date.now()-1000).toISOString()}:null}});
+  let proofCalls=0,exchangeCalls=0;const recoveryProof=randomBytes(32).toString('hex');
+  const recoveryDeliveryConfig={...recoveryConfig,keyring,hashInviteeEmail:hashEmail,
+   issuer,getTrustedKeys:async()=>[jwk],recoveryProviderFor:async({subjectId,email})=>{
+    assert.equal(subjectId,enrollmentUserId);
+    assert.ok([current.email,'ordinary-waiter@demo.invalid','recovery-kitchen@demo.invalid'].includes(email));
+    return {
+     generateRecoveryProof:async()=>{proofCalls++;return {authProof:recoveryProof};},
+     exchangeRecoveryProof:async proof=>{assert.equal(proof,recoveryProof);exchangeCalls++;return {accessToken};},
+     user:async token=>token===accessToken?{id:enrollmentUserId,email:confirmedEmail,is_anonymous:false,
+      email_confirmed_at:new Date(Date.now()-1000).toISOString()}:null,
+    };
+   }};
+  const recoveryDelivery=createStaffRecoveryDeliveryCandidate(recoveryDeliveryConfig);
   const recoveryDispatch=createStaffRecoveryDeliveryCandidate({pool:mailPool,keyId:mailKey,signingSecret:mailSigning,
    keyring,hashInviteeEmail:hashEmail,mode:'worker'});
   const queueRecovery=createStaffRecoveryIntentCandidate({...recoveryConfig,ttlSeconds:600,delivery:recoveryDelivery});
@@ -496,12 +506,19 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.equal(staffInbox[0].intentId,latestRequest.requestId);
   const stored=(await admin.query('SELECT state,envelope FROM sabora.staff_recovery_delivery_candidate WHERE intent_id=$1',[latestRequest.requestId])).rows[0];
   assert.deepEqual(stored,{state:'delivered',envelope:null});
-  const recoveryInput={...staffInbox[0],accessToken};
-  await assert.rejects(recoveryDelivery.consume({...recoveryInput,token:generateRootRecoveryToken()}),e=>e.code==='42501');
-  confirmedEmail='wrong@example.invalid';await assert.rejects(recoveryDelivery.consume(recoveryInput),e=>e.code==='42501');
+  const recoveryInput={...staffInbox[0]};
+  await assert.rejects(recoveryDelivery.exchange({...recoveryInput,token:generateRootRecoveryToken()}),e=>e.code==='42501');
+  assert.deepEqual([proofCalls,exchangeCalls],[0,0]);
   confirmedEmail=current.email;
-  assert.deepEqual(await recoveryDelivery.consume(recoveryInput),{outcome:'consumed',enrollmentId:id,version:4});
-  await assert.rejects(recoveryDelivery.consume(recoveryInput),e=>e.code==='42501');
+  const exchanged=await Promise.allSettled(Array.from({length:3},()=>recoveryDelivery.exchange(recoveryInput)));
+  assert.equal(exchanged.filter(x=>x.status==='fulfilled').length,1);
+  assert.equal(exchanged.filter(x=>x.status==='rejected'&&x.reason.code==='42501').length,2);
+  const restricted=exchanged.find(x=>x.status==='fulfilled').value;
+  assert.deepEqual(restricted,{outcome:'consumed',enrollmentId:id,version:4});
+  assert.equal(restricted.accessToken,accessToken);
+  assert.equal(JSON.stringify(restricted).includes(accessToken),false);
+  await assert.rejects(recoveryDelivery.exchange(recoveryInput),e=>e.code==='42501');
+  assert.deepEqual([proofCalls,exchangeCalls],[1,1]);
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[otherId])).rows[0].n,1);
   assert.equal((await admin.query('SELECT owner_user_id FROM sabora.admin_write_ownership WHERE singleton')).rows[0].owner_user_id,otherId);
   // Authorize recoveries for two ordinary active staff before the titular
@@ -546,7 +563,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    consumedRecoveryToken=job.token;
    return {outcome:'accepted',providerId:randomUUID()};
   })).outcome,'accepted');
-  assert.equal((await recoveryDelivery.consume({intentId:consumedByAdmin.requestId,token:consumedRecoveryToken,accessToken})).outcome,'consumed');
+  assert.equal((await recoveryDelivery.exchange({intentId:consumedByAdmin.requestId,token:consumedRecoveryToken})).outcome,'consumed');
   ({enrollmentSession,enrollmentUserId,accessToken,confirmedEmail}=oldEnrollmentContext);
   const staffRegistration=createStaffRecoveryRegistrationCandidate(recoveryConfig);
   const consumedSession=(await admin.query('SELECT consumed_session FROM sabora.staff_recovery_delivery_candidate WHERE intent_id=$1',[latestRequest.requestId])).rows[0].consumed_session;
@@ -640,7 +657,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const adminEnrollmentContext={enrollmentSession,enrollmentUserId,accessToken,confirmedEmail};
   enrollmentUserId=queuedTarget.subjectId;enrollmentSession=randomUUID();accessToken=mintEnrollment();
   confirmedEmail='ordinary-waiter@demo.invalid';
-  assert.equal((await recoveryDelivery.consume({intentId:freshIntent.intentId,token:freshRecoveryToken,accessToken})).outcome,'consumed');
+  assert.equal((await recoveryDelivery.exchange({intentId:freshIntent.intentId,token:freshRecoveryToken})).outcome,'consumed');
   const waiterReplacement=randomBytes(32).toString('base64url'),waiterHash=hashRootCredentialId(waiterReplacement);
   const waiterOldProviderId=randomUUID(),waiterNewProviderId=randomUUID();
   let waiterProviderIds=[waiterOldProviderId],uncertainCalls=0;
@@ -665,6 +682,23 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.equal(await rootKernel.allowsAccess(queuedTarget.subjectId,hashRootCredentialId(genesisCredential)),false);
   assert.deepEqual((await admin.query('SELECT completed_at,registration_receipt_hash,revocation_receipt_hash FROM sabora.staff_recovery_registration_candidate WHERE intent_id=$1',[freshIntent.intentId])).rows,
    [{completed_at:null,registration_receipt_hash:null,revocation_receipt_hash:null}]);
+  // A provider email mismatch consumes the right to exchange, not the
+  // invitation or membership. No further remote attempt after restart.
+  const wrongEmailIntent=await queueRecovery(freshAdminAuthority,{enrollmentId:consumedTarget.enrollmentId,requestId:randomUUID()});
+  let wrongEmailToken;
+  assert.equal((await recoveryDispatch.dispatch(wrongEmailIntent.intentId,async job=>{
+   wrongEmailToken=job.token;return {outcome:'accepted',providerId:randomUUID()};
+  })).outcome,'accepted');
+  enrollmentUserId=consumedTarget.subjectId;enrollmentSession=randomUUID();accessToken=mintEnrollment();
+  confirmedEmail='wrong@example.invalid';
+  const wrongEmailInput={intentId:wrongEmailIntent.intentId,token:wrongEmailToken};
+  const beforeWrong=[proofCalls,exchangeCalls];
+  await assert.rejects(recoveryDelivery.exchange(wrongEmailInput),e=>e.code==='42501');
+  confirmedEmail='recovery-kitchen@demo.invalid';
+  await assert.rejects(createStaffRecoveryDeliveryCandidate(recoveryDeliveryConfig).exchange(wrongEmailInput),e=>e.code==='42501');
+  assert.deepEqual([proofCalls,exchangeCalls],beforeWrong.map(n=>n+1));
+  assert.deepEqual((await admin.query('SELECT state,consumed_session FROM sabora.staff_recovery_delivery_candidate WHERE intent_id=$1',[wrongEmailIntent.intentId])).rows,
+   [{state:'exchanging',consumed_session:null}]);
   ({enrollmentSession,enrollmentUserId,accessToken,confirmedEmail}=adminEnrollmentContext);
   assert.equal((await admin.query('SELECT authorizer_credential_hash FROM sabora.staff_recovery_intent_candidate WHERE request_id=$1',[freshIntent.intentId])).rows[0].authorizer_credential_hash,staffNewHash);
   assert.deepEqual((await admin.query('SELECT auth_user_id,state,employee_code FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0],existing);
