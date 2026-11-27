@@ -7565,7 +7565,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        r.request().postDataJSON()?.targetStatus==='ready'),
       markReady.click()
      ]);
-     assert.equal(prepared.status(),200,await prepared.text());
+     assert.equal(prepared.status(),201,await prepared.text());
+     assert.equal((await prepared.json()).currentStatus,'ready');
      floorContext=await browser.newContext({serviceWorkers:'block'});
      const floor=await floorContext.newPage();
      await floor.goto(managementOrigin+'#resumen');
