@@ -41,24 +41,38 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   const pickupAttempts = useRef(new Map<string, {action: string; correlationId: string}>());
   const incidentAttempts = useRef(createIncidentOperationAttempts());
   const [workspace, setWorkspace] = useState<OrderWorkspace>('kitchen');
-  const [waiterCalls,setWaiterCalls]=useState<readonly PendingWaiterCall[]>([]);
+  const [waiterCalls,setWaiterCalls]=useState<readonly PendingWaiterCall[]|null>(null);
   const [callBusy,setCallBusy]=useState<string|null>(null);
   const [callError,setCallError]=useState<string|null>(null);
   const callReadEpoch=useRef(0);
   const callAttempts=useRef(new Map<string,string>());
   const loadWaiterCalls=useCallback(async()=>{
     const epoch=++callReadEpoch.current;
-    if(!gateway?.listWaiterCalls){setWaiterCalls([]);return;}
+    if(!gateway?.listWaiterCalls){setWaiterCalls(null);return;}
     try{
       const items=await gateway.listWaiterCalls();
       if(epoch===callReadEpoch.current){setWaiterCalls(items);setCallError(null);}
     }catch{
       if(epoch===callReadEpoch.current){
-        setWaiterCalls([]);setCallError('No se pudo comprobar la lista de llamadas; no se presentan datos obsoletos.');
+        setWaiterCalls(null);setCallError('No se pudo comprobar la lista de llamadas.');
       }
     }
   },[gateway]);
-  useEffect(()=>{void loadWaiterCalls();return()=>{callReadEpoch.current++;};},[loadWaiterCalls]);
+  useEffect(()=>{
+    const online=()=>{setCallError(null);void loadWaiterCalls();};
+    const offline=()=>{
+      callReadEpoch.current++;
+      setWaiterCalls(null);setCallError('Sin conexión. Se comprobarán las llamadas al reconectar.');
+    };
+    void loadWaiterCalls();
+    window.addEventListener('online',online);
+    window.addEventListener('offline',offline);
+    return()=>{
+      callReadEpoch.current++;
+      window.removeEventListener('online',online);
+      window.removeEventListener('offline',offline);
+    };
+  },[loadWaiterCalls]);
   const attendWaiterCall=async(callId:string)=>{
     if(!gateway?.attendWaiterCall||callBusy)return;
     const requestId=callAttempts.current.get(callId)??crypto.randomUUID();
@@ -68,7 +82,9 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
       await gateway.attendWaiterCall({callId,requestId});
       callAttempts.current.delete(callId);
       await loadWaiterCalls();
-    }catch{setCallError('La atención no se ha confirmado. Consulta el estado antes de reintentar.');}
+    }catch{
+      setWaiterCalls(null);setCallError('La atención no se ha confirmado. Consulta el estado antes de reintentar.');
+    }
     finally{setCallBusy(null);}
   };
   const [phase, setPhase] = useState<LoadState>(gateway ? 'loading' : 'idle');
@@ -329,7 +345,7 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
            Actualizar llamadas</button>
          </div>
          {callError?<p className="field-error" role="alert">{callError}</p>:null}
-         {waiterCalls.length?<>
+         {waiterCalls?.length?<>
           <p role="alert" className="field-error">Llamadas pendientes de atender: {waiterCalls.length}. Este aviso se mantiene visible hasta que un camarero registre su atención.</p>
           <div className="order-board" aria-live="polite">
            {waiterCalls.map(call=><article className="order-card" key={call.id}>
@@ -346,7 +362,8 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
             </header>
            </article>)}
           </div>
-         </>:<p role="status">No hay llamadas pendientes confirmadas.</p>}
+         </>:waiterCalls?<p role="status">No hay llamadas pendientes confirmadas.</p>:
+          !callError?<p role="status">Comprobando llamadas pendientes…</p>:null}
          <p className="honest-operational-note">Cada llamada permanece visible hasta marcarla como atendida. Los avisos se actualizan mediante eventos durables, sin sondeo periódico.</p>
         </section>:null}
 

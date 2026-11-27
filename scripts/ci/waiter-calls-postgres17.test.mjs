@@ -176,6 +176,13 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
   await manager.getByRole('link',{name:/Comandas/}).click();
   await manager.getByRole('button',{name:'Sala'}).click();
   await manager.getByRole('button',{name:'Marcar atendida'}).waitFor({timeout:15000});
+  await managementContext.setOffline(true);
+  await manager.getByText(/Sin conexión\. Se comprobarán las llamadas/).waitFor();
+  assert.equal(await manager.getByRole('button',{name:'Marcar atendida'}).count(),0);
+  assert.equal(await manager.getByText('No hay llamadas pendientes confirmadas.').count(),0);
+  assert.equal((await getStaff(waiterB)).json().items[0].id,call.id);
+  await managementContext.setOffline(false);
+  await manager.getByRole('button',{name:'Marcar atendida'}).waitFor({timeout:15000});
   await manager.getByRole('button',{name:'Marcar atendida'}).click();
   await manager.getByText('No hay llamadas pendientes confirmadas.').waitFor({timeout:15000});
   assert.equal((await getStaff(waiterB)).json().items.length,0);
