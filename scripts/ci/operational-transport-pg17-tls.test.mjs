@@ -233,7 +233,13 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
    let labDiagnostic='before_real_sql_start';
    const category=error=>{
     const message=String(error?.message??'');
-    if(message==='invalid_h6_sql_capabilities:function-surface:sabora_h6_provider_runtime')return message;
+    if(error?.code==='H6_SQL_CAPABILITIES_REJECTED'&&[
+     'function-surface:sabora_h6_provider_runtime','dispatch-without-stripe-surface',
+     'identity-policy','query:42501','query:42702'
+    ].includes(error.stage))return message;
+    if(error?.code==='42702')return 'disposable_sql_ambiguous_column';
+    if(error?.code==='42883')return 'disposable_sql_undefined_function';
+    if(error?.code==='42P01')return 'disposable_sql_undefined_relation';
     if(/^[a-z][a-z0-9_]{4,90}$/.test(message))return message;
     if(error?.code==='42501')return 'restricted_sql_permission_denied_in_'+deniedPoolSlot.replace(/[^a-z0-9]/gi,'_');
     if(error?.code==='28P01')return 'restricted_sql_password_mismatch';
@@ -281,6 +287,13 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
    assert.ok([401,403].includes(unauthorized.status));
    assert.equal(features.headers.get('cache-control'),'no-store');
    assert.deepEqual(await features.json(),{tableChange:true,waiterCalls:false});
+   // Check the actual seal using the unprivileged LOGIN's catalog queries.
+   // Even an unexpected grant on a correctly named routine blocks readiness.
+   const dispatchRoutine='sabora.request_h6_dispatch_without_stripe_candidate(uuid)';
+   await admin.query('GRANT EXECUTE ON FUNCTION '+dispatchRoutine+' TO anon');
+   try{assert.equal((await request('/ready')).status,503);}
+   finally{await admin.query('REVOKE EXECUTE ON FUNCTION '+dispatchRoutine+' FROM anon');}
+   assert.equal((await request('/ready')).status,200);
    // Removing a critical role while the API is listening must make the
    // real PostgreSQL preflight return 503, not fabricate readiness.
    const catalogLogin=slots['customer.catalogReaderPool'].login;

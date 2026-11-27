@@ -35,10 +35,10 @@ const WITHOUT_STRIPE_SURFACE_SQL=`SELECT count(*)::int=2 AND bool_and(
   AND NOT EXISTS (SELECT 1 FROM aclexplode(p.proacl) AS acl
    WHERE acl.privilege_type='EXECUTE' AND acl.grantee NOT IN (p.proowner,role.oid))
  ) AS sealed
- FROM pg_proc p CROSS JOIN pg_roles role
- WHERE role.rolname='sabora_h6_provider_runtime'
- AND p.oid IN (to_regprocedure('sabora.list_h6_rounds_without_stripe_candidate(integer)'),
-  to_regprocedure('sabora.request_h6_dispatch_without_stripe_candidate(uuid)'))`;
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace CROSS JOIN pg_roles role
+ WHERE role.rolname='sabora_h6_provider_runtime' AND n.nspname='sabora' AND p.pronargs=1
+ AND ((p.proname='list_h6_rounds_without_stripe_candidate' AND p.proargtypes[0]='pg_catalog.int4'::regtype)
+   OR (p.proname='request_h6_dispatch_without_stripe_candidate' AND p.proargtypes[0]='pg_catalog.uuid'::regtype))`;
 
 export const H6_IDENTITY_PREFLIGHT_SQL=`SELECT current_user AS effective_role,session_user AS login_role,
  r.rolcanlogin AS can_login,r.rolinherit AS inherit_role,r.rolsuper AS superuser,
