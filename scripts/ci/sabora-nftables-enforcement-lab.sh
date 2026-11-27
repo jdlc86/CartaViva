@@ -19,7 +19,7 @@ rtr="sbr-${suffix}-r"; ext="sbr-${suffix}-x"; web="sbr-${suffix}-w"
 app="sbr-${suffix}-a"; dst="sbr-${suffix}-d"
 policy="${RUNNER_TEMP}/sabora-network-policy-enforced-${suffix}.nft"
 receipt_dir="${RUNNER_TEMP}/sabora-network-enforcement"
-pids=(); created_namespaces=(); created_host_links=()
+pids=(); created_namespaces=(); created_host_links=(); listener_logs=()
 policy_created=false; receipt_owned=false
 [[ ! -e "$policy" && ! -e "$receipt_dir" ]] || {
  echo 'sabora_nft_lab_stop:output_preexisted' >&2; exit 1;
@@ -29,6 +29,7 @@ cleanup(){
  trap - EXIT
  set +e
  for pid in "${pids[@]:-}"; do kill "$pid" >/dev/null 2>&1 || true; done
+ for log in "${listener_logs[@]:-}"; do [[ -z "$log" ]] || rm -f -- "$log"; done
  for namespace in "${created_namespaces[@]:-}"; do
   ip netns delete "$namespace" >/dev/null 2>&1 || true
  done
@@ -99,53 +100,54 @@ ip -n "$dst" -6 route add 2001:db8:241::/64 via 2001:db8:113::1 dev dd0
 ip netns exec "$rtr" sysctl -qw net.ipv4.ip_forward=1
 ip netns exec "$rtr" sysctl -qw net.ipv6.conf.all.forwarding=1
 
+# Keep startup output private to this disposable runner, and preserve it
+# on failure in the Actions log. Start one endpoint at a time so readiness
+# cannot be confused with a different listener in the same namespace.
 serve(){
- local namespace="$1" address="$2" port="$3"
+ local label="$1" namespace="$2" address="$3" port="$4" url="$5"
+ local log
+ log="$(mktemp "${RUNNER_TEMP}/sabora-listener-${suffix}-${label}.XXXXXX")"
+ listener_logs+=("$log")
  if [[ "$address" == *:* ]]; then
   ip netns exec "$namespace" "$SABORA_NODE_BIN" -e '
 const http=require("node:http");
 const server=http.createServer((_request,response)=>{response.writeHead(200);response.end("ok");});
 server.listen({host:process.argv[1],port:Number(process.argv[2]),ipv6Only:true});
-' "$address" "$port" >/dev/null 2>&1 &
+' "$address" "$port" >"$log" 2>&1 &
  else
-  ip netns exec "$namespace" python3 -m http.server "$port" --bind "$address" >/dev/null 2>&1 &
+  ip netns exec "$namespace" python3 -u -m http.server "$port" --bind "$address" >"$log" 2>&1 &
  fi
- pids+=("$!")
+ local pid=$!
+ pids+=("$pid")
+ for attempt in {1..25}; do
+  if ! kill -0 "$pid" 2>/dev/null; then break; fi
+  if request "$namespace" "$url"; then return 0; fi
+  sleep 0.2
+ done
+ echo "sabora_nft_lab_stop:fixture_listener_unavailable:${label}" >&2
+ if ! kill -0 "$pid" 2>/dev/null; then
+  local result=0
+  wait "$pid" || result=$?
+  echo "sabora_nft_lab_listener_exit:${label}:${result}" >&2
+ fi
+ cat -- "$log" >&2
+ ip netns exec "$namespace" ss -lnt >&2 || true
+ exit 1
 }
-serve "$web" 172.28.240.2 8443
-serve "$web" 172.28.240.2 9443
-serve "$ext" 198.51.100.10 9443
-serve "$dst" 203.0.113.10 443
-serve "$dst" 203.0.113.10 8443
-serve "$dst" 203.0.113.30 443
-serve "$dst" 2001:db8:113::10 7443
 
 request(){
  local namespace="$1"; shift
  ip netns exec "$namespace" curl --noproxy '*' --silent --show-error --fail \
   --connect-timeout 1 --max-time 2 "$@" >/dev/null 2>&1
 }
-# A server that has only been forked is not necessarily listening yet.
-# Prove each exact fixture endpoint locally before testing cross-namespace
-# routing and then the strict positive/negative firewall invariants.
-wait_listener(){
- local label="$1" namespace="$2" url="$3"
- for attempt in {1..25}; do
-  if ip netns exec "$namespace" curl --noproxy '*' --silent --show-error --fail \
-    --connect-timeout 1 --max-time 2 "$url" >/dev/null 2>&1; then return 0; fi
-  sleep 0.2
- done
- echo "sabora_nft_lab_stop:fixture_listener_unavailable:${label}" >&2
- ip netns exec "$namespace" ss -lnt >&2 || true
- exit 1
-}
-wait_listener web_ingress "$web" http://172.28.240.2:8443/
-wait_listener web_wrong_port "$web" http://172.28.240.2:9443/
-wait_listener external_reverse "$ext" http://198.51.100.10:9443/
-wait_listener dest_allowed "$dst" http://203.0.113.10:443/
-wait_listener dest_wrong_port "$dst" http://203.0.113.10:8443/
-wait_listener dest_wrong_address "$dst" http://203.0.113.30:443/
-wait_listener dest_ipv6 "$dst" http://[2001:db8:113::10]:7443/
+
+serve web_ingress "$web" 172.28.240.2 8443 http://172.28.240.2:8443/
+serve web_wrong_port "$web" 172.28.240.2 9443 http://172.28.240.2:9443/
+serve external_reverse "$ext" 198.51.100.10 9443 http://198.51.100.10:9443/
+serve dest_allowed "$dst" 203.0.113.10 443 http://203.0.113.10:443/
+serve dest_wrong_port "$dst" 203.0.113.10 8443 http://203.0.113.10:8443/
+serve dest_wrong_address "$dst" 203.0.113.30 443 http://203.0.113.30:443/
+serve dest_ipv6 "$dst" 2001:db8:113::10 7443 'http://[2001:db8:113::10]:7443/'
 
 # A negative firewall assertion is *never* treated as flaky. Readiness
 # retries apply only to connections that MUST work without the filter.
