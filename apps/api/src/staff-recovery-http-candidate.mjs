@@ -1,5 +1,10 @@
 // Candidate-only recovery HTTP boundary, separate from enrollment and login.
 import {createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
+import {createStaffRecoveryDeliveryCandidate} from './staff-recovery-delivery-candidate.mjs';
+import {createStaffInvitationClassificationCandidate,createStaffRecoveryIntentCandidate}
+ from './staff-invitation-classification-candidate.mjs';
+import {createStaffRecoveryRegistrationCandidate,createStaffRecoveryServiceCandidate}
+ from './staff-recovery-registration-candidate.mjs';
 
 export const STAFF_RECOVERY_PATH='/api/v1/staff/recovery';
 const COOKIE='__Host-sabora-staff-recovery';
@@ -135,5 +140,26 @@ export function registerStaffRecoveryAdminHttpCandidate(app,{forRoles,classify,a
    return reply.code(result.repeated?200:201).send({outcome:'queued',enrollmentId:result.enrollmentId,
     requestId:result.intentId,version:result.version,expiresAt:result.expiresAt,repeated:result.repeated});
   }catch(error){return fail(error,reply);}
+ });
+}
+
+export function createStaffRecoveryHttpComposition({control,keyring,hashInviteeEmail,origin,
+ issuer,getTrustedKeys,providerFor,ttlSeconds,httpSecret,ticketSecret}={}){
+ if(typeof providerFor!=='function'||typeof getTrustedKeys!=='function'||
+  typeof issuer!=='string'||!(httpSecret instanceof Uint8Array)||httpSecret.byteLength!==32||
+  !(ticketSecret instanceof Uint8Array)||ticketSecret.byteLength!==32||
+  Buffer.from(httpSecret).equals(ticketSecret))throw Error('invalid_staff_recovery_http_composition');
+ const delivery=createStaffRecoveryDeliveryCandidate({...control,keyring,hashInviteeEmail,
+  issuer,getTrustedKeys,recoveryProviderFor:providerFor});
+ const classify=createStaffInvitationClassificationCandidate({...control,hashInviteeEmail});
+ const authorize=createStaffRecoveryIntentCandidate({...control,ttlSeconds,delivery});
+ const registration=createStaffRecoveryRegistrationCandidate(control);
+ const service=createStaffRecoveryServiceCandidate({delivery,registration,issuer,getTrustedKeys,
+  managementOrigin:origin,ticketSecret});
+ return Object.freeze({
+  register(app,{forRoles}){
+   registerStaffRecoveryHttpCandidate(app,{origin,secret:httpSecret,service});
+   registerStaffRecoveryAdminHttpCandidate(app,{forRoles,classify,authorize});
+  }
  });
 }

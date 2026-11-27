@@ -122,7 +122,7 @@ export function validateOperationalActivationManifest(manifest){
     (manifest.listener.host==='0.0.0.0'&&manifest.listener.exposure!=='container_private')||
     (manifest.listener.host==='127.0.0.1'&&manifest.listener.exposure!=='loopback'))throw invalid();
  if(!exactKeys(manifest.features,['ownership','communications','waiterCalls'],
-   ['staffDirectory','staffRevocation'])||
+   ['staffDirectory','staffRevocation','groupedDispatchWithoutStripe'])||
     Object.values(manifest.features).some(value=>typeof value!=='boolean'))throw invalid();
  if(!exactKeys(manifest.activationEvidence,PILOT_ACTIVATION_REQUIREMENTS)||
     Object.values(manifest.activationEvidence).some(value=>typeof value!=='boolean'))throw invalid();
@@ -395,7 +395,8 @@ export async function materializeOperationalM3Options({manifest,Pool,resolveSecr
     keyId:config.signing.keyId,secret:capabilitySecret,
     databaseRole:login('waiterCalls.staffPool')});
   }
-  options.enableDeferredDispatch=false;
+  options.dispatchWithoutStripe=config.features.groupedDispatchWithoutStripe===true;
+  options.enableDeferredDispatch=options.dispatchWithoutStripe;
   options.requireTrustedKeysOnReadiness=true;
   options.observability=observability;
   options.observeFailure=observeFailure;

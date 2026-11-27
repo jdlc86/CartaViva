@@ -370,4 +370,24 @@ assert.equal(sql(login,"SELECT count(*) FROM sabora.staff_members WHERE user_id=
 console.log('sabora_s51_real_nonsuperuser_staff_runtime_preflight_verified');
 JS
 echo 'sabora_s51_nonsuperuser_atomic_ledger_verified'
+# S55 applies the candidate delta only to this disposable copy after the
+# exact genesis ledger and the restricted runtime fixtures were verified.
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ < docs/security/sql-candidates/h6_grouped_dispatch_without_stripe_pg17.sql
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc "
+ SELECT NOT pg_has_role(current_user,'sabora_h6_fn_owner','SET')
+ AND NOT has_schema_privilege('sabora_h6_fn_owner','sabora','CREATE')
+ AND count(*)=2 AND bool_and(p.prosecdef
+  AND pg_get_userbyid(p.proowner)='sabora_h6_fn_owner'
+  AND has_function_privilege('sabora_h6_provider_runtime',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('service_role',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('sabora_h6_customer_runtime',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE'))
+ FROM pg_proc p WHERE p.oid IN (
+  'sabora.list_h6_rounds_without_stripe_candidate(integer)'::regprocedure,
+  'sabora.request_h6_dispatch_without_stripe_candidate(uuid)'::regprocedure
+ )")" == t ]] || exit 1
+echo 'sabora_s55_dispatch_delta_nonsuperuser_verified'
 echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"

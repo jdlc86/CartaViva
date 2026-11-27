@@ -185,7 +185,7 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
     listener:{host:'0.0.0.0',port:4100,exposure:'container_private'},
     origins:{client:'https://sabora.allaiso.com:8443',management:'https://gestion-sabora.allaiso.com:8443'},
     auth:{issuer,connectHost:'sabora-egress',connectPort:authGatewayPort},
-    features:{ownership:false,communications:false,waiterCalls:false},
+    features:{ownership:false,communications:false,waiterCalls:false,groupedDispatchWithoutStripe:true},
     network:{allowedTlsHosts:[actorCertificate,'project.supabase.co'],
      egressGatewayHost:'sabora-egress'},
     database:{slots,notifiers:{
@@ -233,14 +233,14 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
    let labDiagnostic='before_real_sql_start';
    const category=error=>{
     const message=String(error?.message??'');
+    if(message==='invalid_h6_sql_capabilities:function-surface:sabora_h6_provider_runtime')return message;
     if(/^[a-z][a-z0-9_]{4,90}$/.test(message))return message;
     if(error?.code==='42501')return 'restricted_sql_permission_denied_in_'+deniedPoolSlot.replace(/[^a-z0-9]/gi,'_');
     if(error?.code==='28P01')return 'restricted_sql_password_mismatch';
     if(error?.code==='28000')return 'restricted_sql_role_invalid';
     return 'non_categorized_dependency_failure';
    };
-   try{
-    apiRuntime=await startOperationalServerFromFiles({
+   const start=()=>startOperationalServerFromFiles({
      env:{NODE_ENV:'production',SABORA_OPERATIONAL_MANIFEST_FILE:manifestFile,
       SABORA_OPERATIONAL_SECRETS_DIR:secretsDir,
       SABORA_OPERATIONAL_EGRESS_POLICY_FILE:policyFile},
@@ -257,6 +257,13 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
         }catch(error){labDiagnostic=category(error);throw error;}
        }})
     });
+   await assert.rejects(start);
+   assert.equal(labDiagnostic,'invalid_h6_sql_capabilities:function-surface:sabora_h6_provider_runtime',
+    'a Stripe-disabled dispatch opt-in must fail before the candidate SQL delta exists');
+   try{
+    await admin.query(await readFile(new URL(
+     '../../docs/security/sql-candidates/h6_grouped_dispatch_without_stripe_pg17.sql',import.meta.url),'utf8'));
+    apiRuntime=await start();
    }catch(error){
     // No raw driver errors, account identifiers, URLs or SQL may be logged.
     assert.fail('ci_operational_bootstrap_stage:'+labDiagnostic);
@@ -301,6 +308,8 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
    assert.equal(listenerLossStatus,503);
   }finally{
    await apiRuntime?.close().catch(()=>{});
+   await admin.query(`DROP FUNCTION IF EXISTS sabora.list_h6_rounds_without_stripe_candidate(integer),
+    sabora.request_h6_dispatch_without_stripe_candidate(uuid)`);
    if(keyInserted)
     await admin.query('DELETE FROM sabora.order_operation_signing_keys WHERE key_id=$1',
      [keyId]).catch(()=>{});

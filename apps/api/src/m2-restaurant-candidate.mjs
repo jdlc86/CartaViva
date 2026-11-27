@@ -52,6 +52,7 @@ import {createH6CustomerPaymentFlow} from './h6-customer-payment-flow.mjs';
 import {createH6PaymentOrchestrator} from './h6-payment-orchestrator.mjs';
 import {registerH6StripeWebhookHttp} from './h6-stripe-webhook-http.mjs';
 import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,LIST_SCHEDULABLE_H6_SQL,
+ LIST_H6_WITHOUT_STRIPE_SQL,REQUEST_H6_WITHOUT_STRIPE_SQL,
  REQUEST_DUE_CAPTURE_H6_SQL,REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,
  RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,RECORD_REFUND_H6_SQL,
  REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL}
@@ -115,6 +116,7 @@ const staffGuard=forRoles=>roles=>{
 // reads environment variables, creates LOGINs or imports server.mjs.
 export async function createM2RestaurantCandidate({customer,tableChange,staff,h4,h6,
  management=null,waiterCalls=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,
+ dispatchWithoutStripe=false,
  observeFailure=()=>{},observability=null,requireTrustedKeysOnReadiness=false}={}){
  const app=Fastify({logger:false,trustProxy:false});
  // Telemetry must never receive arbitrary provider/SQL exception details.
@@ -126,7 +128,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    operation:'check',outcome,durationMs:performance.now()-started});}catch{}
  };
  let tableNotifier,h6Notifier,scheduler,announcementStream,rootRecovery,closed=false,
-  operational=false,notificationDependencyLost=false;
+  operational=false,notificationDependencyLost=false,dispatchSchedulerFailed=false;
  const closeServices=async()=>{
   if(closed)return;closed=true;operational=false;
   await Promise.allSettled([scheduler?.close(),announcementStream?.close(),tableNotifier?.close(),h6Notifier?.close(),rootRecovery?.close()]);
@@ -158,6 +160,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
      // A payment-disabled production runtime stays webhook-disabled.
      (h6.webhook!=null&&typeof h6.stripe.retrieveCapturableEvidence!=='function')||
      typeof observeFailure!=='function'||typeof enableDeferredDispatch!=='boolean'||
+     typeof dispatchWithoutStripe!=='boolean'||(dispatchWithoutStripe&&(!enableDeferredDispatch||h6.webhook!=null))||
      (management!==null&&(!management||typeof management!=='object'||
        typeof management.expectedTablesLogin!=='string'||
        typeof management.expectedCatalogLogin!=='string'||
@@ -196,7 +199,10 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    if(!(passkey.secret instanceof Uint8Array)||passkey.secret.byteLength<32||
     !['options','verify','user','logout'].every(method=>typeof passkey.provider?.[method]==='function'))
     throw Error('invalid_m2_restaurant_candidate');
-   rootRecovery=await createVerifiedRootRecoveryCandidate({...staff.rootRecovery,observeFailure});
+   const staffRecovery=staff.rootRecovery.staffRecovery;
+   rootRecovery=await createVerifiedRootRecoveryCandidate({...staff.rootRecovery,observeFailure,
+    staffRecovery:staffRecovery==null?null:{...staffRecovery,issuer:staff.issuer,getTrustedKeys:staff.getTrustedKeys}
+   });
    staffPasskey=createStaffPasskeySession({...passkey,issuer:staff.issuer,
     getTrustedKeys:staff.getTrustedKeys,rootAccess:rootRecovery.allowsAccess});
   }
@@ -251,7 +257,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    await assertH6RuntimeIdentity({pool:h6.customerPool,
     expectedLogin:h6.expectedCustomerLogin,capability:'sabora_h6_customer_runtime'});
    await assertH6RuntimeIdentity({pool:h6.providerPool,
-    expectedLogin:h6.expectedProviderLogin,capability:'sabora_h6_provider_runtime'});
+    expectedLogin:h6.expectedProviderLogin,capability:'sabora_h6_provider_runtime',dispatchWithoutStripe});
    await assertH6RuntimeIdentity({pool:h6.operationsPool,
     expectedLogin:h6.expectedOperationsLogin,capability:'sabora_h6_operations_runtime'});
    await assertM2AccountCloseCapability({pool:h6.closePool,
@@ -301,7 +307,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
     role:verifiedStaff.role})
   });
   const providerTx=createRoleScopedPostgresTransaction({pool:h6.providerPool,
-   role:'sabora_h6_provider_runtime',allowedSql:providerSql});
+   role:'sabora_h6_provider_runtime',allowedSql:dispatchWithoutStripe?
+    new Set([...providerSql,LIST_H6_WITHOUT_STRIPE_SQL,REQUEST_H6_WITHOUT_STRIPE_SQL]):providerSql});
   const customerEconomicTx=createRoleScopedPostgresTransaction({pool:h6.customerPool,
    role:'sabora_h6_customer_runtime',allowedSql:customerEconomicSql});
   const operationsTx=createRoleScopedPostgresTransaction({pool:h6.operationsPool,
@@ -357,10 +364,12 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    });
    registerStaffRevocationHttp(app,{forRoles:oneGuard,coordinator:staffRevocation});
   }
+  rootRecovery?.staffRecoveryHttp?.register(app,{forRoles});
   staffPasskey?.register(app,{forRoles,...(rootRecovery?{rootSecurity:rootRecovery.security}:{}),features:{
    tableChange:true,waiterCalls:Boolean(waiterCalls),management:Boolean(management),
    ownership:Boolean(management?.ownership),staffDirectory:Boolean(staffDirectory),
-   staffRevocation:Boolean(staffRevocation),...(rootRecovery?{rootSecurity:true}:{})
+   staffRevocation:Boolean(staffRevocation),...(rootRecovery?{rootSecurity:true}:{}),
+   ...(rootRecovery?.staffRecoveryHttp?{staffRecovery:true}:{})
   }});
   const h4Operations=createOrderOperationsCoordinator({withTransaction:h4Tx,
    repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
@@ -450,9 +459,13 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
 
   if(enableDeferredDispatch){
    scheduler=createH6DeferredDispatchScheduler({
-    listSchedulable:options=>provider.listSchedulable(options),
-    dispatchDue:({orderId})=>payments.captureOrDispatch({orderId,serverDue:true}),
-    subscribeCommitted:h6Notifier.subscribe,onFailure:observeFailure
+    listSchedulable:options=>provider.listSchedulable({...options,withoutStripe:dispatchWithoutStripe}),
+    dispatchDue:dispatchWithoutStripe?(input=>provider.requestDispatchWithoutStripe(input)):
+     (({orderId})=>payments.captureOrDispatch({orderId,serverDue:true})),
+    subscribeCommitted:h6Notifier.subscribe,onFailure:error=>{
+     if(dispatchWithoutStripe){dispatchSchedulerFailed=true;operational=false;reportDependencyFailure('database');}
+     observeFailure(error);
+    }
    });
    await scheduler.start();
   }
@@ -483,7 +496,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   });
   app.addHook('onClose',closeServices);
   await rootRecovery?.start();
-  await app.ready();operational=!notificationDependencyLost;
+  await app.ready();operational=!notificationDependencyLost&&!dispatchSchedulerFailed;
   let closePromise=null;
   return Object.freeze({app,economicService,mode:management?'opt-in-h3-h6-m3-candidate':'opt-in-h3-h6-m2-candidate',
    close(){if(!closePromise)closePromise=app.close();return closePromise;},

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {readFile} from 'node:fs/promises';
 import {dirname,resolve} from 'node:path';
 import {pathToFileURL as modulePathToFileURL} from 'node:url';
 import {createHash,randomBytes,randomUUID,createHmac,generateKeyPairSync,sign} from 'node:crypto';
@@ -25,6 +26,7 @@ import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capabil
 import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
 import {assertH6RuntimeIdentity} from '../../apps/api/src/h6-sql-preflight.mjs';
 import {createH6ProviderRepository,LIST_SCHEDULABLE_H6_SQL,REQUEST_DUE_CAPTURE_H6_SQL,
+ LIST_H6_WITHOUT_STRIPE_SQL,REQUEST_H6_WITHOUT_STRIPE_SQL,
  RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
  RECORD_CAPTURE_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,REQUEST_REFUND_H6_SQL,
  RECORD_REFUND_H6_SQL} from '../../apps/api/src/h6-provider-repository.mjs';
@@ -7135,6 +7137,13 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // grouping_deadline, forced first_confirmed_at, virtual clock or test HTTP
   // route. The same real client PWA confirms first/grouped/late orders.
   if(process.env.SABORA_CI_F21_FULL_WINDOW==='true'){
+   await admin.query(await readFile(new URL(
+    '../../docs/security/sql-candidates/h6_grouped_dispatch_without_stripe_pg17.sql',import.meta.url),'utf8'));
+   const providerWithoutStripe=createH6ProviderRepository({
+    withTransaction:createRoleScopedPostgresTransaction({pool:pools[7],
+     role:'sabora_h6_provider_runtime',allowedSql:new Set([
+      LIST_H6_WITHOUT_STRIPE_SQL,REQUEST_H6_WITHOUT_STRIPE_SQL])})
+   });
    const {pathToFileURL,fileURLToPath}=await import('node:url');
    const ciRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
    const {createServer}=await import(pathToFileURL(ciRequire.resolve('vite')).href);
@@ -7247,6 +7256,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(catalogRefresh.status(),200,await catalogRefresh.text());
     const revisionReadBody=await revisionRead.json();
     assert.equal(revisionReadBody.state,'invalidated');
+    assert.ok(!(await providerWithoutStripe.listSchedulable({withoutStripe:true}))
+     .some(entry=>entry.orderId===first.orderId),
+     'an invalidated revision must drop out of the durable schedule');
     assert.equal(revisionReadBody.lines[0].itemName,'Plato de integración');
     assert.equal(revisionReadBody.lines[0].affected,true);
     await firstUi.page.getByRole('combobox',
@@ -7390,14 +7402,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      }
     });
     notifier=liveListener;
-    // This F21 scheduler has a cash-only dispatch callback and no Stripe
-    // capture transport. The sealed provider listing is GLOBAL: an earlier
-    // pay_now fixture may become due during the real five-minute window.
-    // Keep the real provider query but scope this test-only worker to the
-    // F21 account. A cash round on that account returning 'capture' still
-    // fails below; no production scheduler, SQL or deadline is changed.
+    // Use the same SQL boundary as the distributable Stripe-disabled worker.
+    // Scope the acceptance worker to this account so prior fixtures stay
+    // available for the remaining H6 regression cases.
     const listNaturalWindowSchedulable=async opts=>{
-     const entries=await h6Provider.listSchedulable(opts);
+     const entries=await providerWithoutStripe.listSchedulable({...opts,withoutStripe:true});
      if(entries.length===0)return entries;
      const ownRows=(await admin.query(`SELECT order_id FROM sabora.order_rounds
       WHERE account_id=$1 AND order_id=ANY($2::uuid[])`,
@@ -7408,12 +7417,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const createScheduler=()=>createH6DeferredDispatchScheduler({
      listSchedulable:listNaturalWindowSchedulable,
      dispatchDue:async({orderId})=>{
-      const result=await h6Provider.requestDueCapture({orderId});
-      assert.equal(result.action,'dispatch',
-       'natural-window cash rounds cannot initiate an unobserved Stripe capture');
-      dispatchedIds.add(orderId);
-      dispatchWaiters.get(orderId)?.();
-      return result;
+      const dispatched=await providerWithoutStripe.requestDispatchWithoutStripe({orderId});
+      if(dispatched){
+       dispatchedIds.add(orderId);
+       dispatchWaiters.get(orderId)?.();
+      }
+      return dispatched;
      },
      subscribeCommitted:notifier.subscribe,
      onFailure:error=>naturalErrors.push('dispatch:'+error.message)
@@ -7421,6 +7430,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     beforeRestart=createScheduler();
     schedulers.push(beforeRestart);
     await beforeRestart.start();
+    assert.equal(await providerWithoutStripe.requestDispatchWithoutStripe({orderId:grouped.orderId}),false,
+     'the SQL fence must reject a direct request before the grouping deadline');
     assert.equal(await eventCount(),1,
      'only the explicitly corrected revision may ship before the natural deadline');
     assert.ok(Number.isSafeInteger(listenerBackend)&&listenerBackend>0);
@@ -7461,6 +7472,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.ok(historic.every(row=>row.state==='dispatch_requested'
      &&row.dispatch_state==='requested'&&row.account_id===first.accountId));
     assert.equal(await eventCount(),2,'two workers may not duplicate dispatch events');
+    assert.equal(await providerWithoutStripe.requestDispatchWithoutStripe({orderId:grouped.orderId}),false,
+     'replaying an already requested dispatch must not emit another event');
     await Promise.all([a.wake(),b.wake()]);
     assert.equal(await eventCount(),2);
     // A genuinely late checkout gets an already-due deadline and is
@@ -7563,6 +7576,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     if(notifier)await notifier.close();
     if(browser)await browser.close();
     await clientVite.close();
+    await admin.query(`DROP FUNCTION sabora.list_h6_rounds_without_stripe_candidate(integer),
+     sabora.request_h6_dispatch_without_stripe_candidate(uuid)`);
    }
   }
   }finally{await http.close();}

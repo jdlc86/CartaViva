@@ -8,8 +8,8 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createStaffRootSecurityCandidate} from '../../apps/api/src/staff-root-security-candidate.mjs';
-import {createStaffRecoveryRegistrationCandidate,createStaffRecoveryCeremonyCandidate,createStaffRecoveryServiceCandidate,createStaffRecoveryReceiptReconcilerCandidate} from '../../apps/api/src/staff-recovery-registration-candidate.mjs';
-import {registerStaffRecoveryHttpCandidate,STAFF_RECOVERY_PATH,registerStaffRecoveryAdminHttpCandidate,STAFF_RECOVERY_ADMIN_PATH} from '../../apps/api/src/staff-recovery-http-candidate.mjs';
+import {createStaffRecoveryRegistrationCandidate,createStaffRecoveryCeremonyCandidate,createStaffRecoveryReceiptReconcilerCandidate} from '../../apps/api/src/staff-recovery-registration-candidate.mjs';
+import {createStaffRecoveryHttpComposition,STAFF_RECOVERY_PATH,STAFF_RECOVERY_ADMIN_PATH} from '../../apps/api/src/staff-recovery-http-candidate.mjs';
 import {createStaffRecoveryDeliveryCandidate} from '../../apps/api/src/staff-recovery-delivery-candidate.mjs';
 import {createStaffInvitationClassificationCandidate,createStaffRecoveryIntentCandidate} from '../../apps/api/src/staff-invitation-classification-candidate.mjs';
 import {registerRootRecoveryFactorHttpCandidate,ROOT_RECOVERY_PATH} from '../../apps/api/src/staff-root-recovery-http-candidate.mjs';
@@ -203,11 +203,10 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
  registerOwnershipGovernanceHttp(app,{forRoles,repository:ownership});
  passkey.register(app,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,ownership:true,staffFirstAdmin:true,rootSecurity:true,staffRecovery:true},rootBootstrap:bootstrap,rootSecurity:createStaffRootSecurityCandidate({kernel:rootKernel,mail:rootMail})});
  registerRootRecoveryFactorHttpCandidate(app,{origin,kernel:rootKernel,mail:rootMail,getRootUserId:async()=>rootId});
- let recoveryHttpService,recoveryAdminClassify,recoveryAdminAuthorize;
- registerStaffRecoveryAdminHttpCandidate(app,{forRoles,classify:(ctx,input)=>recoveryAdminClassify(ctx,input),authorize:(ctx,input)=>recoveryAdminAuthorize(ctx,input)});
- registerStaffRecoveryHttpCandidate(app,{origin,secret:randomBytes(32),service:{
-  exchange:input=>recoveryHttpService.exchange(input),options:input=>recoveryHttpService.options(input),register:input=>recoveryHttpService.register(input)
- }});
+ let recoveryProviderFor;
+ createStaffRecoveryHttpComposition({control:recoveryConfig,keyring,hashInviteeEmail:hashEmail,
+  origin,issuer,getTrustedKeys:async()=>[jwk],providerFor:scope=>recoveryProviderFor(scope),
+  ttlSeconds:600,httpSecret:randomBytes(32),ticketSecret:randomBytes(32)}).register(app,{forRoles});
  let preview,browser,recoveryWorker;
  const auth='/api/v1/staff/auth';
  const post=(path,body,cookie)=>app.inject({method:'POST',url:auth+path,payload:body,
@@ -419,7 +418,6 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const ordinaryWaiter=await ordinary(inviteBody('ordinary-waiter@demo.invalid','waiter'),adminHeaders);
   assert.equal(ordinaryWaiter.statusCode,201,ordinaryWaiter.body);
   const classify=createStaffInvitationClassificationCandidate({...recoveryConfig,hashInviteeEmail:hashEmail});
-  recoveryAdminClassify=classify;
   const recoveryAdminRequest=(payload,headers=rootHeaders)=>app.inject({method:'POST',url:STAFF_RECOVERY_ADMIN_PATH,headers,payload});
   assert.equal((await recoveryAdminRequest({action:'classify',email:'new-person@demo.invalid'},rootHeaders)).statusCode,403);
   assert.deepEqual((await recoveryAdminRequest({action:'classify',email:'new-person@demo.invalid'},adminHeaders)).json(),{outcome:'not_recoverable'});
@@ -484,11 +482,11 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
       email_confirmed_at:new Date(Date.now()-1000).toISOString()}:null,
     };
    }};
+  recoveryProviderFor=recoveryDeliveryConfig.recoveryProviderFor;
   const recoveryDelivery=createStaffRecoveryDeliveryCandidate(recoveryDeliveryConfig);
   const recoveryDispatch=createStaffRecoveryDeliveryCandidate({pool:mailPool,keyId:mailKey,signingSecret:mailSigning,
    keyring,hashInviteeEmail:hashEmail,mode:'worker'});
   const queueRecovery=createStaffRecoveryIntentCandidate({...recoveryConfig,ttlSeconds:600,delivery:recoveryDelivery});
-  recoveryAdminAuthorize=queueRecovery;
   const staleRequest={enrollmentId:id,requestId:randomUUID()};
   await queueRecovery(rootAuthority,staleRequest);
   const authorizeFromPanel=async(page,email)=>{
@@ -819,8 +817,6 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    },
    logoutAll:async token=>{assert.equal(token,accessToken);kitchenLogouts++;return true;}
   };
-  recoveryHttpService=createStaffRecoveryServiceCandidate({delivery:recoveryDelivery,registration:staffRegistration,
-   issuer,getTrustedKeys:async()=>[jwk],managementOrigin:origin,ticketSecret:randomBytes(32)});
   const publicHeaders={host:new URL(origin).host,origin};
   const publicRecovery=(suffix,payload,headers=publicHeaders)=>app.inject({method:'POST',url:STAFF_RECOVERY_PATH+suffix,headers,payload});
   assert.equal((await publicRecovery('/options',{})).statusCode,403);

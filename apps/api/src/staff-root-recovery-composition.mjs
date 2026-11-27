@@ -5,6 +5,7 @@ import {createRootRecoveryMailCandidate,ROOT_MAIL_LOGIN} from './staff-root-reco
 import {createRootRecoveryResendSender,createStaffRecoveryResendSender} from './staff-invitation-resend.mjs';
 import {createStaffRecoveryDeliveryCandidate} from './staff-recovery-delivery-candidate.mjs';
 import {createStaffRootSecurityCandidate} from './staff-root-security-candidate.mjs';
+import {createStaffRecoveryHttpComposition} from './staff-recovery-http-candidate.mjs';
 
 const OWNER='sabora_root_recovery_fn_owner';
 const MAIL=['sabora.root_recovery_mail_candidate(text,uuid,uuid,text,text,bigint,bigint,text)',OWNER];
@@ -31,13 +32,14 @@ const TRIGGERS=[
 ];
 
 export async function createVerifiedRootRecoveryCandidate({control,worker,factorSecret,keyring,rotationDays,
- getRootUserId,resend,hashInviteeEmail,observeFailure=()=>{}}={}){
+ getRootUserId,resend,hashInviteeEmail,staffRecovery=null,observeFailure=()=>{}}={}){
  if(typeof keyring?.active!=='function'||typeof keyring?.resolveKey!=='function'||
   typeof getRootUserId!=='function'||typeof hashInviteeEmail!=='function'||typeof observeFailure!=='function'||!control?.pool||!worker?.pool||
   control.expectedLogin!==ROOT_RECOVERY_LOGIN||worker.expectedLogin!==ROOT_MAIL_LOGIN||
   control.pool===worker.pool||control.keyId===worker.keyId)
   throw Error('invalid_root_recovery_composition');
- const keys=[control.signingSecret,worker.signingSecret,factorSecret];
+ const keys=[control.signingSecret,worker.signingSecret,factorSecret,
+  ...(staffRecovery?[staffRecovery.httpSecret,staffRecovery.ticketSecret]:[])];
  const custodyKey=key=>{
   if(!Buffer.isBuffer(key)||key.length!==32||keys.some(other=>timingSafeEqual(key,other)))
    throw Error('invalid_root_recovery_custody_key');
@@ -59,6 +61,9 @@ export async function createVerifiedRootRecoveryCandidate({control,worker,factor
  const staffTransport=createStaffRecoveryDeliveryCandidate({...worker,mode:'worker',keyring:custody,hashInviteeEmail});
  const sendStaff=createStaffRecoveryResendSender(resend);
  const security=createStaffRootSecurityCandidate({kernel,mail,rotationDays});
+ const staffRecoveryHttp=staffRecovery?createStaffRecoveryHttpComposition({
+  ...staffRecovery,origin:resend.managementOrigin,control,keyring:custody,hashInviteeEmail
+ }):null;
  const readiness=()=>Promise.all([
   preflightStaffRestrictedIdentity({pool:control.pool,role:ROOT_RECOVERY_LOGIN,routines:CONTROL,tables:TABLES,requiredTriggers:TRIGGERS}),
   preflightStaffRestrictedIdentity({pool:worker.pool,role:ROOT_MAIL_LOGIN,routines:[MAIL,STAFF_MAIL],tables:TABLES,requiredTriggers:TRIGGERS}),
@@ -106,7 +111,7 @@ export async function createVerifiedRootRecoveryCandidate({control,worker,factor
   });
   return task;
  }
- return Object.freeze({security,readiness,allowsAccess:kernel.allowsAccess,issueMutationProof:kernel.issueMutationProof,
+ return Object.freeze({security,staffRecoveryHttp,readiness,allowsAccess:kernel.allowsAccess,issueMutationProof:kernel.issueMutationProof,
   start(){if(started||closed)throw Error('invalid_root_recovery_worker_state');started=true;return tick();},
   tick,
   async close(){closed=true;clearTimeout(timer);await task;}
