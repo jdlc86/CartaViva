@@ -49,11 +49,12 @@ const replyFailure=(reply,error)=>{
 
 // Explicit opt-in adapter. Cookie authentication and same-origin enforcement
 // are injected and apply before any QR, quote or order capability runs.
-export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange=null,tableChangeNotifier=null,tableChangeObserveFailure=null}={}){
+export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange=null,
+ tableChangeNotifier=null,tableChangeObserveFailure=null,canWriteOrders=()=>true}={}){
  if(!app||typeof app.register!=='function'||!cookieAuth||
     typeof cookieAuth.authenticate!=='function'||typeof cookieAuth.requireSameOrigin!=='function'||
     typeof cookieAuth.logout!=='function'||!flow||typeof flow.authorizeVisit!=='function'||
-    typeof flow.quote!=='function'||typeof flow.confirm!=='function')
+    typeof flow.quote!=='function'||typeof flow.confirm!=='function'||typeof canWriteOrders!=='function')
   throw Error('invalid_customer_production_http_configuration');
  return app.register(async scope=>{
   scope.addHook('preHandler',async(request,reply)=>{
@@ -182,6 +183,7 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
   scope.post('/orders/confirm',{bodyLimit:65536},async(request,reply)=>{
    if(!json(request))return reply.code(415).send({error:'unsupported_media_type'});
    try{
+    if(canWriteOrders()!==true)return reply.code(503).send({error:'customer_flow_unavailable'});
     const result=await flow.confirm({...request.body,
      customerSessionToken:readCustomerCookie(request.headers.cookie)});
     if(result.status==='acceptance_required')return reply.code(409).send({
@@ -209,6 +211,7 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
    {bodyLimit:65536},async(request,reply)=>{
     if(!json(request))return reply.code(415).send({error:'unsupported_media_type'});
     try{
+     if(canWriteOrders()!==true)return reply.code(503).send({error:'customer_flow_unavailable'});
      const result=await flow.resubmitOrderRevision({...request.body,orderId:request.params?.orderId,
       customerSessionToken:readCustomerCookie(request.headers.cookie)});
      if(result.status==='acceptance_required')return reply.code(409).send({

@@ -428,7 +428,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   registerCustomerRegistrationCandidate(app,{allowedOrigin:customer.allowedOrigin,
    register:createRestrictedCustomerRegistration({withTransaction:registrationTx})});
   registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange:b3.tableChange,
-   tableChangeNotifier:tableNotifier,tableChangeObserveFailure:observeFailure});
+   tableChangeNotifier:tableNotifier,tableChangeObserveFailure:observeFailure,
+   canWriteOrders:()=>!dispatchWithoutStripe||operational});
   registerTableChangeStaffHttp(app,{service:b3.tableChange,forRoles:oneGuard});
   registerTableChangeStaffPendingHttp(app,{service:pending,forRoles:oneGuard});
   registerOrderOperationsHttp(app,{forRoles:oneGuard,operations:h4Operations,

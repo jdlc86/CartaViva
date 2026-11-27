@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile,mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createRequire} from 'node:module';
-import {randomBytes,generateKeyPairSync} from 'node:crypto';
+import {randomBytes,randomUUID,generateKeyPairSync} from 'node:crypto';
 import net from 'node:net';
 import tls from 'node:tls';
 import https from 'node:https';
@@ -16,6 +16,7 @@ import {startOperationalM3Runtime} from '../../apps/api/src/operational-runtime.
 import {createM3RestaurantCandidate} from '../../apps/api/src/m3-restaurant-candidate.mjs';
 import {describeOperationalSqlContract} from '../../apps/api/src/operational-activation-manifest.mjs';
 import {PILOT_ACTIVATION_REQUIREMENTS} from '../../apps/api/src/pilot-activation-gate.mjs';
+import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs';
 
 // Every upstream socket below is redirected to the runner's loopback by an
 // explicit injected test connector. Fake public DNS is NEVER used for network
@@ -304,6 +305,18 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
     ' WITH SET TRUE, INHERIT FALSE');
    const recovered=await request('/ready');
    assert.equal(recovered.status,200);
+   const diner=randomUUID(),customerToken=randomBytes(32).toString('base64url');
+   const codeAlphabet='23456789ABCDEFGHJKLMNPQRSTUVWXY';
+   const publicId='SB-'+Array.from(randomBytes(12),byte=>codeAlphabet[byte%codeAlphabet.length]).join('');
+   await admin.query('INSERT INTO sabora.customer_profiles(id,public_id,alias) VALUES($1,$2,$3)',
+    [diner,publicId,'Ensayo TLS']);
+   await admin.query(`INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
+    VALUES($1,$2,clock_timestamp()+interval '1 hour')`,[diner,hashCustomerSessionToken(customerToken)]);
+   const checkout=path=>fetch(apiRuntime.origin+path,{method:'POST',body:'{}',
+    headers:{Origin:manifest.origins.client,'Content-Type':'application/json',
+     Cookie:'__Secure-sabora_customer='+customerToken}});
+   assert.equal((await checkout('/api/v1/customer/orders/confirm')).status,400,
+    'the connected checkout reaches validation after real cookie authentication');
    // Killing the distinct table-change LISTEN backend must be observable by
    // the runtime and permanently fail readiness for this process. Durable
    // events remain in PostgreSQL; restart is an explicit supervisor action.
@@ -319,6 +332,11 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
     listenerLossStatus=(await request('/ready')).status;
    }
    assert.equal(listenerLossStatus,503);
+   for(const path of ['/api/v1/customer/orders/confirm','/api/v1/customer/orders/'+randomUUID()+'/revisions']){
+    const rejected=await checkout(path);
+    assert.equal(rejected.status,503);
+    assert.deepEqual(await rejected.json(),{error:'customer_flow_unavailable'});
+   }
   }finally{
    await apiRuntime?.close().catch(()=>{});
    await admin.query(`DROP FUNCTION IF EXISTS sabora.list_h6_rounds_without_stripe_candidate(integer),
