@@ -948,9 +948,9 @@ DECLARE v_key bytea;v_key_expiry timestamptz;v_expected bytea;v_given bytea;v_di
  e record;s sabora.root_recovery_state_candidate%ROWTYPE;v_recipient text;v_provider uuid;v_fence uuid;
 BEGIN
  IF p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
- OR p_action IS NULL OR p_action NOT IN ('queue','list','claim','finish','claim_exchange','consume')
+ OR p_action IS NULL OR p_action NOT IN ('queue','list','claim','finish','claim_exchange','consume','check_session')
  OR ((p_action='list')<>(p_intent IS NULL))
- OR session_user::text IS DISTINCT FROM (CASE WHEN p_action IN ('queue','claim_exchange','consume')
+ OR session_user::text IS DISTINCT FROM (CASE WHEN p_action IN ('queue','claim_exchange','consume','check_session')
   THEN 'sabora_root_recovery_login' ELSE 'sabora_root_recovery_mail_login' END)
  OR p_payload IS NULL OR octet_length(p_payload)>4096
  OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
@@ -959,7 +959,7 @@ BEGIN
  OR p_expires<=floor(extract(epoch FROM clock_timestamp())*1000)
  THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
  SELECT k.hmac_key,k.expires_at INTO v_key,v_key_expiry FROM sabora.root_recovery_keys_candidate k
- WHERE k.key_id=p_key_id AND k.purpose=CASE WHEN p_action IN ('queue','claim_exchange','consume') THEN 'control' ELSE 'mail_worker' END
+ WHERE k.key_id=p_key_id AND k.purpose=CASE WHEN p_action IN ('queue','claim_exchange','consume','check_session') THEN 'control' ELSE 'mail_worker' END
  AND k.expires_at>clock_timestamp();
  IF NOT FOUND THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
  v_expected:=extensions.hmac(convert_to(concat_ws(chr(10),'sabora.staff-recovery-delivery.v1',p_key_id,
@@ -1060,6 +1060,21 @@ BEGIN
   RETURN jsonb_build_object('outcome','exchange_claimed','exchangeId',v_fence,
     'subjectId',i.subject_user_id,'enrollmentId',i.enrollment_id,'version',i.version,
     'recipient',v_recipient,'emailHash',encode(e.invitee_email_hash,'hex'));
+ ELSIF p_action='check_session' THEN
+  -- A consumed link is not enough: options and registration recheck the
+  -- exact signed Auth session, current authority and absence of a prior fence.
+  IF NOT v_current OR d.state IS DISTINCT FROM 'consumed'
+   OR d.consumed_session::text IS DISTINCT FROM v->>'session'
+   OR i.subject_user_id::text IS DISTINCT FROM v->>'subject'
+   OR (SELECT count(*) FROM jsonb_object_keys(v))<>2
+   OR EXISTS(SELECT 1 FROM sabora.staff_recovery_registration_candidate a
+     WHERE a.intent_id=p_intent OR (a.subject_user_id=i.subject_user_id AND a.completed_at IS NULL))
+  THEN RETURN jsonb_build_object('outcome','denied'); END IF;
+  SELECT c.email INTO v_recipient FROM sabora.staff_directory_contacts c WHERE c.enrollment_id=i.enrollment_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('outcome','denied'); END IF;
+  RETURN jsonb_build_object('outcome','session_current','subjectId',i.subject_user_id,
+   'recipient',v_recipient,'emailHash',encode(e.invitee_email_hash,'hex'),
+   'expiresAtMs',floor(extract(epoch FROM i.expires_at)*1000)::bigint);
  ELSIF p_action='consume' THEN
   -- Only the same exchange and exact live, verified Auth UUID and email may
   -- consume the current token. This is not an operational session or grant.

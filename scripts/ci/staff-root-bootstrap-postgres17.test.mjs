@@ -8,7 +8,8 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createStaffRootSecurityCandidate} from '../../apps/api/src/staff-root-security-candidate.mjs';
-import {createStaffRecoveryRegistrationCandidate,createStaffRecoveryCeremonyCandidate} from '../../apps/api/src/staff-recovery-registration-candidate.mjs';
+import {createStaffRecoveryRegistrationCandidate,createStaffRecoveryCeremonyCandidate,createStaffRecoveryServiceCandidate} from '../../apps/api/src/staff-recovery-registration-candidate.mjs';
+import {registerStaffRecoveryHttpCandidate,STAFF_RECOVERY_PATH} from '../../apps/api/src/staff-recovery-http-candidate.mjs';
 import {createStaffRecoveryDeliveryCandidate} from '../../apps/api/src/staff-recovery-delivery-candidate.mjs';
 import {createStaffInvitationClassificationCandidate,createStaffRecoveryIntentCandidate} from '../../apps/api/src/staff-invitation-classification-candidate.mjs';
 import {registerRootRecoveryFactorHttpCandidate,ROOT_RECOVERY_PATH} from '../../apps/api/src/staff-root-recovery-http-candidate.mjs';
@@ -202,6 +203,10 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
  registerOwnershipGovernanceHttp(app,{forRoles,repository:ownership});
  passkey.register(app,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,ownership:true,staffFirstAdmin:true,rootSecurity:true},rootBootstrap:bootstrap,rootSecurity:createStaffRootSecurityCandidate({kernel:rootKernel,mail:rootMail})});
  registerRootRecoveryFactorHttpCandidate(app,{origin,kernel:rootKernel,mail:rootMail,getRootUserId:async()=>rootId});
+ let recoveryHttpService;
+ registerStaffRecoveryHttpCandidate(app,{origin,secret:randomBytes(32),service:{
+  exchange:input=>recoveryHttpService.exchange(input),options:input=>recoveryHttpService.options(input),register:input=>recoveryHttpService.register(input)
+ }});
  let preview,browser,recoveryWorker;
  const auth='/api/v1/staff/auth';
  const post=(path,body,cookie)=>app.inject({method:'POST',url:auth+path,payload:body,
@@ -453,12 +458,13 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.deepEqual(existing,{auth_user_id:otherId,state:'active',employee_code:winner.employeeCode});
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[otherId])).rows[0].n,1);
   // Real PG17 authorization + encrypted delivery + Resend/verified Auth fixtures.
-  let proofCalls=0,exchangeCalls=0;const recoveryProof=randomBytes(32).toString('hex');
+  let proofCalls=0,exchangeCalls=0,recoveryProviderExtras={};const recoveryProof=randomBytes(32).toString('hex');
   const recoveryDeliveryConfig={...recoveryConfig,keyring,hashInviteeEmail:hashEmail,
    issuer,getTrustedKeys:async()=>[jwk],recoveryProviderFor:async({subjectId,email})=>{
     assert.equal(subjectId,enrollmentUserId);
     assert.ok([current.email,'ordinary-waiter@demo.invalid','recovery-kitchen@demo.invalid'].includes(email));
     return {
+     ...recoveryProviderExtras,
      generateRecoveryProof:async()=>{proofCalls++;return {authProof:recoveryProof};},
      exchangeRecoveryProof:async proof=>{assert.equal(proof,recoveryProof);exchangeCalls++;return {accessToken};},
      user:async token=>token===accessToken?{id:enrollmentUserId,email:confirmedEmail,is_anonymous:false,
@@ -564,6 +570,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    return {outcome:'accepted',providerId:randomUUID()};
   })).outcome,'accepted');
   assert.equal((await recoveryDelivery.exchange({intentId:consumedByAdmin.requestId,token:consumedRecoveryToken})).outcome,'consumed');
+  const retiredAuthoritySession=accessToken;
   ({enrollmentSession,enrollmentUserId,accessToken,confirmedEmail}=oldEnrollmentContext);
   const staffRegistration=createStaffRecoveryRegistrationCandidate(recoveryConfig);
   const consumedSession=(await admin.query('SELECT consumed_session FROM sabora.staff_recovery_delivery_candidate WHERE intent_id=$1',[latestRequest.requestId])).rows[0].consumed_session;
@@ -644,6 +651,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.equal((await staffRegistration('prepare',{intentId:consumedByAdmin.requestId,subjectId:consumedTarget.subjectId,
    sessionId:consumedTarget.sessionId,credentialHash:evidence('kitchen-replacement'),evidenceHash:evidence('kitchen-ceremony')})).outcome,'denied');
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_recovery_registration_candidate WHERE intent_id=$1',[consumedByAdmin.requestId])).rows[0].n,0);
+  await assert.rejects(recoveryDelivery.sessionContext({intentId:consumedByAdmin.requestId,accessToken:retiredAuthoritySession}),e=>e.code==='42501');
   assert.deepEqual(await classify(freshAdminAuthority,{enrollmentId:queuedTarget.enrollmentId}),
    {purpose:'recover',enrollmentId:queuedTarget.enrollmentId,state:'active'});
   const freshIntent=await queueRecovery(freshAdminAuthority,{enrollmentId:queuedTarget.enrollmentId,requestId:randomUUID()});
@@ -699,6 +707,80 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.deepEqual([proofCalls,exchangeCalls],beforeWrong.map(n=>n+1));
   assert.deepEqual((await admin.query('SELECT state,consumed_session FROM sabora.staff_recovery_delivery_candidate WHERE intent_id=$1',[wrongEmailIntent.intentId])).rows,
    [{state:'exchanging',consumed_session:null}]);
+  // New authorized recovery for kitchen, through the published PWA, HTTPS
+  // proxy, Fastify, real SQL, and Chromium virtual authenticator. Provider
+  // calls remain fixtures, not evidence of the hosted service.
+  const browserIntent=await queueRecovery(freshAdminAuthority,{enrollmentId:consumedTarget.enrollmentId,requestId:randomUUID()});
+  let browserRecoveryToken;
+  assert.equal((await recoveryDispatch.dispatch(browserIntent.intentId,async job=>{
+   browserRecoveryToken=job.token;return {outcome:'accepted',providerId:randomUUID()};
+  })).outcome,'accepted');
+  enrollmentSession=randomUUID();accessToken=mintEnrollment();
+  const kitchenOldProviderId=randomUUID(),kitchenNewProviderId=randomUUID(),kitchenChallengeId=randomUUID();
+  const kitchenNonce=randomBytes(32).toString('base64url');
+  let kitchenProviderIds=[kitchenOldProviderId],kitchenCredential,kitchenRegistrations=0,kitchenRevocations=0,kitchenLogouts=0;
+  recoveryProviderExtras={
+   registrationOptions:async token=>{
+    assert.equal(token,accessToken);
+    return {challenge_id:kitchenChallengeId,expires_at:Math.floor(Date.now()/1000)+60,options:{
+     rp:{id:new URL(origin).hostname,name:'Sabora'},user:{id:Buffer.from(consumedTarget.subjectId).toString('base64url'),name:'kitchen@example.invalid',displayName:'Cocina'},
+     challenge:kitchenNonce,pubKeyCredParams:[{type:'public-key',alg:-7}],timeout:60000,
+     authenticatorSelection:{residentKey:'required',userVerification:'required'},attestation:'none'}};
+   },
+   listPasskeys:async subject=>{assert.equal(subject,consumedTarget.subjectId);return [...kitchenProviderIds];},
+   verifyRegistration:async(token,challenge,credential)=>{
+    assert.equal(token,accessToken);assert.equal(challenge,kitchenChallengeId);
+    kitchenCredential=credential.id;kitchenRegistrations++;
+    assert.equal(await rootKernel.allowsAccess(consumedTarget.subjectId,hashRootCredentialId(kitchenCredential)),false);
+    kitchenProviderIds.push(kitchenNewProviderId);return {id:kitchenNewProviderId};
+   },
+   revokePasskey:async(subject,previous)=>{
+    assert.equal(subject,consumedTarget.subjectId);assert.equal(previous,kitchenOldProviderId);kitchenRevocations++;
+    kitchenProviderIds=kitchenProviderIds.filter(x=>x!==previous);return true;
+   },
+   logoutAll:async token=>{assert.equal(token,accessToken);kitchenLogouts++;return true;}
+  };
+  recoveryHttpService=createStaffRecoveryServiceCandidate({delivery:recoveryDelivery,registration:staffRegistration,
+   issuer,getTrustedKeys:async()=>[jwk],managementOrigin:origin,ticketSecret:randomBytes(32)});
+  const publicHeaders={host:new URL(origin).host,origin};
+  const publicRecovery=(suffix,payload,headers=publicHeaders)=>app.inject({method:'POST',url:STAFF_RECOVERY_PATH+suffix,headers,payload});
+  assert.equal((await publicRecovery('/options',{})).statusCode,403);
+  assert.equal((await publicRecovery('/accept',{intentId:browserIntent.intentId,token:browserRecoveryToken,subjectId:rootId})).statusCode,400);
+  assert.equal((await publicRecovery('/accept',{intentId:browserIntent.intentId,token:browserRecoveryToken},{...publicHeaders,origin:'https://other.invalid'})).statusCode,403);
+  const recoveryContext=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'});
+  try{
+   const page=await recoveryContext.newPage(),virtual=await recoveryContext.newCDPSession(page);
+   await virtual.send('WebAuthn.enable');
+   await virtual.send('WebAuthn.addVirtualAuthenticator',{options:{protocol:'ctap2',transport:'internal',hasResidentKey:true,
+    hasUserVerification:true,isUserVerified:true,automaticPresenceSimulation:true}});
+   await page.goto(origin+'/#recuperacion-personal?'+new URLSearchParams({intentId:browserIntent.intentId,token:browserRecoveryToken}));
+   await page.getByRole('heading',{name:'Recuperar acceso a Sabora Gestión'}).waitFor();
+   assert.equal(new URL(page.url()).hash,'#recuperacion-personal');
+   const acceptance=page.waitForResponse(r=>r.url().endsWith(STAFF_RECOVERY_PATH+'/accept')&&r.request().method()==='POST');
+   await page.getByRole('button',{name:'Aceptar recuperación'}).click();
+   const acceptedResponse=await acceptance;assert.equal(acceptedResponse.status(),200,await acceptedResponse.text());
+   assert.deepEqual(await acceptedResponse.json(),{outcome:'ready'});
+   const session=(await recoveryContext.cookies()).find(c=>c.name==='__Host-sabora-staff-recovery');
+   assert.ok(session?.httpOnly&&session.secure&&session.sameSite==='Strict');
+   assert.ok(!session.value.includes(accessToken));
+   const recoveryCookie=session.name+'='+session.value;
+   assert.equal((await app.inject({method:'GET',url:auth+'/session',headers:{...publicHeaders,cookie:recoveryCookie}})).statusCode,401);
+   const changed=session.value[0]==='A'?'B':'A';
+   assert.equal((await publicRecovery('/options',{}, {...publicHeaders,cookie:session.name+'='+changed+session.value.slice(1)})).statusCode,403);
+   const registered=page.waitForResponse(r=>r.url().endsWith(STAFF_RECOVERY_PATH+'/register')&&r.request().method()==='POST');
+   await page.getByRole('button',{name:'Registrar nueva passkey'}).click();
+   const registeredResponse=await registered;assert.equal(registeredResponse.status(),200,await registeredResponse.text());
+   assert.deepEqual(await registeredResponse.json(),{outcome:'completed'});
+   await page.getByText('Recuperación completada. Vuelve al acceso e identifícate con tu nueva passkey.',{exact:true}).waitFor();
+   assert.equal((await recoveryContext.cookies()).some(c=>c.name===session.name),false);
+   assert.deepEqual([kitchenRegistrations,kitchenRevocations,kitchenLogouts],[1,1,1]);
+   assert.equal(await rootKernel.allowsAccess(consumedTarget.subjectId,hashRootCredentialId(kitchenCredential)),true);
+   assert.equal(await rootKernel.allowsAccess(consumedTarget.subjectId,hashRootCredentialId(genesisCredential)),false);
+   assert.equal((await publicRecovery('/options',{}, {...publicHeaders,cookie:recoveryCookie})).statusCode,403);
+   assert.equal((await publicRecovery('/accept',{intentId:browserIntent.intentId,token:browserRecoveryToken})).statusCode,403);
+   assert.deepEqual((await admin.query('SELECT role,state FROM sabora.staff_members WHERE user_id=$1',[consumedTarget.subjectId])).rows,[{role:'kitchen',state:'active'}]);
+  }finally{await recoveryContext.close();}
+  recoveryProviderExtras={};
   ({enrollmentSession,enrollmentUserId,accessToken,confirmedEmail}=adminEnrollmentContext);
   assert.equal((await admin.query('SELECT authorizer_credential_hash FROM sabora.staff_recovery_intent_candidate WHERE request_id=$1',[freshIntent.intentId])).rows[0].authorizer_credential_hash,staffNewHash);
   assert.deepEqual((await admin.query('SELECT auth_user_id,state,employee_code FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0],existing);

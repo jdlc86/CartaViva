@@ -41,10 +41,11 @@ const BASE64=/^[A-Za-z0-9_-]+$/;
 const denied=()=>Object.assign(Error('staff_recovery_ceremony_forbidden'),{code:'42501'});
 const uncertain=()=>Error('staff_recovery_provider_reconciliation_required');
 export function createStaffRecoveryCeremonyCandidate({registration,provider,issuer,getTrustedKeys,
- managementOrigin,ticketSecret,clock=Date.now}={}){
+ managementOrigin,ticketSecret,sessionDeadlineMs=Number.MAX_SAFE_INTEGER,clock=Date.now}={}){
  const origin=new URL(managementOrigin);
  if(origin.protocol!=='https:'||origin.origin!==managementOrigin||typeof issuer!=='string'||
   typeof registration!=='function'||typeof getTrustedKeys!=='function'||typeof clock!=='function'||
+  !Number.isSafeInteger(sessionDeadlineMs)||
   !(ticketSecret instanceof Uint8Array)||ticketSecret.byteLength!==32||
   !['user','registrationOptions','verifyRegistration','listPasskeys','revokePasskey','logoutAll'].every(
    method=>typeof provider?.[method]==='function'))throw Error('invalid_staff_recovery_ceremony_config');
@@ -61,7 +62,7 @@ export function createStaffRecoveryCeremonyCandidate({registration,provider,issu
   if(user?.id!==verified.userId||user.is_anonymous!==false||!Number.isFinite(confirmed)||confirmed>clock())throw denied();
   let email;try{email=normalizeStaffInviteeEmail(user.email);}catch{throw denied();}
   return {intentId:intentId.toLowerCase(),subjectId:verified.userId.toLowerCase(),
-   sessionId:verified.sessionId.toLowerCase(),email,deadlineMs:verified.expiresAt*1000};
+   sessionId:verified.sessionId.toLowerCase(),email,deadlineMs:Math.min(verified.expiresAt*1000,sessionDeadlineMs)};
  }
  const contextFields=ctx=>[ctx.intentId,ctx.subjectId,ctx.sessionId,digest('sabora.staff-recovery-email.v1',[ctx.email])];
  const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -144,5 +145,33 @@ export function createStaffRecoveryCeremonyCandidate({registration,provider,issu
     return Object.freeze({outcome:'completed'});
    }catch{throw uncertain();}
   }
+ });
+}
+
+
+// Resolve the provider afresh from the SQL-verified consumed session on each
+// request. No caller-supplied subject or email; the HTTP layer only holds a
+// server-encrypted recovery session, never an operational login cookie.
+export function createStaffRecoveryServiceCandidate({delivery,registration,issuer,getTrustedKeys,
+ managementOrigin,ticketSecret,clock=Date.now}={}){
+ if(typeof delivery?.exchange!=='function'||typeof delivery?.sessionContext!=='function'||
+  typeof registration!=='function'||typeof getTrustedKeys!=='function'||typeof clock!=='function'||
+  !(ticketSecret instanceof Uint8Array)||ticketSecret.byteLength!==32)throw Error('invalid_staff_recovery_service');
+ const key=Buffer.from(ticketSecret);
+ async function ceremony(session){
+  const scope=await delivery.sessionContext(session);
+  return createStaffRecoveryCeremonyCandidate({registration,provider:scope.provider,issuer,getTrustedKeys,
+   managementOrigin,ticketSecret:key,sessionDeadlineMs:scope.deadlineMs,clock});
+ }
+ return Object.freeze({
+  async exchange(input){
+   const accepted=await delivery.exchange(input);
+   const scope=await delivery.sessionContext({intentId:input.intentId,accessToken:accepted.accessToken});
+   const result={outcome:'ready',expiresAtMs:scope.deadlineMs};
+   Object.defineProperty(result,'accessToken',{value:accepted.accessToken,enumerable:false});
+   return Object.freeze(result);
+  },
+  async options(session){return (await ceremony(session)).options(session);},
+  async register(session){return (await ceremony(session)).register(session);}
  });
 }

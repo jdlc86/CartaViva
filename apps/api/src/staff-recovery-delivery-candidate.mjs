@@ -45,6 +45,27 @@ export function createStaffRecoveryDeliveryCandidate({pool,keyId,signingSecret,k
    if(!['queued','existing'].includes(result.outcome))throw forbidden();
    return Object.freeze({outcome:result.outcome});
   },
+  async sessionContext({intentId,accessToken}={}){
+   if(!UUID.test(intentId??'')||typeof accessToken!=='string'||accessToken.length>3700||
+    typeof recoveryProviderFor!=='function'||typeof getTrustedKeys!=='function'||typeof issuer!=='string')throw forbidden();
+   let identity;
+   try{identity=verifySupabaseAccessToken(accessToken,{issuer,keys:await getTrustedKeys(),now:clock,requireEnrollmentSession:true});}
+   catch{throw forbidden();}
+   const subjectId=identity.userId.toLowerCase(),sessionId=identity.sessionId.toLowerCase();
+   const result=await run('check_session',intentId,{subject:subjectId,session:sessionId},identity.expiresAt*1000);
+   if(result.outcome!=='session_current'||result.subjectId!==subjectId||!HASH.test(result.emailHash??'')||
+    !Number.isSafeInteger(result.expiresAtMs)||result.expiresAtMs<=clock())throw forbidden();
+   let email;
+   try{email=normalizeStaffInviteeEmail(result.recipient);}catch{throw forbidden();}
+   if(hashInviteeEmail(email)!==result.emailHash)throw forbidden();
+   const provider=await recoveryProviderFor({subjectId,email});
+   if(typeof provider?.user!=='function')throw forbidden();
+   const user=await provider.user(accessToken),confirmed=Date.parse(user?.email_confirmed_at??'');
+   if(user?.id!==identity.userId||user.is_anonymous!==false||!Number.isFinite(confirmed)||confirmed>clock())throw forbidden();
+   try{if(hashInviteeEmail(normalizeStaffInviteeEmail(user.email))!==result.emailHash)throw forbidden();}
+   catch{throw forbidden();}
+   return Object.freeze({provider,deadlineMs:Math.min(result.expiresAtMs,identity.expiresAt*1000)});
+  },
   async exchange({intentId,token}={}){
    if(!UUID.test(intentId??'')||typeof token!=='string'||! /^[A-Za-z0-9_-]{43}$/.test(token)||
     Buffer.from(token,'base64url').toString('base64url')!==token||
