@@ -11,7 +11,7 @@ fi
 [[ "${SABORA_NODE_BIN:-}" = /* && -x "${SABORA_NODE_BIN}" ]] || {
  echo 'sabora_nft_lab_stop:absolute_node_binary_required' >&2; exit 1;
 }
-for tool in ip nft python3 curl sha256sum; do command -v "$tool" >/dev/null; done
+for tool in ip nft curl sha256sum; do command -v "$tool" >/dev/null; done
 
 suffix="${GITHUB_RUN_ID: -4}$$"
 suffix="${suffix: -7}"
@@ -100,28 +100,39 @@ ip -n "$dst" -6 route add 2001:db8:241::/64 via 2001:db8:113::1 dev dd0
 ip netns exec "$rtr" sysctl -qw net.ipv4.ip_forward=1
 ip netns exec "$rtr" sysctl -qw net.ipv6.conf.all.forwarding=1
 
-# Keep startup output private to this disposable runner, and preserve it
-# on failure in the Actions log. Start one endpoint at a time so readiness
-# cannot be confused with a different listener in the same namespace.
+# One fixture process owns all of the endpoints in its namespace. Report each
+# successful bind explicitly, then prove each endpoint independently below.
 serve(){
- local label="$1" namespace="$2" address="$3" port="$4" url="$5"
+ local label="$1" namespace="$2"; shift 2
  local log
  log="$(mktemp "${RUNNER_TEMP}/sabora-listener-${suffix}-${label}.XXXXXX")"
  listener_logs+=("$log")
- if [[ "$address" == *:* ]]; then
-  ip netns exec "$namespace" "$SABORA_NODE_BIN" -e '
-const http=require("node:http");
-const server=http.createServer((_request,response)=>{response.writeHead(200);response.end("ok");});
-server.listen({host:process.argv[1],port:Number(process.argv[2]),ipv6Only:true});
-' "$address" "$port" >"$log" 2>&1 &
- else
-  ip netns exec "$namespace" python3 -u -m http.server "$port" --bind "$address" >"$log" 2>&1 &
- fi
+ ip netns exec "$namespace" "$SABORA_NODE_BIN" -e '
+const {createServer}=require("node:http");
+const {isIPv6}=require("node:net");
+const endpoints=process.argv.slice(1);
+const listeners=[];
+for(let i=0;i<endpoints.length;i+=2){
+ const host=endpoints[i],port=Number(endpoints[i+1]);
+ listeners.push(new Promise((resolve,reject)=>{
+  const server=createServer((_request,response)=>response.end("sabora-lab"));
+  server.once("error",reject);
+  server.listen({host,port,ipv6Only:isIPv6(host)},()=>{
+   console.log("bound",host,port);
+   resolve();
+  });
+ }));
+}
+Promise.all(listeners).then(()=>console.log("ready"),error=>{
+ console.error(error.message);
+ process.exit(1);
+});
+' "$@" >"$log" 2>&1 &
  local pid=$!
  pids+=("$pid")
  for attempt in {1..25}; do
   if ! kill -0 "$pid" 2>/dev/null; then break; fi
-  if request "$namespace" "$url"; then return 0; fi
+  if grep -qx ready "$log"; then return 0; fi
   sleep 0.2
  done
  echo "sabora_nft_lab_stop:fixture_listener_unavailable:${label}" >&2
@@ -141,13 +152,9 @@ request(){
   --connect-timeout 1 --max-time 2 "$@" >/dev/null 2>&1
 }
 
-serve web_ingress "$web" 172.28.240.2 8443 http://172.28.240.2:8443/
-serve web_wrong_port "$web" 172.28.240.2 9443 http://172.28.240.2:9443/
-serve external_reverse "$ext" 198.51.100.10 9443 http://198.51.100.10:9443/
-serve dest_allowed "$dst" 203.0.113.10 443 http://203.0.113.10:443/
-serve dest_wrong_port "$dst" 203.0.113.10 8443 http://203.0.113.10:8443/
-serve dest_wrong_address "$dst" 203.0.113.30 443 http://203.0.113.30:443/
-serve dest_ipv6 "$dst" 2001:db8:113::10 7443 'http://[2001:db8:113::10]:7443/'
+serve web "$web" 172.28.240.2 8443 172.28.240.2 9443
+serve external "$ext" 198.51.100.10 9443
+serve destination "$dst" 203.0.113.10 443 203.0.113.10 8443 203.0.113.30 443 2001:db8:113::10 7443
 
 # A negative firewall assertion is *never* treated as flaky. Readiness
 # retries apply only to connections that MUST work without the filter.
