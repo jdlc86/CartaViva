@@ -171,3 +171,34 @@ El [informe](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md) contrast
 La CI web del primer envío pasó con listeners de laboratorio agrupados por namespace. Dos jobs se detuvieron antes del ensayo integrado por el contrato estático de readiness. Se corrigió la aserción para conservar tanto el cierre por pérdida del listener como el nuevo cierre por fallo del programador. Consultar el informe y los checks exactos del PR para los resultados del nuevo corte. NO-GO técnico para H1 completo y NO-GO operativo. Quedan recuperación ROOT, conciliación remota, entrega de avisos, evidencia de acuse agrupado desde la PWA, delta de identidad y las puertas V2. Sin merge, despliegue, SQL operativo, Supabase/Resend real, VPS ni Fleetia.
 
 El corte funcional `08077ee7abcd0e233b3906ede29035e2030bfab2` corrige el arranque TLS tras reproducir `42501` en un PG17 local. El propio LOGIN restringido verifica la firma y ACL por catálogos, conservando la denegación de acceso directo al esquema. Pasaron localmente el transporte TLS completo, la denegación ante un grant indebido y la reconexión de sala con ambas PWA publicadas. La CI del corte intermedio `a7c13fe0` fue 6 PASS y 2 FAIL por el preflight. Consultar el informe para la evidencia del corte corregido.
+
+
+## S55-16 — Resultado Codex contrastado y prioridades de cierre (27-11-2026)
+
+El propietario traslada el resultado del encargo [S55 H1 integral](../assignments/CODEX_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md). Se contrasta directamente GitHub: [Draft #92](https://github.com/jdlc86/CartaViva/pull/92), HEAD `f10d7e639df0485885964980f6a7ebea8704515b`, misma rama y base `da02d5d97c3eb26d4c1530e0b0c4c4f7a14012d7`, no fusionado. El último commit modifica solo el informe; el informe fija el corte funcional `faf3093b968cf2094d3ce60fa4ea2ba31e34168e`, árbol `ad878e3bff0a71300e0ed4ce4fc60edd80431a0f`. [Informe S55 exacto](https://github.com/jdlc86/CartaViva/blob/f10d7e639df0485885964980f6a7ebea8704515b/docs/reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md).
+
+**CI exacta f10d7e63: 8/8 controles aplicables SUCCESS, sin fallos.** Se cuentan jobs distintos, no ejecuciones duplicadas de cobertura UI.
+
+| Control | Resultado | Evidencia |
+| --- | --- | --- |
+| H6 validate | PASS | [job 140618737784](https://github.com/jdlc86/CartaViva/actions/runs/46032262190/job/140618737784) |
+| web-publication | PASS | [job 140618738242](https://github.com/jdlc86/CartaViva/actions/runs/46032262190/job/140618738242) |
+| Bootstrap PG17 | PASS | [job 140618737556](https://github.com/jdlc86/CartaViva/actions/runs/46032262133/job/140618737556) |
+| CV005 DBA no-superuser | PASS | [job 140618736712](https://github.com/jdlc86/CartaViva/actions/runs/46032261926/job/140618736712) |
+| Cobertura funcional UI | PASS | [job 140628695106](https://github.com/jdlc86/CartaViva/actions/runs/46035190551/job/140628695106) |
+| Navegador gestión | PASS | [run 46032261977](https://github.com/jdlc86/CartaViva/actions/runs/46032261977) |
+| Navegador cliente | PASS | [run 46032261913](https://github.com/jdlc86/CartaViva/actions/runs/46032261913) |
+| Instalabilidad | PASS | [run 46032261805](https://github.com/jdlc86/CartaViva/actions/runs/46032261805) |
+| CV005+B2 opt-in | SKIPPED | [run 46032261868](https://github.com/jdlc86/CartaViva/actions/runs/46032261868) |
+| Aceptación visual final | SKIPPED | [job 140628697241](https://github.com/jdlc86/CartaViva/actions/runs/46035190551/job/140628697241) |
+
+El informe acredita el ensayo de los dos deltas candidatos (plazo cambio mesa y despacho agrupado sin Stripe) con DBA NOSUPERUSER y la igualdad de las 103 migraciones genesis, árbol histórico `634d7e863554ba4d5704275164abbd30213d16b7`. No se recalcula el árbol en esta comprobación documental. El fallo de arranque nftables fue abordado agrupando listeners por namespace y comprobando todos los binds; publicación final PASS. No afirmar causa raíz histórica demostrada. La batería local Windows reportó 1528 PASS, 15 FAIL y 1 SKIP; Linux CI constituye evidencia de su alcance. Codex Security no produjo informe gestionado por limitación del checkout; no existe nueva auditoría independiente acreditada. La referencia de inventario previamente 404 fue recuperada por Codex en [revisión histórica 50fb9398](https://github.com/jdlc86/CartaViva/blob/50fb9398c6813c32b4c2f8a98efff567d59eea0e/docs/tracking/SABORA_FINAL_DEPLOYMENT_CLOSURE_INVENTORY_2026-11-25.md).
+
+### Pendientes reales, no repetir circuitos acreditados
+
+- H1-A: recuperación no ROOT compuesta en M2 opt-in, no distribuible completa. Cerrar recuperación pública ROOT según S52, reconciliación atribuible de Auth sin recibo/revocación parcial/logout incierto, fence transaccional de mutaciones ordinarias en vuelo, alertas existentes, ciclo distribuible incluyendo bootstrap e invitación y delta de identidad. TTL no ROOT y retención requieren resolución; no adoptar 600 s del fixture como norma. AP-01..09 y Resend real NOT RUN, aplazamiento S54-32 vigente.
+- H1-B: bandeja de sala reconecta y recupera una única llamada durable; falta aviso/recordatorio fuera de vista y push/vibración. Verificar configuración y canales existentes antes de implementar; no inventar decisión funcional.
+- H1-C: configuración de plazo por ADMIN titular acreditada en Chromium/PG17, permisos, persistencia, replay y conservación de vencimientos existentes. No rehacer; pendientes admisión del delta, composición operativa y aceptación propietaria.
+- H1-D: programador agrupado sin Stripe y denegación de pedidos ante pérdida de disponibilidad ya conectados, F21/H6 con cinco minutos reales. Falta reconstruir desde snapshot el identificador durable de despacho necesario para acuse de cocina después de resync, y demostrar recorrido de cocina/sala con recuperación de sesión, además de avisos push. No tocar Stripe ni rehacer catálogo/QR/pedidos ya existentes.
+
+Orden recomendado próximo: cerrar conjuntamente resync/acuse H1-D y avisos H1-B/D reutilizando las capacidades existentes; cerrar H1-A como bloque de seguridad/identidad restante; evaluar la única integración #92 con CI, revisión independiente y autorización expresa, preparar delta mínimo V2 y primer despliegue ficticio. H1-C no necesita otro desarrollo de configuración salvo regresión demostrada. No convertir esta recomendación en normativa. H1 completo sigue NO-GO técnico y operativo, aunque la CI esté verde; no adelantar aprobación del propietario ni prueba alojada. Sin modificación de código en este corte, merge, SQL operativo, Supabase/Resend real, secretos, VPS o Fleetia.
