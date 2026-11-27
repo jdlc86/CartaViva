@@ -915,21 +915,23 @@ CREATE TABLE sabora.staff_recovery_delivery_candidate(
  intent_id uuid PRIMARY KEY REFERENCES sabora.staff_recovery_intent_candidate(request_id) ON DELETE RESTRICT,
  token_hash text NOT NULL CHECK(token_hash ~ '^[0-9a-f]{64}$'),
  envelope text CHECK(length(envelope) BETWEEN 32 AND 2048),
- state text NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','dispatching','delivered','unknown','rejected','cancelled','consumed')),
+ state text NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','dispatching','delivered','unknown','rejected','cancelled','exchanging','consumed')),
  fence uuid,
  provider_id uuid UNIQUE,
+ exchange_id uuid UNIQUE,
  consumed_session uuid UNIQUE,
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  CHECK((state IN ('queued','dispatching'))=(envelope IS NOT NULL)),
- CHECK((state IN ('delivered','consumed'))=(provider_id IS NOT NULL)),
+ CHECK((state IN ('delivered','exchanging','consumed'))=(provider_id IS NOT NULL)),
+ CHECK((state IN ('exchanging','consumed'))=(exchange_id IS NOT NULL)),
  CHECK((state='consumed')=(consumed_session IS NOT NULL)),
- CHECK(state NOT IN ('dispatching','delivered','consumed','unknown','rejected') OR fence IS NOT NULL)
+ CHECK(state NOT IN ('dispatching','delivered','exchanging','consumed','unknown','rejected') OR fence IS NOT NULL)
 );
 ALTER TABLE sabora.staff_recovery_delivery_candidate ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sabora.staff_recovery_delivery_candidate FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON sabora.staff_recovery_delivery_candidate FROM PUBLIC,anon,authenticated;
-GRANT SELECT,INSERT,UPDATE(state,envelope,fence,provider_id,consumed_session,updated_at)
+GRANT SELECT,INSERT,UPDATE(state,envelope,fence,provider_id,exchange_id,consumed_session,updated_at)
  ON sabora.staff_recovery_delivery_candidate TO sabora_root_recovery_fn_owner;
 CREATE POLICY staff_recovery_delivery_owner ON sabora.staff_recovery_delivery_candidate
  TO sabora_root_recovery_fn_owner USING(true) WITH CHECK(true);
@@ -946,9 +948,9 @@ DECLARE v_key bytea;v_key_expiry timestamptz;v_expected bytea;v_given bytea;v_di
  e record;s sabora.root_recovery_state_candidate%ROWTYPE;v_recipient text;v_provider uuid;v_fence uuid;
 BEGIN
  IF p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
- OR p_action IS NULL OR p_action NOT IN ('queue','list','claim','finish','consume')
+ OR p_action IS NULL OR p_action NOT IN ('queue','list','claim','finish','claim_exchange','consume')
  OR ((p_action='list')<>(p_intent IS NULL))
- OR session_user::text IS DISTINCT FROM (CASE WHEN p_action IN ('queue','consume')
+ OR session_user::text IS DISTINCT FROM (CASE WHEN p_action IN ('queue','claim_exchange','consume')
   THEN 'sabora_root_recovery_login' ELSE 'sabora_root_recovery_mail_login' END)
  OR p_payload IS NULL OR octet_length(p_payload)>4096
  OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
@@ -957,7 +959,7 @@ BEGIN
  OR p_expires<=floor(extract(epoch FROM clock_timestamp())*1000)
  THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
  SELECT k.hmac_key,k.expires_at INTO v_key,v_key_expiry FROM sabora.root_recovery_keys_candidate k
- WHERE k.key_id=p_key_id AND k.purpose=CASE WHEN p_action IN ('queue','consume') THEN 'control' ELSE 'mail_worker' END
+ WHERE k.key_id=p_key_id AND k.purpose=CASE WHEN p_action IN ('queue','claim_exchange','consume') THEN 'control' ELSE 'mail_worker' END
  AND k.expires_at>clock_timestamp();
  IF NOT FOUND THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
  v_expected:=extensions.hmac(convert_to(concat_ws(chr(10),'sabora.staff-recovery-delivery.v1',p_key_id,
@@ -1044,14 +1046,29 @@ BEGIN
   UPDATE sabora.staff_recovery_delivery_candidate SET state=CASE WHEN v->>'result'='accepted' THEN 'delivered' ELSE v->>'result' END,
    provider_id=v_provider,envelope=NULL,updated_at=v_now WHERE intent_id=p_intent;
   RETURN jsonb_build_object('outcome',v->>'result');
- ELSIF p_action='consume' THEN
-  -- Only the exact live, verified Auth UUID and email may consume the
-  -- current token. This is a receipt, not an operational session or grant.
+ ELSIF p_action='claim_exchange' THEN
+  -- Consume the right to attempt the remote email exchange before releasing
+  -- the exact subject to the trusted control service. No browser identity
+  -- or Auth proof is accepted. A lost remote response is never replayed.
   IF NOT v_current OR d.state IS DISTINCT FROM 'delivered'
+   OR v->>'tokenHash' IS DISTINCT FROM d.token_hash
+   OR (SELECT count(*) FROM jsonb_object_keys(v))<>1 THEN RETURN jsonb_build_object('outcome','denied'); END IF;
+  SELECT c.email INTO v_recipient FROM sabora.staff_directory_contacts c WHERE c.enrollment_id=i.enrollment_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('outcome','denied'); END IF;
+  v_fence:=gen_random_uuid();
+  UPDATE sabora.staff_recovery_delivery_candidate SET state='exchanging',exchange_id=v_fence,updated_at=v_now WHERE intent_id=p_intent;
+  RETURN jsonb_build_object('outcome','exchange_claimed','exchangeId',v_fence,
+    'subjectId',i.subject_user_id,'enrollmentId',i.enrollment_id,'version',i.version,
+    'recipient',v_recipient,'emailHash',encode(e.invitee_email_hash,'hex'));
+ ELSIF p_action='consume' THEN
+  -- Only the same exchange and exact live, verified Auth UUID and email may
+  -- consume the current token. This is not an operational session or grant.
+  IF NOT v_current OR d.state IS DISTINCT FROM 'exchanging'
+   OR d.exchange_id::text IS DISTINCT FROM v->>'exchangeId'
    OR v->>'subject' IS DISTINCT FROM i.subject_user_id::text
    OR v->>'emailHash' IS DISTINCT FROM encode(e.invitee_email_hash,'hex')
    OR v->>'tokenHash' IS DISTINCT FROM d.token_hash OR v->>'session' IS NULL
-   OR (SELECT count(*) FROM jsonb_object_keys(v))<>4 THEN RETURN jsonb_build_object('outcome','denied'); END IF;
+   OR (SELECT count(*) FROM jsonb_object_keys(v))<>5 THEN RETURN jsonb_build_object('outcome','denied'); END IF;
   UPDATE sabora.staff_recovery_delivery_candidate SET state='consumed',consumed_session=(v->>'session')::uuid,
    updated_at=v_now WHERE intent_id=p_intent;
   RETURN jsonb_build_object('outcome','consumed','enrollmentId',i.enrollment_id,'version',i.version);
