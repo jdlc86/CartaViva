@@ -35,3 +35,8 @@ El siguiente corte, `4274c1be`, superó esa etapa. Bootstrap y validate detectar
 Usar el [procedimiento manual revisado](SABORA_S54_HOSTED_AUTH_READINESS_2026-11-26.md#s54-25--resultado-de-la-sonda-y-ensayo-siguiente) desde una terminal propia de confianza, con Node 22, Chromium del proyecto, el SHA exacto del candidato y custodia local de las dos claves del proyecto RESTAURANTE. Confirmar Auth vacío y exclusividad de la ventana antes de ejecutar una única vez. El procedimiento produce un correo ficticio para reconciliación local si la ejecución se interrumpe. Compartir el SHA y los marcadores de resultado con el correo ficticio y los materiales sensibles suprimidos. Si aparece `CLEANUP NOT PROVEN`, mantener NO-GO y reconciliar únicamente esa identidad.
 
 Cuando termine su uso, el propietario debe revocar la clave temporal y retirar el secreto de GitHub Actions. En este corte no hay evidencia de que se hayan retirado. La aceptación del proveedor, el cierre integral de H1-A y la autorización de despliegue son decisiones separadas.
+
+
+## S54-32 — Aplazamiento autorizado (27-11)
+
+El propietario decide dejar esta prueba para después y probarla sobre el despliegue real de Sabora. Se conserva la matriz NOT RUN y la evidencia histórica; la aceptación se programa dentro de la validación integrada del primer arranque ficticio, no mediante otro intento aislado. El procedimiento anterior presupone Auth vacío: no reutilizarlo sin revisar sus precondiciones si el despliegue ya contiene identidades de bootstrap. Mantener #93 abierto. No hay autorización adicional de credenciales, SQL o despliegue; no se han retirado secretos ni probado la recuperación. Ver decisión normativa candidata V2 §10.
