@@ -463,8 +463,8 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   const changeAccount=randomUUID(),changeVisit='WINDOW'+randomBytes(12).toString('hex');
   await admin.query(`INSERT INTO sabora.customer_table_visits(
    table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,granted_at,expires_at)
-   VALUES($1,$2,$3,$4,$3,1,clock_timestamp(),clock_timestamp()+interval '1 hour')`,
-   [tableId,tableSession,customerId,changeVisit]);
+   VALUES($1,$2,$3,$4,$5,1,clock_timestamp(),clock_timestamp()+interval '1 hour')`,
+   [tableId,tableSession,customerId,changeVisit,customerId]);
   await admin.query(`INSERT INTO sabora.customer_accounts(id,table_id,session_id,visit_key,customer_id,
    payment_mode,payment_mode_selected_at,outstanding_cents)
    VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),0)`,
