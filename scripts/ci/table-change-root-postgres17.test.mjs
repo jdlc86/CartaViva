@@ -2950,6 +2950,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // Two REAL personnel identities, not two sessions impersonating one user.
   const secondWaiterId='b0a00000-0000-4000-8000-000000000311';
   const jwtSecondWaiter=staffJwt(secondWaiterId);
+  const floorWaiterId=randomUUID();
   const jwtKitchen=staffJwt('b0a00000-0000-4000-8000-000000000310');
   const jwtCustomer=staffJwt('b0a00000-0000-4000-8000-000000000301');
   const jwtExpired=staffJwt('b0a00000-0000-4000-8000-000000000307',
@@ -3362,15 +3363,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await fixture.query(`INSERT INTO sabora.restaurant_settings(singleton,name)
      VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
     await fixture.query(`INSERT INTO sabora.staff_members(user_id,role,state)
-     VALUES($1,'waiter','active'),($2,'kitchen','active'),($3,'waiter','active')`,
+     VALUES($1,'waiter','active'),($2,'kitchen','active'),($3,'waiter','active'),($4,'waiter','active')`,
      [httpFixture.waiter,'b0a00000-0000-4000-8000-000000000310',
-      secondWaiterId]);
+      secondWaiterId,floorWaiterId]);
     // H6 pickup claims require the employee's real compact operational
     // identity, not merely an active JWT/role. Mirror the existing H4
     // enrollment fixture inside this disposable PG17 transaction; do not
     // bypass bind_pickup_claimed_display_id_candidate or relax its check.
     const kitchenActor='b0a00000-0000-4000-8000-000000000310';
-    const staffActors=[httpFixture.waiter,kitchenActor,secondWaiterId];
+    const staffActors=[httpFixture.waiter,kitchenActor,secondWaiterId,floorWaiterId];
     await fixture.query(`INSERT INTO sabora.staff_enrollments(
      id,invitee_email_hash,requested_role,state,auth_user_id,invite_token_hash,
      credential_evidence_hash,created_by,created_at,last_invited_at,accepted_at,
@@ -3389,7 +3390,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       ($2::uuid,'kitchen','b3-kitchen@example.invalid',
        'b3-kitchen-token','b3-kitchen-passkey','Karla','Cocina','840','KC-840'),
       ($3::uuid,'waiter','b3-waiter-b@example.invalid',
-       'b3-waiter-b-token','b3-waiter-b-passkey','Lucia','Sala','841','LS-841')
+       'b3-waiter-b-token','b3-waiter-b-passkey','Lucia','Sala','841','LS-841'),
+      ($4::uuid,'waiter','f21-waiter@example.invalid',
+       'f21-waiter-token','f21-waiter-passkey','Sara','Ruiz','842','SR-842')
      ) source(user_id,role,email,token,credential,given_name,family_name,code,display_id)`,
      staffActors);
     const assignedCodes=await fixture.query(`UPDATE sabora.staff_employee_code_pool pool
@@ -3398,8 +3401,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      WHERE pool.code=enrollment.employee_code
        AND enrollment.auth_user_id=ANY($1::uuid[])
        AND pool.enrollment_id IS NULL`,[staffActors]);
-    assert.equal(assignedCodes.rowCount,3,
-     'all three isolated staff actors need reserved compact display IDs');
+    assert.equal(assignedCodes.rowCount,staffActors.length,
+     'all isolated staff actors need reserved compact display IDs');
     await fixture.query(`INSERT INTO sabora.order_operation_signing_keys
      (key_id,hmac_key,not_before,expires_at)
      VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')`,
@@ -7567,10 +7570,18 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      ]);
      assert.equal(prepared.status(),201,await prepared.text());
      assert.equal((await prepared.json()).currentStatus,'ready');
+     const floorJwt=staffJwt(floorWaiterId);
+     const readyBoard='/api/v1/operations/order-lines?status=ready&limit=100';
+     assert.equal((await http.inject({method:'GET',url:readyBoard,
+      headers:{authorization:'Bearer '+jwtWaiter}})).statusCode,403);
+     const authorizedFloor=await http.inject({method:'GET',url:readyBoard,
+      headers:{authorization:'Bearer '+floorJwt}});
+     assert.equal(authorizedFloor.statusCode,200,authorizedFloor.body);
+     assert.ok(authorizedFloor.json().items.some(item=>item.lineId===groupedLines[0].id&&item.pickup?.state==='ready'));
      floorContext=await browser.newContext({serviceWorkers:'block'});
      const floor=await floorContext.newPage();
      await floor.goto(managementOrigin+'#resumen');
-     await mount(floor,jwtWaiter,'waiter');
+     await mount(floor,floorJwt,'waiter');
      const floorAlerts=floor.getByRole('complementary',{name:'Avisos de sala'});
      await floorAlerts.getByText(/Platos listos para recoger/).waitFor();
      await floorAlerts.getByRole('button',{name:'Ir a comandas'}).click();
@@ -7586,7 +7597,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      await readyLine.getByText(/En recogida/).waitFor();
      assert.deepEqual((await admin.query(`SELECT l.status,t.state,t.claimed_by
       FROM sabora.order_lines l JOIN sabora.pickup_tasks t ON t.order_line_id=l.id WHERE l.id=$1`,
-      [groupedLines[0].id])).rows,[{status:'ready',state:'claimed',claimed_by:httpFixture.waiter}]);
+      [groupedLines[0].id])).rows,[{status:'ready',state:'claimed',claimed_by:floorWaiterId}]);
     }finally{
      await floorContext?.close();
      await kitchenContext?.close();
