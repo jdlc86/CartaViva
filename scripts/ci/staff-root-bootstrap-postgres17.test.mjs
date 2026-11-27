@@ -8,7 +8,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createStaffRootSecurityCandidate} from '../../apps/api/src/staff-root-security-candidate.mjs';
-import {createStaffRecoveryRegistrationCandidate,createStaffRecoveryCeremonyCandidate,createStaffRecoveryServiceCandidate} from '../../apps/api/src/staff-recovery-registration-candidate.mjs';
+import {createStaffRecoveryRegistrationCandidate,createStaffRecoveryCeremonyCandidate,createStaffRecoveryServiceCandidate,createStaffRecoveryReceiptReconcilerCandidate} from '../../apps/api/src/staff-recovery-registration-candidate.mjs';
 import {registerStaffRecoveryHttpCandidate,STAFF_RECOVERY_PATH,registerStaffRecoveryAdminHttpCandidate,STAFF_RECOVERY_ADMIN_PATH} from '../../apps/api/src/staff-recovery-http-candidate.mjs';
 import {createStaffRecoveryDeliveryCandidate} from '../../apps/api/src/staff-recovery-delivery-candidate.mjs';
 import {createStaffInvitationClassificationCandidate,createStaffRecoveryIntentCandidate} from '../../apps/api/src/staff-invitation-classification-candidate.mjs';
@@ -615,7 +615,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const evidence=label=>createHash('sha256').update(label).digest('hex');
   const staffBinding={intentId:latestRequest.requestId,subjectId:otherId,sessionId:consumedSession,credentialHash:staffNewHash};
   assert.equal((await staffRegistration('complete',staffBinding)).outcome,'denied');
-  assert.equal((await staffRegistration('prepare',{...staffBinding,sessionId:randomUUID(),evidenceHash:evidence('staff-ceremony')})).outcome,'denied');
+  assert.equal((await staffRegistration('prepare',{...staffBinding,sessionId:randomUUID(),evidenceHash:evidence('staff-ceremony'),details:{challengeId:randomUUID(),previousProviderIds:[]}})).outcome,'denied');
   assert.equal(await rootKernel.allowsAccess(otherId,staffOldHash),true);
   // Integrate the signed Auth-session ceremony with the real PG17 fence.
   const oldProviderId=randomUUID(),newProviderId=randomUUID();
@@ -633,12 +633,21 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    verifyRegistration:async(token,challenge,credential)=>{
     assert.equal(token,accessToken);assert.equal(challenge,recoveryCeremonyChallenge);
     assert.equal(credential.id,staffNewCredential);registrationCalls++;
+    const preparedSnapshot=await staffRegistration('inspect',{intentId:latestRequest.requestId});
+    assert.equal(preparedSnapshot.outcome,'inspected');
+    assert.equal(preparedSnapshot.subjectId,otherId);assert.equal(preparedSnapshot.sessionId,consumedSession);
+    assert.equal(preparedSnapshot.credentialHash,staffNewHash);assert.equal(preparedSnapshot.challengeId,recoveryCeremonyChallenge);
+    assert.deepEqual(preparedSnapshot.previousProviderIds,[oldProviderId]);
+    assert.equal(preparedSnapshot.replacementProviderId,null);assert.equal(preparedSnapshot.registrationReceiptHash,null);
+    assert.equal(preparedSnapshot.revocationReceiptHash,null);assert.equal(preparedSnapshot.completed,false);
+    assert.ok(!JSON.stringify(preparedSnapshot).includes(accessToken));
     assert.equal(await rootKernel.allowsAccess(otherId,staffOldHash),false);
     assert.equal(await rootKernel.allowsAccess(otherId,staffNewHash),false);
     assert.equal((await state(adminHeaders)).statusCode,401);
     await assert.rejects(authorizeRecovery(rootAuthority,{enrollmentId:id,requestId:randomUUID()}),e=>e.code==='42501');
     assert.equal((await staffRegistration('record_revocation',{...staffBinding,evidenceHash:evidence('staff-revoke')})).outcome,'denied');
-    assert.equal((await staffRegistration('record_registration',{...staffBinding,credentialHash:staffOldHash,evidenceHash:evidence('staff-register')})).outcome,'denied');
+    assert.equal((await staffRegistration('record_registration',{...staffBinding,credentialHash:staffOldHash,evidenceHash:evidence('staff-register'),details:{replacementProviderId:newProviderId}})).outcome,'denied');
+    assert.equal((await staffRegistration('record_registration',{...staffBinding,evidenceHash:evidence('wrong-existing-provider'),details:{replacementProviderId:oldProviderId}})).outcome,'denied');
     providerIds.push(newProviderId);return {id:newProviderId};
    },
    revokePasskey:async(subject,previous)=>{
@@ -648,7 +657,14 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    },
    logoutAll:async token=>{assert.equal(token,accessToken);logoutCalls++;assert.deepEqual(providerIds,[newProviderId]);return true;},
   };
-  const ceremonyConfig={registration:staffRegistration,provider:ceremonyProvider,issuer,
+  let lostFinalReceipt=false;
+  const ceremonyConfig={registration:async(action,binding)=>{
+   const result=await staffRegistration(action,binding);
+   if(action==='record_revocation'&&result.outcome==='revocation_recorded'&&!lostFinalReceipt){
+    lostFinalReceipt=true;throw Error('fixture_durable_revocation_receipt_response_lost');
+   }
+   return result;
+  },provider:ceremonyProvider,issuer,
    getTrustedKeys:async()=>[jwk],managementOrigin:origin,ticketSecret:randomBytes(32)};
   const recoveryCeremony=createStaffRecoveryCeremonyCandidate(ceremonyConfig);
   const ceremonyOptions=await recoveryCeremony.options({accessToken,intentId:latestRequest.requestId});
@@ -662,8 +678,22 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.equal(registrationCalls,0);
   assert.equal(await rootKernel.allowsAccess(otherId,staffOldHash),true);
   const raced=await Promise.allSettled(Array.from({length:3},()=>recoveryCeremony.register(ceremonyInput)));
-  assert.equal(raced.filter(x=>x.status==='fulfilled'&&x.value.outcome==='completed').length,1);
+  assert.equal(raced.filter(x=>x.status==='fulfilled').length,0);
   assert.equal(raced.filter(x=>x.status==='rejected'&&x.reason.code==='42501').length,2);
+  assert.equal(raced.filter(x=>x.status==='rejected'&&x.reason.message==='staff_recovery_provider_reconciliation_required').length,1);
+  assert.equal(lostFinalReceipt,true);
+  const durableSnapshot=await createStaffRecoveryRegistrationCandidate(recoveryConfig)('inspect',{intentId:latestRequest.requestId});
+  assert.equal(durableSnapshot.outcome,'inspected');assert.equal(durableSnapshot.completed,false);
+  assert.equal(durableSnapshot.replacementProviderId,newProviderId);
+  assert.deepEqual(durableSnapshot.previousProviderIds,[oldProviderId]);
+  assert.match(durableSnapshot.registrationReceiptHash,/^[0-9a-f]{64}$/);
+  assert.match(durableSnapshot.revocationReceiptHash,/^[0-9a-f]{64}$/);
+  assert.equal(await rootKernel.allowsAccess(otherId,staffOldHash),false);
+  assert.equal(await rootKernel.allowsAccess(otherId,staffNewHash),false);
+  const recoveryResults=await Promise.all(Array.from({length:2},()=>
+   createStaffRecoveryReceiptReconcilerCandidate({registration:createStaffRecoveryRegistrationCandidate(recoveryConfig)})(latestRequest.requestId)));
+  assert.deepEqual(recoveryResults.map(x=>x.outcome).sort(),['already_completed','completed']);
+  assert.equal((await staffRegistration('inspect',{intentId:latestRequest.requestId})).completed,true);
   assert.deepEqual([registrationCalls,revocationCalls,logoutCalls],[1,1,1]);
   assert.deepEqual(providerIds,[newProviderId]);
   await assert.rejects(createStaffRecoveryCeremonyCandidate(ceremonyConfig).register(ceremonyInput),e=>e.code==='42501');
@@ -684,7 +714,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   await assert.rejects(queueRecovery(retiredAdminAuthority,{enrollmentId:queuedTarget.enrollmentId,requestId:randomUUID()}),e=>e.code==='42501');
   assert.equal((await recoveryDispatch.dispatch(queuedByAdmin.requestId,async()=>{assert.fail('retired authorizer must not send');})).outcome,'cancelled');
   assert.equal((await staffRegistration('prepare',{intentId:consumedByAdmin.requestId,subjectId:consumedTarget.subjectId,
-   sessionId:consumedTarget.sessionId,credentialHash:evidence('kitchen-replacement'),evidenceHash:evidence('kitchen-ceremony')})).outcome,'denied');
+   sessionId:consumedTarget.sessionId,credentialHash:evidence('kitchen-replacement'),evidenceHash:evidence('kitchen-ceremony'),details:{challengeId:randomUUID(),previousProviderIds:[]}})).outcome,'denied');
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_recovery_registration_candidate WHERE intent_id=$1',[consumedByAdmin.requestId])).rows[0].n,0);
   await assert.rejects(recoveryDelivery.sessionContext({intentId:consumedByAdmin.requestId,accessToken:retiredAuthoritySession}),e=>e.code==='42501');
   assert.deepEqual(await classify(freshAdminAuthority,{enrollmentId:queuedTarget.enrollmentId}),
@@ -704,7 +734,10 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const waiterReplacement=randomBytes(32).toString('base64url'),waiterHash=hashRootCredentialId(waiterReplacement);
   const waiterOldProviderId=randomUUID(),waiterNewProviderId=randomUUID();
   let waiterProviderIds=[waiterOldProviderId],uncertainCalls=0;
+  const waiterChallenge=randomUUID(),waiterNonce=randomBytes(32).toString('base64url');
   const uncertainProvider={...ceremonyProvider,
+   registrationOptions:async token=>{assert.equal(token,accessToken);return {challenge_id:waiterChallenge,expires_at:Math.floor(Date.now()/1000)+60,
+    options:{rp:{id:new URL(origin).hostname},challenge:waiterNonce,authenticatorSelection:{userVerification:'required'}}};},
    listPasskeys:async subject=>{assert.equal(subject,queuedTarget.subjectId);return [...waiterProviderIds];},
    verifyRegistration:async()=>{
     uncertainCalls++;assert.equal(await rootKernel.allowsAccess(queuedTarget.subjectId,waiterHash),false);
@@ -717,9 +750,20 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const uncertainCeremony=createStaffRecoveryCeremonyCandidate(uncertainConfig);
   const waiterOptions=await uncertainCeremony.options({accessToken,intentId:freshIntent.intentId});
   const waiterInput={accessToken,intentId:freshIntent.intentId,ticket:waiterOptions.ticket,
-   credential:{...ceremonyCredential,id:waiterReplacement,rawId:waiterReplacement}};
+   credential:{...ceremonyCredential,id:waiterReplacement,rawId:waiterReplacement,response:{...ceremonyCredential.response,
+    clientDataJSON:enc({type:'webauthn.create',origin,challenge:waiterNonce})}}};
   await assert.rejects(uncertainCeremony.register(waiterInput),/staff_recovery_provider_reconciliation_required/);
   await assert.rejects(createStaffRecoveryCeremonyCandidate(uncertainConfig).register(waiterInput),e=>e.code==='42501');
+  assert.equal(uncertainCalls,1);
+  const unknownSnapshot=await createStaffRecoveryRegistrationCandidate(recoveryConfig)('inspect',{intentId:freshIntent.intentId});
+  assert.equal(unknownSnapshot.outcome,'inspected');assert.equal(unknownSnapshot.completed,false);
+  assert.equal(unknownSnapshot.challengeId,waiterChallenge);assert.equal(unknownSnapshot.credentialHash,waiterHash);
+  assert.deepEqual(unknownSnapshot.previousProviderIds,[waiterOldProviderId]);
+  assert.equal(unknownSnapshot.replacementProviderId,null);
+  assert.equal(unknownSnapshot.registrationReceiptHash,null);
+  const unknownResume=createStaffRecoveryReceiptReconcilerCandidate({registration:createStaffRecoveryRegistrationCandidate(recoveryConfig)});
+  assert.deepEqual(await Promise.all([unknownResume(freshIntent.intentId),unknownResume(freshIntent.intentId)]),
+   [{outcome:'requires_provider_evidence'},{outcome:'requires_provider_evidence'}]);
   assert.equal(uncertainCalls,1);
   assert.equal(await rootKernel.allowsAccess(queuedTarget.subjectId,waiterHash),false);
   assert.equal(await rootKernel.allowsAccess(queuedTarget.subjectId,hashRootCredentialId(genesisCredential)),false);

@@ -8,26 +8,59 @@ import {createPostgresTransaction} from './postgres-transaction.mjs';
 import {ROOT_RECOVERY_LOGIN} from './staff-root-recovery-candidate.mjs';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH=/^[0-9a-f]{64}$/;
+const validInventory=ids=>Array.isArray(ids)&&ids.length<=1000&&ids.every(id=>typeof id==='string'&&UUID.test(id))&&new Set(ids.map(id=>id.toLowerCase())).size===ids.length;
 const SQL='SELECT sabora.staff_recovery_registration_candidate($1::text,$2::text,$3::uuid,$4::uuid,$5::uuid,$6::text,$7::text,$8::bigint,$9::bigint,$10::text) AS outcome';
 export function createStaffRecoveryRegistrationCandidate({pool,keyId,signingSecret,clock=Date.now}={}){
  if(!/^[A-Za-z0-9_-]{8,64}$/.test(keyId??'')||!(signingSecret instanceof Uint8Array)||signingSecret.byteLength!==32||
   typeof clock!=='function')throw Error('invalid_staff_recovery_registration_config');
  const key=Buffer.from(signingSecret),tx=createPostgresTransaction({pool});
- return async(action,{intentId,subjectId,sessionId,credentialHash,evidenceHash=null,deadlineMs=Number.MAX_SAFE_INTEGER}={})=>{
-  if(!['prepare','record_registration','record_revocation','complete'].includes(action)||
-   ![intentId,subjectId,sessionId].every(x=>UUID.test(x??''))||!HASH.test(credentialHash??'')||
-   (action==='complete'?evidenceHash!==null:!HASH.test(evidenceHash??''))||!Number.isSafeInteger(deadlineMs))
+ return async(action,{intentId,subjectId=null,sessionId=null,credentialHash=null,evidenceHash=null,details=null,deadlineMs=Number.MAX_SAFE_INTEGER}={})=>{
+  const inspect=action==='inspect';
+  if(!['prepare','record_registration','record_revocation','complete','inspect'].includes(action)||
+   !UUID.test(intentId??'')||!Number.isSafeInteger(deadlineMs)||
+   (inspect?[subjectId,sessionId,credentialHash,evidenceHash,details].some(x=>x!==null):
+    ![subjectId,sessionId].every(x=>UUID.test(x??''))||!HASH.test(credentialHash??'')||
+    (action==='complete'?evidenceHash!==null:!HASH.test(evidenceHash??''))))
    throw Error('invalid_staff_recovery_registration_command');
+  let evidence=evidenceHash;
+  if(action==='prepare'){
+   if(!details||Object.keys(details).length!==2||!UUID.test(details.challengeId??'')||
+    !validInventory(details.previousProviderIds))throw Error('invalid_staff_recovery_registration_snapshot');
+   evidence=JSON.stringify({hash:evidenceHash,challengeId:details.challengeId.toLowerCase(),
+    previousProviderIds:details.previousProviderIds.map(x=>x.toLowerCase()).sort()});
+  }else if(action==='record_registration'){
+   if(!details||Object.keys(details).length!==1||!UUID.test(details.replacementProviderId??''))
+    throw Error('invalid_staff_recovery_registration_snapshot');
+   evidence=JSON.stringify({hash:evidenceHash,replacementProviderId:details.replacementProviderId.toLowerCase()});
+  }else if(details!==null)throw Error('invalid_staff_recovery_registration_snapshot');
   const issued=clock(),expires=Math.min(issued+15000,deadlineMs);
   if(!Number.isSafeInteger(issued)||!Number.isSafeInteger(expires)||expires<=issued)
    throw Object.assign(Error('staff_recovery_registration_expired'),{code:'42501'});
-  const args=[keyId,action,intentId.toLowerCase(),subjectId.toLowerCase(),sessionId.toLowerCase(),
-   credentialHash,evidenceHash,issued,expires];
+  const args=[keyId,action,intentId.toLowerCase(),subjectId?.toLowerCase()??null,sessionId?.toLowerCase()??null,
+   credentialHash,evidence,issued,expires];
   const signature=createHmac('sha256',key).update(['sabora.staff-recovery-registration.v1',keyId,ROOT_RECOVERY_LOGIN,
    ...args.slice(1).map(x=>x===null?'-':String(x))].join('\n')).digest('hex');
   const result=await tx(q=>q(SQL,[...args,signature])),outcome=result?.rows?.[0]?.outcome;
-  if(result?.rows?.length!==1||!['prepared','registration_recorded','revocation_recorded','completed','denied'].includes(outcome))
-   throw Error('invalid_staff_recovery_registration_result');
+  if(result?.rows?.length!==1)throw Error('invalid_staff_recovery_registration_result');
+  if(inspect&&outcome!=='denied'){
+   const row=JSON.parse(outcome);
+   if(row?.outcome!=='inspected'||row.intentId!==args[2]||
+    ![row.subjectId,row.sessionId,row.challengeId].every(x=>UUID.test(x??''))||
+    ![row.credentialHash,row.ceremonyHash].every(x=>HASH.test(x??''))||
+    !validInventory(row.previousProviderIds)||
+    (row.replacementProviderId!==null&&!UUID.test(row.replacementProviderId??''))||
+    (row.registrationReceiptHash!==null&&!HASH.test(row.registrationReceiptHash??''))||
+    (row.revocationReceiptHash!==null&&!HASH.test(row.revocationReceiptHash??''))||
+    (row.registrationReceiptHash===null)!==(row.replacementProviderId===null)||
+    row.previousProviderIds.includes(row.replacementProviderId)||
+    (row.revocationReceiptHash!==null&&row.registrationReceiptHash===null)||
+    typeof row.completed!=='boolean'||(row.completed&&row.revocationReceiptHash===null))
+    throw Error('invalid_staff_recovery_registration_result');
+   return Object.freeze({...row,previousProviderIds:Object.freeze([...row.previousProviderIds])});
+  }
+  const expected={prepare:'prepared',record_registration:'registration_recorded',record_revocation:'revocation_recorded',
+   complete:'completed',inspect:'denied'}[action];
+  if(outcome!=='denied'&&outcome!==expected)throw Error('invalid_staff_recovery_registration_result');
   return Object.freeze({outcome});
  };
 }
@@ -73,8 +106,8 @@ export function createStaffRecoveryCeremonyCandidate({registration,provider,issu
   if(new Set(ids).size!==ids.length)throw uncertain();
   return ids;
  }
- async function requireOutcome(action,binding,evidenceHash,expected){
-  const result=await registration(action,{...binding,...(evidenceHash===null?{}:{evidenceHash})});
+ async function requireOutcome(action,binding,evidenceHash,expected,details=null){
+  const result=await registration(action,{...binding,...(evidenceHash===null?{}:{evidenceHash}),...(details===null?{}:{details})});
   if(result?.outcome!==expected)throw uncertain();
  }
  return Object.freeze({
@@ -120,7 +153,8 @@ export function createStaffRecoveryCeremonyCandidate({registration,provider,issu
    const binding={intentId:ctx.intentId,subjectId:ctx.subjectId,sessionId:ctx.sessionId,credentialHash,
     deadlineMs:Math.min(Number(fields[6]),ctx.deadlineMs)};
    const ceremony=digest('sabora.staff-recovery-ceremony.v1',[...fields,credentialHash,...old]);
-   if((await registration('prepare',{...binding,evidenceHash:ceremony}))?.outcome!=='prepared')throw denied();
+   if((await registration('prepare',{...binding,evidenceHash:ceremony,
+    details:{challengeId:fields[4],previousProviderIds:old}}))?.outcome!=='prepared')throw denied();
    // From this point a failure may have a remote effect. Never repeat a
    // provider mutation automatically, release the fence, or return success
    // on ambiguous evidence. Exact reconciliation remains a separate concern.
@@ -133,7 +167,7 @@ export function createStaffRecoveryCeremonyCandidate({registration,provider,issu
     if(old.includes(replacement)||!same(await listed(ctx.subjectId),[...old,replacement].sort())||
      !same(contextFields(await identity(accessToken,intentId)),contextFields(ctx)))throw uncertain();
     const registered=digest('sabora.staff-recovery-registration-receipt.v1',[ceremony,replacement]);
-    await requireOutcome('record_registration',binding,registered,'registration_recorded');
+    await requireOutcome('record_registration',binding,registered,'registration_recorded',{replacementProviderId:replacement});
     for(const previous of old){
      if(binding.deadlineMs<=clock()||await provider.revokePasskey(ctx.subjectId,previous)!==true)throw uncertain();
     }
@@ -174,4 +208,26 @@ export function createStaffRecoveryServiceCandidate({delivery,registration,issue
   async options(session){return (await ceremony(session)).options(session);},
   async register(session){return (await ceremony(session)).register(session);}
  });
+}
+
+
+// A restart after the two remote receipts were durably recorded does not
+// require another Auth mutation. This internal reconciler is deliberately
+// unable to infer a registration from a changed inventory or to replay it.
+// SQL rechecks the exact enrollment/member/session binding and serializes
+// concurrent completion attempts; no access token or grant is needed.
+export function createStaffRecoveryReceiptReconcilerCandidate({registration}={}){
+ if(typeof registration!=='function')throw Error('invalid_staff_recovery_receipt_reconciler');
+ return async intentId=>{
+  const row=await registration('inspect',{intentId});
+  if(row?.outcome!=='inspected')return Object.freeze({outcome:'denied'});
+  if(row.completed)return Object.freeze({outcome:'already_completed'});
+  if(!row.registrationReceiptHash||!row.revocationReceiptHash||!row.replacementProviderId)
+   return Object.freeze({outcome:'requires_provider_evidence'});
+  const result=await registration('complete',{intentId:row.intentId,subjectId:row.subjectId,
+   sessionId:row.sessionId,credentialHash:row.credentialHash});
+  if(result?.outcome==='completed')return Object.freeze({outcome:'completed'});
+  const current=await registration('inspect',{intentId});
+  return Object.freeze({outcome:current?.outcome==='inspected'&&current.completed?'already_completed':'denied'});
+ };
 }

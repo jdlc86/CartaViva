@@ -1103,11 +1103,15 @@ CREATE TABLE sabora.staff_recovery_registration_candidate(
  session_id uuid NOT NULL UNIQUE,
  credential_hash text NOT NULL CHECK(credential_hash ~ '^[0-9a-f]{64}$'),
  ceremony_hash text NOT NULL UNIQUE CHECK(ceremony_hash ~ '^[0-9a-f]{64}$'),
+ provider_challenge_id uuid NOT NULL UNIQUE,
+ previous_provider_ids uuid[] NOT NULL CHECK(cardinality(previous_provider_ids)<=1000 AND array_position(previous_provider_ids,NULL) IS NULL),
+ replacement_provider_id uuid UNIQUE CHECK(replacement_provider_id IS NULL OR NOT (replacement_provider_id=ANY(previous_provider_ids))),
  registration_receipt_hash text UNIQUE CHECK(registration_receipt_hash ~ '^[0-9a-f]{64}$'),
  revocation_receipt_hash text UNIQUE CHECK(revocation_receipt_hash ~ '^[0-9a-f]{64}$'),
  prepared_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  completed_at timestamptz,
  CHECK(revocation_receipt_hash IS NULL OR registration_receipt_hash IS NOT NULL),
+ CHECK((registration_receipt_hash IS NULL)=(replacement_provider_id IS NULL)),
  CHECK(completed_at IS NULL OR revocation_receipt_hash IS NOT NULL),
  UNIQUE(subject_user_id,credential_hash)
 );
@@ -1116,7 +1120,7 @@ CREATE UNIQUE INDEX staff_recovery_one_pending_registration ON sabora.staff_reco
 ALTER TABLE sabora.staff_recovery_registration_candidate ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sabora.staff_recovery_registration_candidate FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON sabora.staff_recovery_registration_candidate FROM PUBLIC,anon,authenticated;
-GRANT SELECT,INSERT,UPDATE(registration_receipt_hash,revocation_receipt_hash,completed_at)
+GRANT SELECT,INSERT,UPDATE(registration_receipt_hash,replacement_provider_id,revocation_receipt_hash,completed_at)
  ON sabora.staff_recovery_registration_candidate TO sabora_root_recovery_fn_owner;
 CREATE POLICY staff_recovery_registration_owner ON sabora.staff_recovery_registration_candidate
  TO sabora_root_recovery_fn_owner USING(true) WITH CHECK(true);
@@ -1131,14 +1135,17 @@ DECLARE v_key bytea;v_expiry timestamptz;v_expected bytea;v_given bytea;v_diff i
  v_now timestamptz;v_owner uuid;v_role text;v_genesis text;
  i sabora.staff_recovery_intent_candidate%ROWTYPE;d sabora.staff_recovery_delivery_candidate%ROWTYPE;
  r sabora.staff_recovery_registration_candidate%ROWTYPE;s sabora.root_recovery_state_candidate%ROWTYPE;e record;
+ v_evidence jsonb;v_ids uuid[];v_challenge uuid;v_replacement uuid;
 BEGIN
  IF session_user::text IS DISTINCT FROM 'sabora_root_recovery_login'
  OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
- OR p_action IS NULL OR p_action NOT IN ('prepare','record_registration','record_revocation','complete')
- OR p_intent IS NULL OR p_subject IS NULL OR p_session IS NULL
- OR p_credential IS NULL OR p_credential !~ '^[0-9a-f]{64}$'
+ OR p_action IS NULL OR p_action NOT IN ('prepare','record_registration','record_revocation','complete','inspect')
+ OR p_intent IS NULL
+ OR (p_action='inspect' AND (p_subject IS NOT NULL OR p_session IS NOT NULL OR p_credential IS NOT NULL OR p_evidence IS NOT NULL))
+ OR (p_action<>'inspect' AND (p_subject IS NULL OR p_session IS NULL OR p_credential IS NULL OR p_credential !~ '^[0-9a-f]{64}$'))
  OR (p_action='complete' AND p_evidence IS NOT NULL)
- OR (p_action<>'complete' AND (p_evidence IS NULL OR p_evidence !~ '^[0-9a-f]{64}$'))
+ OR (p_action='record_revocation' AND (p_evidence IS NULL OR p_evidence !~ '^[0-9a-f]{64}$'))
+ OR (p_action IN ('prepare','record_registration') AND (p_evidence IS NULL OR octet_length(p_evidence)>49152))
  OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
  OR p_issued IS NULL OR p_expires IS NULL OR p_expires::numeric-p_issued::numeric NOT BETWEEN 1 AND 15000
  OR p_issued::numeric>floor(extract(epoch FROM clock_timestamp())*1000)::numeric+5000
@@ -1148,13 +1155,13 @@ BEGIN
  WHERE k.key_id=p_key_id AND k.purpose='control' AND k.expires_at>clock_timestamp();
  IF NOT FOUND THEN RAISE EXCEPTION 'staff_recovery_registration_forbidden' USING ERRCODE='42501'; END IF;
  v_expected:=extensions.hmac(convert_to(concat_ws(chr(10),'sabora.staff-recovery-registration.v1',p_key_id,
- session_user::text,p_action,p_intent::text,p_subject::text,p_session::text,p_credential,coalesce(p_evidence,'-'),
+ session_user::text,p_action,p_intent::text,coalesce(p_subject::text,'-'),coalesce(p_session::text,'-'),coalesce(p_credential,'-'),coalesce(p_evidence,'-'),
  p_issued::text,p_expires::text),'UTF8'),v_key,'sha256');
  v_given:=decode(p_signature,'hex');
  FOR v_i IN 0..31 LOOP v_diff:=v_diff | (get_byte(v_expected,v_i)#get_byte(v_given,v_i)); END LOOP;
  IF v_diff IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'staff_recovery_registration_forbidden' USING ERRCODE='42501'; END IF;
  SELECT * INTO i FROM sabora.staff_recovery_intent_candidate a WHERE a.request_id=p_intent;
- IF NOT FOUND OR i.subject_user_id IS DISTINCT FROM p_subject THEN RETURN 'denied'; END IF;
+ IF NOT FOUND OR (p_action<>'inspect' AND i.subject_user_id IS DISTINCT FROM p_subject) THEN RETURN 'denied'; END IF;
  SELECT o.owner_user_id INTO v_owner FROM sabora.admin_write_ownership o WHERE o.singleton FOR UPDATE;
  SELECT x.auth_user_id,x.requested_role,x.state INTO e FROM sabora.staff_enrollments x WHERE x.id=i.enrollment_id FOR UPDATE;
  PERFORM 1 FROM sabora.staff_members m WHERE m.user_id IN(i.actor_user_id,i.subject_user_id)
@@ -1166,13 +1173,31 @@ BEGIN
  AND k.purpose='control' AND k.hmac_key=v_key AND k.expires_at>v_now)
  THEN RAISE EXCEPTION 'staff_recovery_registration_forbidden' USING ERRCODE='42501'; END IF;
  SELECT * INTO d FROM sabora.staff_recovery_delivery_candidate x WHERE x.intent_id=p_intent;
- IF d.state IS DISTINCT FROM 'consumed' OR d.consumed_session IS DISTINCT FROM p_session
- OR e.auth_user_id IS DISTINCT FROM p_subject OR e.requested_role IS DISTINCT FROM i.subject_role
+ IF d.state IS DISTINCT FROM 'consumed' OR (p_action<>'inspect' AND d.consumed_session IS DISTINCT FROM p_session)
+ OR e.auth_user_id IS DISTINCT FROM i.subject_user_id OR e.requested_role IS DISTINCT FROM i.subject_role
  OR e.state IS DISTINCT FROM i.subject_state
- OR NOT EXISTS(SELECT 1 FROM sabora.staff_members m WHERE m.user_id=p_subject AND m.role=i.subject_role AND m.state=i.subject_state)
+ OR NOT EXISTS(SELECT 1 FROM sabora.staff_members m WHERE m.user_id=i.subject_user_id AND m.role=i.subject_role AND m.state=i.subject_state)
  OR EXISTS(SELECT 1 FROM sabora.staff_recovery_intent_candidate a WHERE a.enrollment_id=i.enrollment_id AND a.version>i.version)
  THEN RETURN 'denied'; END IF;
  SELECT * INTO r FROM sabora.staff_recovery_registration_candidate a WHERE a.intent_id=p_intent FOR UPDATE;
+ IF p_action='inspect' THEN
+  -- Internal signed read only. No JWT, email proof, grant, attestation,
+  -- challenge bytes, or private key is stored or returned.
+  IF r.intent_id IS NULL OR r.subject_user_id IS DISTINCT FROM i.subject_user_id
+   OR r.session_id IS DISTINCT FROM d.consumed_session THEN RETURN 'denied'; END IF;
+  RETURN jsonb_build_object('outcome','inspected','intentId',r.intent_id,'subjectId',r.subject_user_id,
+   'sessionId',r.session_id,'credentialHash',r.credential_hash,'ceremonyHash',r.ceremony_hash,
+   'challengeId',r.provider_challenge_id,'previousProviderIds',to_jsonb(r.previous_provider_ids),
+   'replacementProviderId',r.replacement_provider_id,'registrationReceiptHash',r.registration_receipt_hash,
+   'revocationReceiptHash',r.revocation_receipt_hash,'completed',r.completed_at IS NOT NULL)::text;
+ END IF;
+ IF p_action IN ('prepare','record_registration') THEN
+  BEGIN v_evidence:=p_evidence::jsonb;
+  EXCEPTION WHEN invalid_text_representation THEN RETURN 'denied'; END;
+  IF jsonb_typeof(v_evidence) IS DISTINCT FROM 'object'
+   OR NOT coalesce(v_evidence->>'hash' ~ '^[0-9a-f]{64}$',false)
+  THEN RETURN 'denied'; END IF;
+ END IF;
  IF p_action='prepare' THEN
   IF r.intent_id IS NOT NULL OR i.expires_at<=v_now OR EXISTS(SELECT 1 FROM sabora.staff_recovery_registration_candidate a
    WHERE a.subject_user_id=p_subject AND (a.completed_at IS NULL OR a.credential_hash=p_credential))
@@ -1190,8 +1215,20 @@ BEGIN
     JOIN sabora.staff_recovery_intent_candidate ri ON ri.request_id=a.intent_id
     WHERE a.subject_user_id=i.actor_user_id ORDER BY ri.version DESC LIMIT 1),true)
   THEN RETURN 'denied'; END IF;
-  INSERT INTO sabora.staff_recovery_registration_candidate(intent_id,subject_user_id,session_id,credential_hash,ceremony_hash)
-   VALUES(p_intent,p_subject,p_session,p_credential,p_evidence);
+  IF (SELECT count(*) FROM jsonb_object_keys(v_evidence))<>3
+   OR NOT coalesce(v_evidence->>'challengeId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',false)
+   OR jsonb_typeof(v_evidence->'previousProviderIds') IS DISTINCT FROM 'array' THEN RETURN 'denied'; END IF;
+  IF jsonb_array_length(v_evidence->'previousProviderIds')>1000
+   OR EXISTS(SELECT 1 FROM jsonb_array_elements(v_evidence->'previousProviderIds') AS j(value)
+    WHERE jsonb_typeof(j.value) IS DISTINCT FROM 'string'
+     OR NOT coalesce((j.value#>>'{}') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',false))
+  THEN RETURN 'denied'; END IF;
+  SELECT coalesce(array_agg(x::uuid ORDER BY x::uuid),'{}'::uuid[]) INTO v_ids
+   FROM jsonb_array_elements_text(v_evidence->'previousProviderIds') AS j(x);
+  IF cardinality(v_ids)<>(SELECT count(DISTINCT x) FROM unnest(v_ids) AS j(x)) THEN RETURN 'denied'; END IF;
+  v_challenge:=(v_evidence->>'challengeId')::uuid;
+  INSERT INTO sabora.staff_recovery_registration_candidate(intent_id,subject_user_id,session_id,credential_hash,ceremony_hash,provider_challenge_id,previous_provider_ids)
+   VALUES(p_intent,p_subject,p_session,p_credential,v_evidence->>'hash',v_challenge,v_ids);
   RETURN 'prepared';
  END IF;
  -- Once the remote call might have happened, do not reopen or un-fence on
@@ -1199,7 +1236,13 @@ BEGIN
  IF r.intent_id IS NULL OR r.completed_at IS NOT NULL OR r.credential_hash IS DISTINCT FROM p_credential
  OR r.session_id IS DISTINCT FROM p_session THEN RETURN 'denied'; END IF;
  IF p_action='record_registration' AND r.registration_receipt_hash IS NULL THEN
-  UPDATE sabora.staff_recovery_registration_candidate SET registration_receipt_hash=p_evidence WHERE intent_id=p_intent;
+  IF (SELECT count(*) FROM jsonb_object_keys(v_evidence))<>2
+   OR NOT coalesce(v_evidence->>'replacementProviderId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',false)
+  THEN RETURN 'denied'; END IF;
+  v_replacement:=(v_evidence->>'replacementProviderId')::uuid;
+  IF v_replacement=ANY(r.previous_provider_ids) THEN RETURN 'denied'; END IF;
+  UPDATE sabora.staff_recovery_registration_candidate SET registration_receipt_hash=v_evidence->>'hash',
+   replacement_provider_id=v_replacement WHERE intent_id=p_intent;
   RETURN 'registration_recorded';
  ELSIF p_action='record_revocation' AND r.registration_receipt_hash IS NOT NULL AND r.revocation_receipt_hash IS NULL
  AND p_evidence<>r.registration_receipt_hash THEN
