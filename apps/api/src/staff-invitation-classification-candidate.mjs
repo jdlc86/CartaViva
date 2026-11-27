@@ -15,8 +15,9 @@ export function createStaffInvitationClassificationCandidate({pool,keyId,signing
   const identity=context?.verifiedIdentity,staff=context?.verifiedStaff;
   if(!UUID.test(identity?.userId??'')||identity.userId!==staff?.userId||
    !['root','admin'].includes(staff.role)||!Number.isSafeInteger(identity.expiresAt))throw forbidden();
-  const credential=staff.role==='root'?context.verifiedRootCredential:null;
-  if(staff.role==='root'&&!HASH.test(credential??''))throw forbidden();
+  // This server-derived proof cookie is bound to the verified session for all staff.
+  const credential=context.verifiedRootCredential;
+  if(!HASH.test(credential??''))throw forbidden();
   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length!==1||
    (!Object.hasOwn(input,'email')&&!Object.hasOwn(input,'enrollmentId')))throw forbidden();
   let emailHash=null,enrollment=null;
@@ -53,8 +54,9 @@ export function createStaffRecoveryIntentCandidate({pool,keyId,signingSecret,ttl
   const identity=context?.verifiedIdentity,staff=context?.verifiedStaff;
   if(!UUID.test(identity?.userId??'')||identity.userId!==staff?.userId||
    !['root','admin'].includes(staff.role)||!Number.isSafeInteger(identity.expiresAt))throw forbidden();
-  const credential=staff.role==='root'?context.verifiedRootCredential:null;
-  if(staff.role==='root'&&!HASH.test(credential??''))throw forbidden();
+  // This server-derived proof cookie is bound to the verified session for all staff.
+  const credential=context.verifiedRootCredential;
+  if(!HASH.test(credential??''))throw forbidden();
   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length!==2||
    !Object.hasOwn(input,'enrollmentId')||!Object.hasOwn(input,'requestId')||
    !UUID.test(input.enrollmentId??'')||!UUID.test(input.requestId??''))throw forbidden();

@@ -721,7 +721,7 @@ DECLARE v_key bytea;v_expiry timestamptz;v_expected bytea;v_given bytea;v_diff i
 BEGIN
  IF session_user::text IS DISTINCT FROM 'sabora_root_recovery_login' OR p_actor IS NULL
  OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
- OR (p_credential IS NOT NULL AND p_credential !~ '^[0-9a-f]{64}$')
+ OR p_credential IS NULL OR p_credential !~ '^[0-9a-f]{64}$'
  OR (p_email_hash IS NOT NULL AND p_email_hash !~ '^[0-9a-f]{64}$')
  OR ((p_email_hash IS NULL)=(p_enrollment IS NULL))
  OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
@@ -755,7 +755,10 @@ BEGIN
    AND (p_credential=coalesce(s.primary_credential_hash,v_genesis) OR p_credential=s.backup_credential_hash),false)
   THEN RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501'; END IF;
  ELSIF v_role IS DISTINCT FROM 'admin' OR v_owner IS DISTINCT FROM p_actor
-  OR EXISTS(SELECT 1 FROM sabora.staff_recovery_registration_candidate a WHERE a.subject_user_id=p_actor AND a.completed_at IS NULL) THEN
+  OR NOT coalesce((SELECT a.completed_at IS NOT NULL AND a.credential_hash=p_credential
+    FROM sabora.staff_recovery_registration_candidate a
+    JOIN sabora.staff_recovery_intent_candidate ri ON ri.request_id=a.intent_id
+    WHERE a.subject_user_id=p_actor ORDER BY ri.version DESC LIMIT 1),true) THEN
   RAISE EXCEPTION 'staff_invitation_classify_forbidden' USING ERRCODE='42501';
  END IF;
  SELECT x.id,x.auth_user_id,x.requested_role,x.state INTO e FROM sabora.staff_enrollments x
@@ -800,7 +803,7 @@ CREATE TABLE sabora.staff_recovery_intent_candidate(
  subject_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id) ON DELETE RESTRICT,
  actor_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id) ON DELETE RESTRICT,
  version integer NOT NULL CHECK(version>0),
- authorizer_credential_hash text CHECK(authorizer_credential_hash ~ '^[0-9a-f]{64}$'),
+ authorizer_credential_hash text NOT NULL CHECK(authorizer_credential_hash ~ '^[0-9a-f]{64}$'),
  subject_role text NOT NULL CHECK(subject_role IN ('admin','waiter','kitchen')),
  subject_state text NOT NULL CHECK(subject_state IN ('active','suspended')),
  issued_at timestamptz NOT NULL,
@@ -844,7 +847,7 @@ DECLARE v_key bytea;v_expiry timestamptz;v_expected bytea;v_given bytea;v_diff i
 BEGIN
  IF session_user::text IS DISTINCT FROM 'sabora_root_recovery_login' OR p_actor IS NULL
  OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
- OR (p_credential IS NOT NULL AND p_credential !~ '^[0-9a-f]{64}$')
+ OR p_credential IS NULL OR p_credential !~ '^[0-9a-f]{64}$'
  OR p_enrollment IS NULL OR p_request IS NULL OR p_seconds IS NULL OR p_seconds NOT BETWEEN 60 AND 86400
  OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
  OR p_issued IS NULL OR p_expires IS NULL OR p_expires::numeric-p_issued::numeric NOT BETWEEN 1 AND 15000
@@ -998,7 +1001,11 @@ BEGIN
    AND (i.authorizer_credential_hash=coalesce(s.primary_credential_hash,v_genesis)
      OR i.authorizer_credential_hash=s.backup_credential_hash),false);
  ELSE
-  v_current:=v_current AND coalesce(v_role='admin' AND v_owner=i.actor_user_id AND i.authorizer_credential_hash IS NULL,false);
+  v_current:=v_current AND coalesce(v_role='admin' AND v_owner=i.actor_user_id
+   AND coalesce((SELECT a.completed_at IS NOT NULL AND a.credential_hash=i.authorizer_credential_hash
+    FROM sabora.staff_recovery_registration_candidate a
+    JOIN sabora.staff_recovery_intent_candidate ri ON ri.request_id=a.intent_id
+    WHERE a.subject_user_id=i.actor_user_id ORDER BY ri.version DESC LIMIT 1),true),false);
  END IF;
  SELECT * INTO d FROM sabora.staff_recovery_delivery_candidate x WHERE x.intent_id=p_intent FOR UPDATE;
  IF p_action='queue' THEN
@@ -1146,7 +1153,10 @@ BEGIN
     AND (i.authorizer_credential_hash=coalesce(s.primary_credential_hash,v_genesis) OR i.authorizer_credential_hash=s.backup_credential_hash),false)
    THEN RETURN 'denied'; END IF;
   ELSIF v_role IS DISTINCT FROM 'admin' OR v_owner IS DISTINCT FROM i.actor_user_id
-   OR EXISTS(SELECT 1 FROM sabora.staff_recovery_registration_candidate a WHERE a.subject_user_id=i.actor_user_id AND a.completed_at IS NULL)
+   OR NOT coalesce((SELECT a.completed_at IS NOT NULL AND a.credential_hash=i.authorizer_credential_hash
+    FROM sabora.staff_recovery_registration_candidate a
+    JOIN sabora.staff_recovery_intent_candidate ri ON ri.request_id=a.intent_id
+    WHERE a.subject_user_id=i.actor_user_id ORDER BY ri.version DESC LIMIT 1),true)
   THEN RETURN 'denied'; END IF;
   INSERT INTO sabora.staff_recovery_registration_candidate(intent_id,subject_user_id,session_id,credential_hash,ceremony_hash)
    VALUES(p_intent,p_subject,p_session,p_credential,p_evidence);

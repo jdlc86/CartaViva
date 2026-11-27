@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S54-35 · H1-A.** Autoridad de recuperación de personal ligada a credencial vigente del ADMIN titular, incluidas autorizaciones antiguas y pasos diferidos. Harness integrado ampliado; CI pendiente. Sin montaje operativo. AP-01 a AP-09 aplazados; H1-A parcial.
+
 > **S54-34 · H1-A.** Cola de recuperación no ROOT conectada al trabajador candidato existente y AAD separado por propósito/intención. Ensayo PG17 ampliado con competencia de trabajadores y replay; CI pendiente. H1-A parcial, proveedor alojado aplazado y runtime aún cerrado.
 
 > **S54-33 · H6.** `259b2c3f` 6/7 PASS; B3 falla por navegación durante montaje segunda PWA, F12 observa solicitud pendiente. Candidato de estabilización de servidores Vite del ensayo sin cambios operativos ni aserciones reducidas; CI pendiente. Secreto temporal de Actions retirado según propietario; revocación Supabase no acreditada. Auth alojado aplazado S54-32.

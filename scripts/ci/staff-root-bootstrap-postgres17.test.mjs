@@ -326,19 +326,19 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const revoked=await revokedResponse;assert.equal(revoked.status(),200,await revoked.text());
   await panel.getByRole('button',{name:'Invitar primer ADMIN'}).waitFor();
   assert.deepEqual((await state()).json(),{phase:'empty',member:null});
-  const enrollmentSession=randomUUID();
+  let enrollmentSession=randomUUID(),enrollmentUserId=otherId;
   const mintEnrollment=()=>{
    const now=Math.floor(Date.now()/1000);
    const msg=enc({typ:'JWT',alg:'RS256',kid:jwk.kid})+'.'+enc({iss:issuer,aud:'authenticated',
-    sub:otherId,role:'authenticated',iat:now,exp:now+300,is_anonymous:false,session_id:enrollmentSession,
+    sub:enrollmentUserId,role:'authenticated',iat:now,exp:now+300,is_anonymous:false,session_id:enrollmentSession,
     amr:[{method:'otp',timestamp:now}]});
    return msg+'.'+sign('RSA-SHA256',Buffer.from(msg),privateKey).toString('base64url');
   };
   let confirmedEmail=pendingDelivery.email,accessToken=mintEnrollment();
-  const challengeId=randomUUID(),nonce=randomBytes(32).toString('base64url'),credentialId=randomUUID();
+  let challengeId=randomUUID(),nonce=randomBytes(32).toString('base64url'),credentialId=randomUUID();
   const enrollment=createStaffVerifiedEnrollmentCandidate({pool:enrollmentPool,issuer,managementOrigin:origin,
    getTrustedKeys:async()=>[jwk],keyId:normalKey,secret:normalSecret,hashInviteeEmail:hashEmail,
-   provider:{user:async token=>token===accessToken?{id:otherId,email:confirmedEmail,is_anonymous:false,email_confirmed_at:new Date(Date.now()-1000).toISOString()}:null,
+   provider:{user:async token=>token===accessToken?{id:enrollmentUserId,email:confirmedEmail,is_anonymous:false,email_confirmed_at:new Date(Date.now()-1000).toISOString()}:null,
     registrationOptions:async()=>({challenge_id:challengeId,expires_at:Math.floor(Date.now()/1000)+60,
      options:{rp:{id:new URL(origin).hostname},challenge:nonce,authenticatorSelection:{userVerification:'required'}}}),
     verifyRegistration:async(_token,challenge)=>{assert.equal(challenge,challengeId);return {id:credentialId};}}});
@@ -412,7 +412,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const ordinaryWaiter=await ordinary(inviteBody('ordinary-waiter@demo.invalid','waiter'),adminHeaders);
   assert.equal(ordinaryWaiter.statusCode,201,ordinaryWaiter.body);
   const classify=createStaffInvitationClassificationCandidate({...recoveryConfig,hashInviteeEmail:hashEmail});
-  const authority=(userId,role,credential=null)=>({verifiedIdentity:{userId,expiresAt:Math.floor(Date.now()/1000)+60},
+  const authority=(userId,role,credential=hashRootCredentialId(genesisCredential))=>({verifiedIdentity:{userId,expiresAt:Math.floor(Date.now()/1000)+60},
    verifiedStaff:{userId,role},verifiedRootCredential:credential});
   const rootAuthority=authority(rootId,'root',hashRootCredentialId(genesisCredential));
   const adminAuthority=authority(otherId,'admin');
@@ -455,7 +455,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   // Real PG17 authorization + encrypted delivery + Resend/verified Auth fixtures.
   const recoveryDelivery=createStaffRecoveryDeliveryCandidate({...recoveryConfig,keyring,hashInviteeEmail:hashEmail,
    issuer,getTrustedKeys:async()=>[jwk],provider:{user:async token=>token===accessToken?
-    {id:otherId,email:confirmedEmail,is_anonymous:false,email_confirmed_at:new Date(Date.now()-1000).toISOString()}:null}});
+    {id:enrollmentUserId,email:confirmedEmail,is_anonymous:false,email_confirmed_at:new Date(Date.now()-1000).toISOString()}:null}});
   const recoveryDispatch=createStaffRecoveryDeliveryCandidate({pool:mailPool,keyId:mailKey,signingSecret:mailSigning,
    keyring,hashInviteeEmail:hashEmail,mode:'worker'});
   const queueRecovery=createStaffRecoveryIntentCandidate({...recoveryConfig,ttlSeconds:600,delivery:recoveryDelivery});
@@ -504,6 +504,42 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   await assert.rejects(recoveryDelivery.consume(recoveryInput),e=>e.code==='42501');
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_members WHERE user_id=$1',[otherId])).rows[0].n,1);
   assert.equal((await admin.query('SELECT owner_user_id FROM sabora.admin_write_ownership WHERE singleton')).rows[0].owner_user_id,otherId);
+  // Authorize recoveries for two ordinary active staff before the titular
+  // ADMIN's credential changes. Use the existing enrollment flow, not
+  // fabricated memberships. Keep one job queued and consume the other.
+  const oldEnrollmentContext={enrollmentSession,enrollmentUserId,accessToken,confirmedEmail};
+  async function activateForRecovery(enrollmentId){
+   const invitation=await deliver(enrollmentId,1);
+   enrollmentUserId=randomUUID();enrollmentSession=randomUUID();accessToken=mintEnrollment();
+   confirmedEmail=invitation.email;
+   challengeId=randomUUID();nonce=randomBytes(32).toString('base64url');credentialId=randomUUID();
+   assert.equal((await accept(enrollmentId,invitation.token)).state,'accepted');
+   const opt=await enrollment.registrationOptions({accessToken,enrollmentId});
+   const raw=randomBytes(32).toString('base64url');
+   assert.equal((await enrollment.register({accessToken,enrollmentId,ticket:opt.ticket,credential:{
+    type:'public-key',id:raw,rawId:raw,response:{clientDataJSON:enc({type:'webauthn.create',origin,challenge:nonce}),
+    attestationObject:enc('provider-fixture-only')}},correlationId:correlation()})).state,'registered');
+   const activation=await ordinary({action:'activate',enrollmentId,subjectUserId:enrollmentUserId,correlationId:correlation()},adminHeaders);
+   assert.equal(activation.statusCode,200,activation.body);
+   return {enrollmentId,subjectId:enrollmentUserId,sessionId:enrollmentSession};
+  }
+  const queuedTarget=await activateForRecovery(ordinaryWaiter.json().enrollmentId);
+  const kitchen=await ordinary(inviteBody('recovery-kitchen@demo.invalid','kitchen'),adminHeaders);
+  assert.equal(kitchen.statusCode,201,kitchen.body);
+  const consumedTarget=await activateForRecovery(kitchen.json().enrollmentId);
+  const queuedByAdmin={enrollmentId:queuedTarget.enrollmentId,requestId:randomUUID()};
+  const consumedByAdmin={enrollmentId:consumedTarget.enrollmentId,requestId:randomUUID()};
+  const preRecoveryAdmin=authority(otherId,'admin',hashRootCredentialId(genesisCredential));
+  await queueRecovery(preRecoveryAdmin,queuedByAdmin);
+  await queueRecovery(preRecoveryAdmin,consumedByAdmin);
+  let consumedRecoveryToken;
+  assert.equal((await recoveryDispatch.dispatch(consumedByAdmin.requestId,async job=>{
+   assert.equal(job.intentId,consumedByAdmin.requestId);
+   consumedRecoveryToken=job.token;
+   return {outcome:'accepted',providerId:randomUUID()};
+  })).outcome,'accepted');
+  assert.equal((await recoveryDelivery.consume({intentId:consumedByAdmin.requestId,token:consumedRecoveryToken,accessToken})).outcome,'consumed');
+  ({enrollmentSession,enrollmentUserId,accessToken,confirmedEmail}=oldEnrollmentContext);
   const staffRegistration=createStaffRecoveryRegistrationCandidate(recoveryConfig);
   const consumedSession=(await admin.query('SELECT consumed_session FROM sabora.staff_recovery_delivery_candidate WHERE intent_id=$1',[latestRequest.requestId])).rows[0].consumed_session;
   const staffNewCredential=Buffer.from('fixture-staff-replacement').toString('base64url');
@@ -534,6 +570,26 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.equal((await state(adminHeaders)).statusCode,401);
   assert.equal((await attempt(otherId,grantId,code,'/verify')).statusCode,401);
   assert.equal((await attempt(otherId,grantId,code,'/verify',staffNewCredential)).statusCode,200);
+  // The retired ADMIN credential may not authorize new or outstanding
+  // recovery work, even when a verified HTTP context was admitted earlier.
+  const freshAdminAuthority=authority(otherId,'admin',staffNewHash);
+  const retiredAdminAuthority=authority(otherId,'admin',staffOldHash);
+  await assert.rejects(classify(retiredAdminAuthority,{enrollmentId:queuedTarget.enrollmentId}),e=>e.code==='42501');
+  await assert.rejects(classify(authority(otherId,'admin',null),{enrollmentId:queuedTarget.enrollmentId}),e=>e.code==='42501');
+  await assert.rejects(queueRecovery(retiredAdminAuthority,{enrollmentId:queuedTarget.enrollmentId,requestId:randomUUID()}),e=>e.code==='42501');
+  assert.equal((await recoveryDispatch.dispatch(queuedByAdmin.requestId,async()=>{assert.fail('retired authorizer must not send');})).outcome,'cancelled');
+  assert.equal((await staffRegistration('prepare',{intentId:consumedByAdmin.requestId,subjectId:consumedTarget.subjectId,
+   sessionId:consumedTarget.sessionId,credentialHash:evidence('kitchen-replacement'),evidenceHash:evidence('kitchen-ceremony')})).outcome,'denied');
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_recovery_registration_candidate WHERE intent_id=$1',[consumedByAdmin.requestId])).rows[0].n,0);
+  assert.deepEqual(await classify(freshAdminAuthority,{enrollmentId:queuedTarget.enrollmentId}),
+   {purpose:'recover',enrollmentId:queuedTarget.enrollmentId,state:'active'});
+  const freshIntent=await queueRecovery(freshAdminAuthority,{enrollmentId:queuedTarget.enrollmentId,requestId:randomUUID()});
+  assert.equal(freshIntent.version,2);
+  assert.equal((await recoveryDispatch.dispatch(freshIntent.intentId,async job=>{
+   assert.equal(job.intentId,freshIntent.intentId);
+   return {outcome:'accepted',providerId:randomUUID()};
+  })).outcome,'accepted');
+  assert.equal((await admin.query('SELECT authorizer_credential_hash FROM sabora.staff_recovery_intent_candidate WHERE request_id=$1',[freshIntent.intentId])).rows[0].authorizer_credential_hash,staffNewHash);
   assert.deepEqual((await admin.query('SELECT auth_user_id,state,employee_code FROM sabora.staff_enrollments WHERE id=$1',[id])).rows[0],existing);
   // Recovery kernel uses the same disposable genesis ROOT after the full
   // browser path. No new staff identity or hosted provider is created.
