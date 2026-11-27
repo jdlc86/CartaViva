@@ -465,7 +465,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.equal((await queueRecovery(rootAuthority,latestRequest)).repeated,true);
   assert.ok((await recoveryDispatch.list()).includes(latestRequest.requestId));
   const staffInbox=[];
-  const recoverySender=createStaffRecoveryResendSender({managementOrigin:origin,from:'sab@example.test',apiKey:'re_staff_recovery_fixture',
+  const staffResend={managementOrigin:origin,from:'sab@example.test',apiKey:'re_staff_recovery_fixture',
    fetchImpl:async(url,options)=>{
     assert.equal(url,'https://api.resend.com/emails');
     assert.match(options.headers['Idempotency-Key'],/^sabora-staff-staff-recovery\//);
@@ -475,10 +475,23 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
     const params=new URLSearchParams(link.hash.split('?')[1]);
     staffInbox.push({intentId:params.get('intentId'),token:params.get('token')});
     return Response.json({id:randomUUID()});
-   }});
-  assert.equal((await recoveryDispatch.dispatch(staleRequest.requestId,recoverySender)).outcome,'cancelled');
-  const sent=await Promise.all(Array.from({length:3},()=>recoveryDispatch.dispatch(latestRequest.requestId,recoverySender)));
-  assert.equal(sent.filter(x=>x.outcome==='accepted').length,1);
+   }};
+  const recoverySender=createStaffRecoveryResendSender(staffResend);
+  const workerFailures=[];
+  const staffWorkerConfig={
+   control:{pool:recoveryPool,expectedLogin:ROOT_RECOVERY_LOGIN,keyId:recoveryKey,signingSecret:recoverySigning},
+   worker:{pool:mailPool,expectedLogin:ROOT_MAIL_LOGIN,keyId:mailKey,signingSecret:mailSigning},
+   getRootUserId:async()=>null,factorSecret:recoveryFactors,keyring,resend:staffResend,hashInviteeEmail:hashEmail,
+   observeFailure:error=>workerFailures.push(error.message),
+  };
+  const workers=await Promise.all(Array.from({length:3},()=>createVerifiedRootRecoveryCandidate(staffWorkerConfig)));
+  try{
+   await Promise.all(workers.map(worker=>worker.start()));
+   await Promise.all(workers.map(worker=>worker.tick()));
+  }finally{await Promise.all(workers.map(worker=>worker.close()));}
+  assert.deepEqual(workerFailures,[]);
+  assert.deepEqual((await admin.query('SELECT state,envelope FROM sabora.staff_recovery_delivery_candidate WHERE intent_id=$1',[staleRequest.requestId])).rows[0],{state:'cancelled',envelope:null});
+  assert.equal((await recoveryDispatch.dispatch(latestRequest.requestId,recoverySender)).outcome,'denied');
   assert.equal(staffInbox.length,1);
   assert.equal(staffInbox[0].intentId,latestRequest.requestId);
   const stored=(await admin.query('SELECT state,envelope FROM sabora.staff_recovery_delivery_candidate WHERE intent_id=$1',[latestRequest.requestId])).rows[0];
@@ -559,7 +572,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    const workerConfig={
     control:{pool:recoveryPool,expectedLogin:ROOT_RECOVERY_LOGIN,keyId:recoveryKey,signingSecret:recoverySigning},
     worker:{pool:mailPool,expectedLogin:ROOT_MAIL_LOGIN,keyId:mailKey,signingSecret:mailSigning},
-    getRootUserId:async()=>rootId,factorSecret:recoveryFactors,keyring,resend,
+    getRootUserId:async()=>rootId,factorSecret:recoveryFactors,keyring,resend,hashInviteeEmail:hashEmail,
    };
    recoveryWorker=await createVerifiedRootRecoveryCandidate(workerConfig);
    await admin.query(`GRANT TRIGGER ON sabora.root_recovery_mail_contact_candidate TO ${ROOT_MAIL_LOGIN}`);

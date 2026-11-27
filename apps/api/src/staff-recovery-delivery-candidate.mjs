@@ -39,7 +39,7 @@ export function createStaffRecoveryDeliveryCandidate({pool,keyId,signingSecret,k
    // token never leaves server custody or appears in the HTTP response.
    const token=randomBytes(32).toString('base64url'),tokenHash=hashStaffInvitationToken(token),selected=keyring.active();
    const envelope=sealStaffInvitationToken({token,enrollmentId:intent.enrollmentId,inviteVersion:intent.version,
-    tokenHashHex:tokenHash,keyId:selected.keyId,key:checkedKey(selected.key)});
+    tokenHashHex:tokenHash,keyId:selected.keyId,key:checkedKey(selected.key),recoveryIntentId:intent.intentId});
    const result=await command(query,'queue',intent.intentId,{actor:context.verifiedIdentity.userId.toLowerCase(),
     tokenHash,envelope:JSON.stringify(envelope)},context.verifiedIdentity.expiresAt*1000);
    if(!['queued','existing'].includes(result.outcome))throw forbidden();
@@ -83,7 +83,7 @@ export function createStaffRecoveryDeliveryCandidate({pool,keyId,signingSecret,k
     if(hashInviteeEmail(recipient)!==job.emailHash)throw forbidden();
     const envelope=JSON.parse(job.envelope);
     const token=openStaffInvitationToken({envelope,enrollmentId:job.enrollmentId,inviteVersion:job.version,
-     tokenHashHex:job.tokenHash,key:checkedKey(await keyring.resolveKey(envelope.keyId))});
+     tokenHashHex:job.tokenHash,key:checkedKey(await keyring.resolveKey(envelope.keyId)),recoveryIntentId:intentId});
     const result=await send({jobId:intentId,recipient,intentId,token});
     if(result?.outcome==='accepted'&&UUID.test(result.providerId??'')){outcome='accepted';providerId=result.providerId;}
     else if(result?.outcome==='permanent_failure')outcome='rejected';

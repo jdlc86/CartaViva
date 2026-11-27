@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S54-34 · H1-A.** Cola de recuperación no ROOT conectada al trabajador candidato existente y AAD separado por propósito/intención. Ensayo PG17 ampliado con competencia de trabajadores y replay; CI pendiente. H1-A parcial, proveedor alojado aplazado y runtime aún cerrado.
+
 > **S54-33 · H6.** `259b2c3f` 6/7 PASS; B3 falla por navegación durante montaje segunda PWA, F12 observa solicitud pendiente. Candidato de estabilización de servidores Vite del ensayo sin cambios operativos ni aserciones reducidas; CI pendiente. Secreto temporal de Actions retirado según propietario; revocación Supabase no acreditada. Auth alojado aplazado S54-32.
 
 > **S54-32 · Decisión del propietario.** Ensayo aislado Auth alojado aplazado al primer despliegue real de prueba; AP-01 a AP-09 NOT RUN, H1-A parcial, uso real NO-GO. No bloquea por sí solo la preparación del candidato. Mantener #93 abierto para aceptación posterior; demás puertas V2 y autorizaciones intactas. [Decisión V2 §10](../architecture/SABORA_SIMPLIFIED_DEPLOYMENT_V2.md#10-decisión-s54--aplazamiento-del-ensayo-aislado-auth-al-primer-despliegue-de-prueba).

@@ -2,7 +2,8 @@ import {timingSafeEqual} from 'node:crypto';
 import {preflightStaffRestrictedIdentity} from './staff-durable-admin-identity-preflight.mjs';
 import {createRootRecoveryKernelCandidate,ROOT_RECOVERY_LOGIN} from './staff-root-recovery-candidate.mjs';
 import {createRootRecoveryMailCandidate,ROOT_MAIL_LOGIN} from './staff-root-recovery-mail-candidate.mjs';
-import {createRootRecoveryResendSender} from './staff-invitation-resend.mjs';
+import {createRootRecoveryResendSender,createStaffRecoveryResendSender} from './staff-invitation-resend.mjs';
+import {createStaffRecoveryDeliveryCandidate} from './staff-recovery-delivery-candidate.mjs';
 import {createStaffRootSecurityCandidate} from './staff-root-security-candidate.mjs';
 
 const OWNER='sabora_root_recovery_fn_owner';
@@ -30,9 +31,9 @@ const TRIGGERS=[
 ];
 
 export async function createVerifiedRootRecoveryCandidate({control,worker,factorSecret,keyring,rotationDays,
- getRootUserId,resend,observeFailure=()=>{}}={}){
+ getRootUserId,resend,hashInviteeEmail,observeFailure=()=>{}}={}){
  if(typeof keyring?.active!=='function'||typeof keyring?.resolveKey!=='function'||
-  typeof getRootUserId!=='function'||typeof observeFailure!=='function'||!control?.pool||!worker?.pool||
+  typeof getRootUserId!=='function'||typeof hashInviteeEmail!=='function'||typeof observeFailure!=='function'||!control?.pool||!worker?.pool||
   control.expectedLogin!==ROOT_RECOVERY_LOGIN||worker.expectedLogin!==ROOT_MAIL_LOGIN||
   control.pool===worker.pool||control.keyId===worker.keyId)
   throw Error('invalid_root_recovery_composition');
@@ -55,6 +56,8 @@ export async function createVerifiedRootRecoveryCandidate({control,worker,factor
  const mail=createRootRecoveryMailCandidate({...control,mode:'control',hash,keyring:custody});
  const transport=createRootRecoveryMailCandidate({...worker,mode:'worker',hash,keyring:custody});
  const send=createRootRecoveryResendSender(resend);
+ const staffTransport=createStaffRecoveryDeliveryCandidate({...worker,mode:'worker',keyring:custody,hashInviteeEmail});
+ const sendStaff=createStaffRecoveryResendSender(resend);
  const security=createStaffRootSecurityCandidate({kernel,mail,rotationDays});
  const readiness=()=>Promise.all([
   preflightStaffRestrictedIdentity({pool:control.pool,role:ROOT_RECOVERY_LOGIN,routines:CONTROL,tables:TABLES,requiredTriggers:TRIGGERS}),
@@ -62,7 +65,7 @@ export async function createVerifiedRootRecoveryCandidate({control,worker,factor
  ]);
  await readiness();
  let closed=false,started=false,timer,task;
- async function run(){
+ async function runRoot(){
   const actor=await getRootUserId();
   if(actor===null||closed)return;
   // Release only an expired operation that never reached the durable
@@ -75,8 +78,23 @@ export async function createVerifiedRootRecoveryCandidate({control,worker,factor
    if(['unknown','rejected'].includes(result.outcome))report();
   }
  }
- function report(){
-  try{observeFailure(Error('root_recovery_mail_worker_unavailable'));}catch{}
+ async function runStaff(){
+  if(closed)return;
+  for(const jobId of await staffTransport.list()){
+   if(closed)break;
+   try{
+    const result=await staffTransport.dispatch(jobId,sendStaff);
+    if(['unknown','rejected'].includes(result.outcome))report('staff_recovery_mail_worker_unavailable');
+   }catch{report('staff_recovery_mail_worker_unavailable');}
+  }
+ }
+ async function run(){
+  // Failure of either queue must not prevent processing the other.
+  try{await runRoot();}catch{report();}
+  try{await runStaff();}catch{report('staff_recovery_mail_worker_unavailable');}
+ }
+ function report(code='root_recovery_mail_worker_unavailable'){
+  try{observeFailure(Error(typeof code==='string'?code:'root_recovery_mail_worker_unavailable'));}catch{}
  }
  function tick(){
   if(closed||!started)return Promise.resolve();
