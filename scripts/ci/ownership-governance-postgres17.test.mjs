@@ -460,6 +460,20 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
    "SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",
    [owner,d])).rows[0].n,1,'signed offer to legacy ADMIN must persist');
   const windowPath='/api/v1/admin/table-change-window';
+  const changeAccount=randomUUID(),changeVisit='WINDOW'+randomBytes(12).toString('hex');
+  await admin.query(`INSERT INTO sabora.customer_table_visits(
+   table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,granted_at,expires_at)
+   VALUES($1,$2,$3,$4,$3,1,clock_timestamp(),clock_timestamp()+interval '1 hour')`,
+   [tableId,tableSession,customerId,changeVisit]);
+  await admin.query(`INSERT INTO sabora.customer_accounts(id,table_id,session_id,visit_key,customer_id,
+   payment_mode,payment_mode_selected_at,outstanding_cents)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),0)`,
+   [changeAccount,tableId,tableSession,changeVisit,customerId]);
+  await admin.query(`INSERT INTO sabora.customer_account_operational_bindings(account_id,table_id,session_id,visit_key)
+   VALUES($1,$2,$3,$4)`,[changeAccount,tableId,tableSession,changeVisit]);
+  const pendingBeforeWindow=(await admin.query('SELECT * FROM sabora.request_customer_table_change_h6_candidate($1,$2)',
+   [hashCustomerSessionToken(customerToken),changeAccount])).rows[0];
+  assert.equal(pendingBeforeWindow.request_status,'pending');
   const changeWindow=(id,payload)=>api.inject({method:'POST',url:windowPath,
    headers:{authorization:'Bearer '+jwt(id)},payload});
   const seconds=originalSeconds===120?121:120;
@@ -484,6 +498,9 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   assert.deepEqual(recorded,[{actor_user_id:owner,result:{
    previousSeconds:originalSeconds,seconds,replayed:false}}]);
   assert.equal((await admin.query('SELECT table_change_response_seconds FROM sabora.restaurant_settings WHERE singleton')).rows[0].table_change_response_seconds,seconds);
+  const preserved=(await admin.query('SELECT status,expires_at FROM sabora.customer_table_change_requests WHERE id=$1',
+   [pendingBeforeWindow.request_id])).rows[0];
+  assert.deepEqual(preserved,{status:'pending',expires_at:pendingBeforeWindow.expires_at});
   await page.getByRole('link',{name:'Equipo'}).click();
 
   // Full PWA session replacement: A's deferred token must not send a new

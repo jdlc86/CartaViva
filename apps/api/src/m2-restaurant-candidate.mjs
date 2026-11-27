@@ -37,6 +37,7 @@ import {preflightStaffDirectoryIdentity} from './staff-directory-identity-prefli
 import {createVerifiedStaffLifecycleFromPool} from './staff-lifecycle-composition.mjs';
 import {registerStaffRevocationHttp} from './staff-lifecycle-http-candidate.mjs';
 import {preflightStaffLifecycleIdentity} from './staff-lifecycle-identity-preflight.mjs';
+import {createVerifiedStaffIdentityLifecycleCandidate} from './staff-identity-lifecycle-composition.mjs';
 import {createStaffPasskeySession} from './staff-passkey-session.mjs';
 import {createVerifiedRootRecoveryCandidate} from './staff-root-recovery-composition.mjs';
 import {ROOT_MUTATION_PROOF_SQL} from './staff-root-recovery-candidate.mjs';
@@ -127,11 +128,12 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   try{observability?.recordOperation({component:'database',
    operation:'check',outcome,durationMs:performance.now()-started});}catch{}
  };
- let tableNotifier,h6Notifier,scheduler,announcementStream,rootRecovery,closed=false,
+ let tableNotifier,h6Notifier,scheduler,announcementStream,rootRecovery,identityLifecycle,closed=false,
   operational=false,notificationDependencyLost=false,dispatchSchedulerFailed=false;
  const closeServices=async()=>{
   if(closed)return;closed=true;operational=false;
-  await Promise.allSettled([scheduler?.close(),announcementStream?.close(),tableNotifier?.close(),h6Notifier?.close(),rootRecovery?.close()]);
+  await Promise.allSettled([scheduler?.close(),announcementStream?.close(),tableNotifier?.close(),
+   h6Notifier?.close(),rootRecovery?.close(),identityLifecycle?.close()]);
  };
  try{
   // Explicit diagnostics injection for the full H3-H6/M3 HTTP composition.
@@ -206,6 +208,10 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    });
    staffPasskey=createStaffPasskeySession({...passkey,issuer:staff.issuer,
     getTrustedKeys:staff.getTrustedKeys,rootAccess:rootRecovery.allowsAccess});
+   if(staff.identityLifecycle)identityLifecycle=await createVerifiedStaffIdentityLifecycleCandidate({
+    ...staff.identityLifecycle,origin:passkey.origin,issuer:staff.issuer,getTrustedKeys:staff.getTrustedKeys,
+    issueRootMutationProof:rootRecovery.issueMutationProof
+   });
   }
   let staffDirectory,staffRevocation;
   const preflight=async()=>{
@@ -247,6 +253,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
     expectedLogin:tableChange.expectedPendingLogin});
    await preflightOrderTransitionStaffIdentity({pool:staff.pool,role:staff.expectedLogin});
    if(rootRecovery)await rootRecovery.readiness();
+   if(identityLifecycle)await identityLifecycle.readiness();
    if(staffDirectory)await preflightStaffDirectoryIdentity({
     pool:staff.directory.pool,role:staff.directory.expectedLogin
    });
@@ -366,11 +373,14 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    registerStaffRevocationHttp(app,{forRoles:oneGuard,coordinator:staffRevocation});
   }
   rootRecovery?.staffRecoveryHttp?.register(app,{forRoles});
-  staffPasskey?.register(app,{forRoles,...(rootRecovery?{rootSecurity:rootRecovery.security}:{}),features:{
+  identityLifecycle?.register(app,{forRoles});
+  staffPasskey?.register(app,{forRoles,...(rootRecovery?{rootSecurity:rootRecovery.security}:{}),
+   ...(identityLifecycle?{rootBootstrap:identityLifecycle.rootBootstrap}:{}),features:{
    tableChange:true,waiterCalls:Boolean(waiterCalls),management:Boolean(management),
    ownership:Boolean(management?.ownership),staffDirectory:Boolean(staffDirectory),
    staffRevocation:Boolean(staffRevocation),...(rootRecovery?{rootSecurity:true}:{}),
    ...(rootRecovery?.staffRecoveryHttp?{staffRecovery:true}:{}),
+   ...(identityLifecycle?{staffLifecycle:true,staffFirstAdmin:true}:{}),
    ...(management?.tableChangeWindow?{tableChangeWindow:true}:{})
   }});
   const h4Operations=createOrderOperationsCoordinator({withTransaction:h4Tx,
@@ -500,6 +510,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   });
   app.addHook('onClose',closeServices);
   await rootRecovery?.start();
+  await identityLifecycle?.start();
   await app.ready();operational=!notificationDependencyLost&&!dispatchSchedulerFailed;
   let closePromise=null;
   return Object.freeze({app,economicService,mode:management?'opt-in-h3-h6-m3-candidate':'opt-in-h3-h6-m2-candidate',
