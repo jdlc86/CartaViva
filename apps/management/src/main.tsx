@@ -27,6 +27,7 @@ import {TeamView} from './views/TeamView';
 import {StaffEnrollmentView,takeStaffEnrollmentInvitation} from './views/StaffEnrollmentView';
 import {createStaffEnrollmentGateway,createStaffRecoveryGateway} from './staff-enrollment-gateway';
 import {StaffRecoveryView,takeStaffRecoveryInvitation} from './views/StaffRecoveryView';
+import {createStaffRecoveryAdminGateway,type StaffRecoveryAdminGateway} from './staff-recovery-admin-gateway';
 import {registerManagementServiceWorker} from './pwa';
 import type {StaffGatewayAuth} from './staff-gateway-auth.js';
 import {createStaffSessionFetch,endStaffSession,readStaffSession,signInWithStaffPasskey,
@@ -60,6 +61,7 @@ export function ManagementApp({
   staffRevocationGateway,
   staffLifecycleGateway,
   staffFirstAdminGateway,
+  staffRecoveryAdminGateway,
   rootSecurityGateway,
   financeGateway,
   ownershipGateway,
@@ -76,6 +78,7 @@ export function ManagementApp({
   staffRevocationGateway?: StaffRevocationGateway;
   staffLifecycleGateway?: StaffLifecycleGateway;
   staffFirstAdminGateway?: StaffFirstAdminGateway;
+  staffRecoveryAdminGateway?:StaffRecoveryAdminGateway;
   rootSecurityGateway?:RootSecurityGateway;
   financeGateway?: M3AuthenticatedManagementGateway;
   ownershipGateway?: OwnershipGovernanceGateway;
@@ -96,7 +99,7 @@ export function ManagementApp({
     const current=++revision;
     setCanWriteAdmin(false);
     setCanRevokeStaff(false);
-    if(area==='equipo'&&(staffRevocationGateway||staffLifecycleGateway)&&ownershipGateway){
+    if(area==='equipo'&&(staffRevocationGateway||staffLifecycleGateway||staffRecoveryAdminGateway)&&ownershipGateway){
      void ownershipGateway.read().then(page=>{
       if(active&&current===revision)setCanRevokeStaff(page.role==='admin'&&page.isOwner===true);
      }).catch(()=>{if(active&&current===revision)setCanRevokeStaff(false);});
@@ -120,7 +123,7 @@ export function ManagementApp({
    document.addEventListener('visibilitychange',visible);
    return()=>{active=false;revision++;window.removeEventListener('focus',refresh);
     document.removeEventListener('visibilitychange',visible);};
-  },[financeGateway,area,ownershipRevision,ownershipGateway,staffRevocationGateway,staffLifecycleGateway]);
+  },[financeGateway,area,ownershipRevision,ownershipGateway,staffRevocationGateway,staffLifecycleGateway,staffRecoveryAdminGateway]);
   useEffect(()=>{
    let active=true;
    setFinanceAllowed(false);
@@ -146,7 +149,7 @@ export function ManagementApp({
     if (!staffRole) return true;
     if (id === 'catalogo') return Boolean(catalogManagementGateway);
     if (id === 'mesas') return Boolean(tablesGateway || tableChangeGateway);
-    if (id === 'equipo') return Boolean(ownershipGateway || staffGateway || staffDirectoryGateway || staffFirstAdminGateway);
+    if (id === 'equipo') return Boolean(ownershipGateway || staffGateway || staffDirectoryGateway || staffFirstAdminGateway || staffRecoveryAdminGateway);
     return true;
   });
   const activeSection = (staffRole ? visibleSections : sections).find((section) => section.id === area) ?? sections[0];
@@ -192,7 +195,8 @@ export function ManagementApp({
         ownershipGateway={ownershipGateway} staffRole={staffRole}
         revocationGateway={canRevokeStaff ? staffRevocationGateway : undefined}
         lifecycleGateway={canRevokeStaff ? staffLifecycleGateway : undefined}
-        firstAdminGateway={staffRole==='root'?staffFirstAdminGateway:undefined} ownershipRevision={ownershipRevision}
+        firstAdminGateway={staffRole==='root'?staffFirstAdminGateway:undefined}
+        recoveryAdminGateway={staffRole==='root'||canRevokeStaff?staffRecoveryAdminGateway:undefined} ownershipRevision={ownershipRevision}
         onOwnershipChanged={()=>setOwnershipRevision(v=>v+1)}/>;
 
   return (
@@ -295,6 +299,7 @@ function renderManagement(
   staffLifecycleGateway?:StaffLifecycleGateway,
   staffFirstAdminGateway?:StaffFirstAdminGateway,
   rootSecurityGateway?:RootSecurityGateway,
+  staffRecoveryAdminGateway?:StaffRecoveryAdminGateway,
 ) {
   if (managementRoot && managementElement !== element) {
     throw Error('management_root_already_mounted');
@@ -325,7 +330,7 @@ function renderManagement(
       catalogManagementGateway={managementGateway} financeGateway={managementGateway}
       ownershipGateway={ownershipGateway} staffRole={staffRole} onSignOut={onSignOut}
       staffDirectoryGateway={staffDirectoryGateway} staffRevocationGateway={staffRevocationGateway}
-      staffLifecycleGateway={staffLifecycleGateway} staffFirstAdminGateway={staffFirstAdminGateway} rootSecurityGateway={rootSecurityGateway}/></React.StrictMode>,
+      staffLifecycleGateway={staffLifecycleGateway} staffFirstAdminGateway={staffFirstAdminGateway} rootSecurityGateway={rootSecurityGateway} staffRecoveryAdminGateway={staffRecoveryAdminGateway}/></React.StrictMode>,
   ));
 }
 
@@ -344,6 +349,7 @@ export function mountAuthenticatedManagementApp({
   enableStaffLifecycle = false,
   enableStaffFirstAdmin = false,
   enableRootSecurity = false,
+  enableStaffRecovery = false,
   rootEmailProof = null,
   onSignOut,
   staffRole,
@@ -364,6 +370,7 @@ export function mountAuthenticatedManagementApp({
   enableStaffLifecycle?:boolean;
   enableStaffFirstAdmin?:boolean;
   enableRootSecurity?:boolean;
+  enableStaffRecovery?:boolean;
   rootEmailProof?:string|null;
   /** Only after waiter-call SQL identity preflight succeeds. */
   enableWaiterCalls?:boolean;
@@ -394,6 +401,8 @@ export function mountAuthenticatedManagementApp({
     ? createStaffManagementGateway({send:sendStaff}) : undefined;
   const staffFirstAdminGateway=enableStaffFirstAdmin&&staffRole==='root'&&sendStaff&&ownershipGateway
     ? createStaffFirstAdminGateway({send:sendStaff}):undefined;
+  const staffRecoveryAdminGateway=enableStaffRecovery&&sendStaff&&ownershipGateway&&['root','admin'].includes(staffRole??'')
+    ?createStaffRecoveryAdminGateway(sendStaff):undefined;
   const rootSecurityGateway=enableRootSecurity&&staffRole==='root'&&sendStaff
     ?createRootSecurityGateway({send:sendStaff,emailProof:rootEmailProof}):undefined;
   if (managementRoot && managementElement !== element) {
@@ -419,7 +428,7 @@ export function mountAuthenticatedManagementApp({
        decideTableChange: operationsGateway.decideTableChange}
     : undefined;
   renderManagement(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut,staffRole,
-    staffDirectoryGateway,staffRevocationGateway,staffLifecycleGateway,staffFirstAdminGateway,rootSecurityGateway);
+    staffDirectoryGateway,staffRevocationGateway,staffLifecycleGateway,staffFirstAdminGateway,rootSecurityGateway,staffRecoveryAdminGateway);
   let disposed = false;
   return () => {
     if (disposed) return;
@@ -489,6 +498,7 @@ function startStaffLogin(element: HTMLElement, rootEmailProof: string|null) {
       enableStaffLifecycle: session.features.staffLifecycle === true && session.role === 'admin',
       enableStaffFirstAdmin: session.features.staffFirstAdmin === true && session.role === 'root',
       enableRootSecurity: session.features.rootSecurity === true && session.role === 'root',
+      enableStaffRecovery: session.features.staffRecovery === true && ['root','admin'].includes(session.role),
       rootEmailProof: session.role === 'root' ? rootEmailProof : null
     });
     rootEmailProof=null;

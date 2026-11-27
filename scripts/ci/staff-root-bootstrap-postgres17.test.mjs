@@ -9,7 +9,7 @@ import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createStaffRootSecurityCandidate} from '../../apps/api/src/staff-root-security-candidate.mjs';
 import {createStaffRecoveryRegistrationCandidate,createStaffRecoveryCeremonyCandidate,createStaffRecoveryServiceCandidate} from '../../apps/api/src/staff-recovery-registration-candidate.mjs';
-import {registerStaffRecoveryHttpCandidate,STAFF_RECOVERY_PATH} from '../../apps/api/src/staff-recovery-http-candidate.mjs';
+import {registerStaffRecoveryHttpCandidate,STAFF_RECOVERY_PATH,registerStaffRecoveryAdminHttpCandidate,STAFF_RECOVERY_ADMIN_PATH} from '../../apps/api/src/staff-recovery-http-candidate.mjs';
 import {createStaffRecoveryDeliveryCandidate} from '../../apps/api/src/staff-recovery-delivery-candidate.mjs';
 import {createStaffInvitationClassificationCandidate,createStaffRecoveryIntentCandidate} from '../../apps/api/src/staff-invitation-classification-candidate.mjs';
 import {registerRootRecoveryFactorHttpCandidate,ROOT_RECOVERY_PATH} from '../../apps/api/src/staff-root-recovery-http-candidate.mjs';
@@ -201,9 +201,10 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   issueCapability:createOwnershipCapabilityIssuer({keyId:ownershipKey,secret:ownershipSecret,databaseRole:ownershipLogin}),
   issueRootMutationProof:rootKernel.issueMutationProof});
  registerOwnershipGovernanceHttp(app,{forRoles,repository:ownership});
- passkey.register(app,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,ownership:true,staffFirstAdmin:true,rootSecurity:true},rootBootstrap:bootstrap,rootSecurity:createStaffRootSecurityCandidate({kernel:rootKernel,mail:rootMail})});
+ passkey.register(app,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,ownership:true,staffFirstAdmin:true,rootSecurity:true,staffRecovery:true},rootBootstrap:bootstrap,rootSecurity:createStaffRootSecurityCandidate({kernel:rootKernel,mail:rootMail})});
  registerRootRecoveryFactorHttpCandidate(app,{origin,kernel:rootKernel,mail:rootMail,getRootUserId:async()=>rootId});
- let recoveryHttpService;
+ let recoveryHttpService,recoveryAdminClassify,recoveryAdminAuthorize;
+ registerStaffRecoveryAdminHttpCandidate(app,{forRoles,classify:(ctx,input)=>recoveryAdminClassify(ctx,input),authorize:(ctx,input)=>recoveryAdminAuthorize(ctx,input)});
  registerStaffRecoveryHttpCandidate(app,{origin,secret:randomBytes(32),service:{
   exchange:input=>recoveryHttpService.exchange(input),options:input=>recoveryHttpService.options(input),register:input=>recoveryHttpService.register(input)
  }});
@@ -399,11 +400,12 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.equal((await rootPost({action:'revoke',enrollmentId:id,subjectUserId:null,
    reason:'Intento fuera de la excepción',correlationId:correlation()})).statusCode,403);
   const adminCookie=adminSession.headers['set-cookie'].find(value=>value.startsWith('__Host-sabora-staff=')).split(';')[0];
-  const adminHeaders={host:new URL(origin).host,origin,cookie:adminCookie,'x-sabora-staff-session':adminSession.json().sessionId};
+  const adminProof=adminSession.headers['set-cookie'].find(value=>value.startsWith('__Host-sabora-root-proof=')).split(';')[0];
+  const adminHeaders={host:new URL(origin).host,origin,cookie:adminCookie+'; '+adminProof,'x-sabora-staff-session':adminSession.json().sessionId};
   assert.equal((await app.inject({method:'POST',url:'/api/v1/staff/bootstrap/first-admin',headers:adminHeaders,payload:inviteBody('forbidden-admin@demo.invalid')})).statusCode,403);
   assert.equal((await state(adminHeaders)).statusCode,403);
   const adminContext=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
-  await adminContext.addCookies([sessionCookie(adminCookie)]);
+  await adminContext.addCookies([sessionCookie(adminCookie),sessionCookie(adminProof)]);
   const securityPath=auth+'/root-security';
   const security=(suffix='',headers=rootHeaders,body)=>app.inject({method:body===undefined?'GET':'POST',url:securityPath+suffix,headers,...(body===undefined?{}:{payload:body})});
   assert.deepEqual((await security()).json(),{configured:false,failures:'0',blockedUntil:null,mailEnabled:true,backupEnabled:true,backupConfigured:false});
@@ -417,6 +419,13 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const ordinaryWaiter=await ordinary(inviteBody('ordinary-waiter@demo.invalid','waiter'),adminHeaders);
   assert.equal(ordinaryWaiter.statusCode,201,ordinaryWaiter.body);
   const classify=createStaffInvitationClassificationCandidate({...recoveryConfig,hashInviteeEmail:hashEmail});
+  recoveryAdminClassify=classify;
+  const recoveryAdminRequest=(payload,headers=rootHeaders)=>app.inject({method:'POST',url:STAFF_RECOVERY_ADMIN_PATH,headers,payload});
+  assert.equal((await recoveryAdminRequest({action:'classify',email:'new-person@demo.invalid'},rootHeaders)).statusCode,403);
+  assert.deepEqual((await recoveryAdminRequest({action:'classify',email:'new-person@demo.invalid'},adminHeaders)).json(),{outcome:'not_recoverable'});
+  assert.deepEqual((await recoveryAdminRequest({action:'classify',email:'ordinary-waiter@demo.invalid'},adminHeaders)).json(),{outcome:'not_recoverable'});
+  assert.equal((await recoveryAdminRequest({action:'classify',email:current.email,subjectId:rootId})).statusCode,400);
+  assert.equal((await recoveryAdminRequest({action:'classify',email:current.email},adminHeaders)).statusCode,403);
   const authority=(userId,role,credential=hashRootCredentialId(genesisCredential))=>({verifiedIdentity:{userId,expiresAt:Math.floor(Date.now()/1000)+60},
    verifiedStaff:{userId,role},verifiedRootCredential:credential});
   const rootAuthority=authority(rootId,'root',hashRootCredentialId(genesisCredential));
@@ -435,6 +444,10 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const nonOwner=randomUUID();
   await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'admin','active')",[nonOwner]);
   await assert.rejects(classify(authority(nonOwner,'admin'),{enrollmentId:id}),e=>e.code==='42501');
+  const nonOwnerSession=await attempt(nonOwner,grantId,code,'/verify');
+  assert.equal(nonOwnerSession.statusCode,200,nonOwnerSession.body);
+  const nonOwnerCookies=nonOwnerSession.headers['set-cookie'].filter(v=>v.startsWith('__Host-sabora-staff=')||v.startsWith('__Host-sabora-root-proof=')).map(v=>v.split(';')[0]).join('; ');
+  assert.equal((await recoveryAdminRequest({action:'classify',email:current.email},{host:new URL(origin).host,origin,cookie:nonOwnerCookies,'x-sabora-staff-session':nonOwnerSession.json().sessionId})).statusCode,403);
   const authorizeRecovery=createStaffRecoveryIntentCandidate({...recoveryConfig,ttlSeconds:600});
   const recoveryRequest={enrollmentId:id,requestId:randomUUID()};
   await assert.rejects(authorizeRecovery(adminAuthority,recoveryRequest),e=>e.code==='42501');
@@ -475,10 +488,31 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const recoveryDispatch=createStaffRecoveryDeliveryCandidate({pool:mailPool,keyId:mailKey,signingSecret:mailSigning,
    keyring,hashInviteeEmail:hashEmail,mode:'worker'});
   const queueRecovery=createStaffRecoveryIntentCandidate({...recoveryConfig,ttlSeconds:600,delivery:recoveryDelivery});
-  const staleRequest={enrollmentId:id,requestId:randomUUID()},latestRequest={enrollmentId:id,requestId:randomUUID()};
+  recoveryAdminAuthorize=queueRecovery;
+  const staleRequest={enrollmentId:id,requestId:randomUUID()};
   await queueRecovery(rootAuthority,staleRequest);
-  await queueRecovery(rootAuthority,latestRequest);
-  assert.equal((await queueRecovery(rootAuthority,latestRequest)).repeated,true);
+  const authorizeFromPanel=async(page,email)=>{
+   const recoveryPanel=page.getByRole('region',{name:'Recuperar acceso del personal'});
+   await recoveryPanel.getByLabel('Correo de la cuenta existente').fill(email);
+   const classified=page.waitForResponse(r=>r.url().endsWith(STAFF_RECOVERY_ADMIN_PATH)&&r.request().method()==='POST');
+   await recoveryPanel.getByRole('button',{name:'Comprobar cuenta'}).click();
+   const classResponse=await classified;
+   assert.equal(classResponse.status(),200,await classResponse.text());
+   const classification=await classResponse.json();assert.equal(classification.outcome,'recoverable');
+   await recoveryPanel.getByRole('checkbox',{name:/Confirmo la recuperación/}).check();
+   const authorized=page.waitForResponse(r=>r.url().endsWith(STAFF_RECOVERY_ADMIN_PATH)&&r.request().method()==='POST');
+   await recoveryPanel.getByRole('button',{name:'Autorizar recuperación'}).click();
+   const authResponse=await authorized;assert.equal(authResponse.status(),201,await authResponse.text());
+   const result=await authResponse.json();assert.equal(result.outcome,'queued');assert.equal(result.enrollmentId,classification.enrollmentId);
+   assert.deepEqual(Object.keys(result).sort(),['enrollmentId','expiresAt','outcome','repeated','requestId','version'].sort());
+   await recoveryPanel.getByText(/Invitación de recuperación en cola. Entrega aún no confirmada/).waitFor();
+   return {enrollmentId:result.enrollmentId,requestId:result.requestId};
+  };
+  const latestRequest=await authorizeFromPanel(rootPage,current.email);
+  assert.equal(latestRequest.enrollmentId,id);
+  const replayRecovery=await recoveryAdminRequest({action:'authorize',email:current.email,...latestRequest});
+  assert.equal(replayRecovery.statusCode,200,replayRecovery.body);assert.equal(replayRecovery.json().repeated,true);
+  assert.equal((await recoveryAdminRequest({action:'authorize',email:current.email,enrollmentId:ordinaryWaiter.json().enrollmentId,requestId:randomUUID()})).statusCode,403);
   assert.ok((await recoveryDispatch.list()).includes(latestRequest.requestId));
   const staffInbox=[];
   const staffResend={managementOrigin:origin,from:'sab@example.test',apiKey:'re_staff_recovery_fixture',
@@ -558,11 +592,12 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const kitchen=await ordinary(inviteBody('recovery-kitchen@demo.invalid','kitchen'),adminHeaders);
   assert.equal(kitchen.statusCode,201,kitchen.body);
   const consumedTarget=await activateForRecovery(kitchen.json().enrollmentId,'kitchen');
-  const queuedByAdmin={enrollmentId:queuedTarget.enrollmentId,requestId:randomUUID()};
-  const consumedByAdmin={enrollmentId:consumedTarget.enrollmentId,requestId:randomUUID()};
+  const queuedByAdmin=await authorizeFromPanel(adminPage,'ordinary-waiter@demo.invalid');
+  assert.equal(queuedByAdmin.enrollmentId,queuedTarget.enrollmentId);
+  const consumedByAdmin=await authorizeFromPanel(adminPage,'recovery-kitchen@demo.invalid');
+  assert.equal(consumedByAdmin.enrollmentId,consumedTarget.enrollmentId);
   const preRecoveryAdmin=authority(otherId,'admin',hashRootCredentialId(genesisCredential));
-  await queueRecovery(preRecoveryAdmin,queuedByAdmin);
-  await queueRecovery(preRecoveryAdmin,consumedByAdmin);
+  assert.equal((await recoveryAdminRequest({action:'authorize',email:'recovery-kitchen@demo.invalid',...consumedByAdmin},adminHeaders)).json().repeated,true);
   let consumedRecoveryToken;
   assert.equal((await recoveryDispatch.dispatch(consumedByAdmin.requestId,async job=>{
    assert.equal(job.intentId,consumedByAdmin.requestId);

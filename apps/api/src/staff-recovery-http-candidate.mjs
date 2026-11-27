@@ -92,3 +92,48 @@ export function registerStaffRecoveryHttpCandidate(app,{origin,secret,service,cl
   return reply.header('Set-Cookie',cookie('',0)).code(204).send();
  });
 }
+
+
+// Separate protected administration route. ROOT's exception is recovery
+// only; the ADMIN's current ownership is checked inside SQL, not by UI.
+export const STAFF_RECOVERY_ADMIN_PATH='/api/v1/staff/recovery-admin';
+export function registerStaffRecoveryAdminHttpCandidate(app,{forRoles,classify,authorize}={}){
+ if(typeof forRoles!=='function'||typeof classify!=='function'||typeof authorize!=='function')
+  throw Error('invalid_staff_recovery_admin_config');
+ const context=request=>({verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff,
+  verifiedRootCredential:request.verifiedRootCredential});
+ const guard=forRoles(['root','admin']);
+ const fail=(error,reply)=>{
+  if(error?.code==='42501')return reply.code(403).send({error:'staff_recovery_denied'});
+  if(['40001','23505','23514'].includes(error?.code))return reply.code(409).send({error:'staff_recovery_conflict'});
+  return reply.code(503).send({error:'staff_recovery_unavailable'});
+ };
+ const validEmail=email=>typeof email==='string'&&email.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+ app.post(STAFF_RECOVERY_ADMIN_PATH,{preHandler:guard,bodyLimit:2048},async(request,reply)=>{
+  reply.header('Cache-Control','no-store');reply.header('Referrer-Policy','no-referrer');reply.header('X-Content-Type-Options','nosniff');
+  const body=request.body;
+  if(request.url.includes('?')||!body||!validEmail(body.email)||
+   !(body.action==='classify'&&exact(body,['action','email'])||
+    body.action==='authorize'&&exact(body,['action','email','enrollmentId','requestId'])&&
+     UUID.test(body.enrollmentId??'')&&UUID.test(body.requestId??'')))
+   return reply.code(400).send({error:'invalid_staff_recovery_request'});
+  try{
+   const ctx=context(request),found=await classify(ctx,{email:body.email});
+   if(body.action==='classify'){
+    // No directory projection or provider identifiers. Only the recovery
+    // classification can reveal an enrollment ID in this dedicated route.
+    if(found?.purpose!=='recover')return {outcome:'not_recoverable'};
+    if(!UUID.test(found.enrollmentId??'')||!['active','suspended'].includes(found.state))throw Error('invalid_staff_recovery_classification');
+    return {outcome:'recoverable',enrollmentId:found.enrollmentId,state:found.state};
+   }
+   if(found?.purpose!=='recover'||found.enrollmentId!==body.enrollmentId.toLowerCase())return reply.code(403).send({error:'staff_recovery_denied'});
+   const result=await authorize(ctx,{enrollmentId:found.enrollmentId,requestId:body.requestId.toLowerCase()});
+   if(result?.intentId!==body.requestId.toLowerCase()||result.enrollmentId!==found.enrollmentId||
+    typeof result.repeated!=='boolean'||!Number.isSafeInteger(result.version)||result.version<1||
+    !Number.isFinite(Date.parse(result.expiresAt??'')))throw Error('invalid_staff_recovery_authorization');
+   // A committed outbox job is not proof of email delivery.
+   return reply.code(result.repeated?200:201).send({outcome:'queued',enrollmentId:result.enrollmentId,
+    requestId:result.intentId,version:result.version,expiresAt:result.expiresAt,repeated:result.repeated});
+  }catch(error){return fail(error,reply);}
+ });
+}
