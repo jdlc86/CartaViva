@@ -58,13 +58,20 @@ async function pickupMutation(send,path,{lineId,expectedVersion,correlationId}={
 }
 
 function createEventSubscription(send,{onEvent,onResync,onUnavailable,onReconnected},reconnectDelayMs) {
-  if(typeof onEvent!=='function'||typeof onResync!=='function'||typeof onUnavailable!=='function')
+  if(typeof onEvent!=='function'||typeof onResync!=='function'||typeof onUnavailable!=='function'||
+     (onReconnected!==undefined&&typeof onReconnected!=='function'))
     throw Error('invalid_order_event_subscription');
   const abort=new AbortController();let cursor=0,timer=null,activeReader=null,reconnecting=false;
   const run=async()=>{
     try{
       const response=await send('/api/v1/operations/events',{method:'GET',cache:'no-store',redirect:'error',
        credentials:'omit',signal:abort.signal,headers:{Accept:'text/event-stream',...(cursor?{'Last-Event-ID':String(cursor)}:{})}});
+      if(response.status===401||response.status===403){
+       onUnavailable('access-revoked');
+       reconnecting=true;
+       timer=setTimeout(run,reconnectDelayMs);
+       return;
+      }
       if(!response.ok||!String(response.headers.get('content-type')??'').toLowerCase().startsWith('text/event-stream')||!response.body)
        throw Error('invalid_event_stream');
       const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',pendingCR=false;

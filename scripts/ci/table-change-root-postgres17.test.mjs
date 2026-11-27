@@ -7519,28 +7519,30 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
       proxy:{'/api':{target:'http://127.0.0.1:'+http.server.address().port,changeOrigin:false}}}
     });
-    let kitchenContext;
+    let kitchenContext,floorContext;
     try{
      await managementVite.listen();
      kitchenContext=await browser.newContext({serviceWorkers:'block'});
      await kitchenContext.route('**/api/v1/operations/events',route=>route.abort());
      const kitchen=await kitchenContext.newPage();
-     const mount=async()=>{
-      await kitchen.goto(managementVite.resolvedUrls.local[0]+'#comandas');
-      await kitchen.evaluate(async token=>{
+     const managementOrigin=managementVite.resolvedUrls.local[0];
+     const mount=async(page,token,role)=>{
+      await page.evaluate(async ({token,role})=>{
        const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
        mountAuthenticatedManagementApp({element:document.getElementById('root'),
-        getAccessToken:async()=>token,staffRole:'kitchen'});
-      },jwtKitchen);
+        getAccessToken:async()=>token,staffRole:role});
+      },{token,role});
      };
      const groupedLines=(await admin.query('SELECT id FROM sabora.order_lines WHERE order_id=$1',
       [grouped.orderId])).rows;
      assert.equal(groupedLines.length,1);
      const line=kitchen.locator('[data-line-id="'+groupedLines[0].id+'"]');
      const card=kitchen.locator('.order-card').filter({has:line});
-     await mount();
+     await kitchen.goto(managementOrigin+'#comandas');
+     await mount(kitchen,jwtKitchen,'kitchen');
      await card.getByRole('button',{name:'Confirmar recepción'}).waitFor();
-     await mount(); // another page and staff context, without event history
+     await kitchen.reload(); // destroy the document and its in-memory events
+     await mount(kitchen,jwtKitchen,'kitchen');
      await card.getByRole('button',{name:'Confirmar recepción'}).waitFor();
      assert.equal(await line.getByRole('button',{name:'Iniciar preparación'}).isDisabled(),true);
      const path='/api/v1/operations/dispatches/'+kitchenTarget.id+'/ack';
@@ -7555,7 +7557,37 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal(replay.statusCode,200,replay.body);
      await card.getByRole('button',{name:'Confirmar recepción'}).waitFor({state:'hidden'});
      assert.equal(await line.getByRole('button',{name:'Iniciar preparación'}).isEnabled(),true);
+     await line.getByRole('button',{name:'Iniciar preparación'}).click();
+     const markReady=line.getByRole('button',{name:'Marcar lista'});
+     await markReady.waitFor();
+     const [prepared]=await Promise.all([
+      kitchen.waitForResponse(r=>r.request().method()==='POST'&&
+       r.request().postDataJSON()?.targetStatus==='ready'),
+      markReady.click()
+     ]);
+     assert.equal(prepared.status(),200,await prepared.text());
+     floorContext=await browser.newContext({serviceWorkers:'block'});
+     const floor=await floorContext.newPage();
+     await floor.goto(managementOrigin+'#resumen');
+     await mount(floor,jwtWaiter,'waiter');
+     const floorAlerts=floor.getByRole('complementary',{name:'Avisos de sala'});
+     await floorAlerts.getByText(/Platos listos para recoger/).waitFor();
+     await floorAlerts.getByRole('button',{name:'Ir a comandas'}).click();
+     await floor.getByRole('button',{name:'Sala',exact:true}).click();
+     const readyLine=floor.locator('[data-line-id="'+groupedLines[0].id+'"]');
+     const claimPath='/api/v1/operations/order-lines/'+groupedLines[0].id+'/pickup-claim';
+     const [pickup]=await Promise.all([
+      floor.waitForResponse(r=>r.url().endsWith(claimPath)),
+      readyLine.getByRole('button',{name:'Voy a recoger'}).click()
+     ]);
+     assert.equal(pickup.status(),200,await pickup.text());
+     assert.equal((await pickup.json()).outcome,'claimed');
+     await readyLine.getByText(/En recogida/).waitFor();
+     assert.deepEqual((await admin.query(`SELECT l.status,t.state,t.claimed_by
+      FROM sabora.order_lines l JOIN sabora.pickup_tasks t ON t.order_line_id=l.id WHERE l.id=$1`,
+      [groupedLines[0].id])).rows,[{status:'ready',state:'claimed',claimed_by:httpFixture.waiter}]);
     }finally{
+     await floorContext?.close();
      await kitchenContext?.close();
      await managementVite.close();
     }
