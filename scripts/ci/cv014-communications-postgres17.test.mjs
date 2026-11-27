@@ -38,6 +38,16 @@ const APP_WAITER_TOKEN='sabora_ci_waiter_token_must_fail_pg17';
 const APP_OTHER_ADMIN_TOKEN='sabora_ci_other_admin_with_valid_role_but_no_ownership';
 const APP_ROOT_TOKEN='sabora_ci_root_governance_read_only';
 const after=ms=>new Promise(r=>setTimeout(r,ms));
+// PostgreSQL uses [startTime, endTime), so the last UTC minute is outside
+// a 00:00–23:59 window. Use a real IANA zone with local noon for both routes.
+const fixtureNow=new Date(),shift=12-fixtureNow.getUTCHours();
+const scheduleZone=shift===0?'Etc/GMT':`Etc/GMT${shift>0?'-':'+'}${Math.abs(shift)}`;
+const scheduleCalendar=new Intl.DateTimeFormat('en-GB',{timeZone:scheduleZone,
+ year:'numeric',month:'2-digit',day:'2-digit'});
+function fixtureDate(offsetInDays){
+ const parts=scheduleCalendar.formatToParts(new Date(fixtureNow.getTime()+offsetInDays*86_400_000));
+ return ['year','month','day'].map(type=>parts.find(part=>part.type===type).value).join('-');
+}
 async function waitHttp(url,deadline=30_000){
  for(let i=0;i<150;i++){
   try{const response=await fetch(url);if(response.ok)return;}catch{}
@@ -57,9 +67,8 @@ function runVite(app,port,api){
 function draft({title='Menú especial del día',startDate=null,image=null}={}){
  return {title,body:'Platos especiales publicados por el restaurante. 🥘',
   emoji:'🥘',image,imageLicense:image?'Foto de ensayo con licencia del restaurante':null,
-  priority:'ALTA',schedule:{mode:'daily',startDate:startDate??new Date(Date.now()-86_400_000)
-   .toISOString().slice(0,10),endDate:null,weekdays:[],startTime:'00:00',
-   endTime:'23:59',timeZone:'UTC'}};
+  priority:'ALTA',schedule:{mode:'daily',startDate:startDate??fixtureDate(-1),
+   endDate:null,weekdays:[],startTime:'00:00',endTime:'23:59',timeZone:scheduleZone}};
 }
 async function cleanupSql({logins,actorId,otherAdminId,keyId}){
  await admin.query('DELETE FROM sabora.comms_audit_m5 WHERE actor_id=ANY($1::uuid[])',[[actorId,otherAdminId]]).catch(()=>{});
@@ -158,7 +167,7 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   const initialPublic=await getPublic();
   assert.equal(initialPublic.items.length,1);
   assert.equal(initialPublic.items[0].title,'Menú especial del día');
-  const future=new Date(Date.now()+2*86_400_000).toISOString().slice(0,10);
+  const future=fixtureDate(2);
   const scheduled=(await(await post('save',{id:null,revision:null,draft:draft({
    title:'Anuncio programado',startDate:future})})).json());
   await post('publish',{id:scheduled.id,revision:scheduled.revision,draft:null});
@@ -211,18 +220,7 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   assert.match(formattedBody,/\*\*negrita\*\*/,
    'rich-text toolbar must insert bold markup at the intended cursor');
   await manager.getByLabel('Emoji para la banda').fill('🌿');
-  // The public SQL interval is [startTime, endTime), so 23:59 Madrid
-  // is already *outside* a 00:00–23:59 notice. On CI at 22:59:52 UTC
-  // (23:59:52 Europe/Madrid), this previously yielded 1 instead of 2.
-  // Exercise a real IANA timezone safely around local noon, regardless of
-  // the runner clock, without bypassing PostgreSQL scheduling or publication.
-  const now=new Date(),shift=12-now.getUTCHours();
-  const scheduleZone=shift===0?'Etc/GMT':
-   `Etc/GMT${shift>0?'-':'+'}${Math.abs(shift)}`;
-  const parts=new Intl.DateTimeFormat('en-GB',{timeZone:scheduleZone,
-   year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
-  const dayField=type=>parts.find(part=>part.type===type)?.value;
-  const scheduleDay=[dayField('year'),dayField('month'),dayField('day')].join('-');
+  const scheduleDay=fixtureDate(0);
   await manager.getByLabel('Zona horaria IANA').fill(scheduleZone);
   await manager.getByLabel('Fecha desde').fill(scheduleDay);
   await manager.getByLabel('Hora desde').fill('00:00');
