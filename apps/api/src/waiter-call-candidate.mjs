@@ -113,13 +113,13 @@ export function createWaiterCallRepository({customerTransaction,staffTransaction
 }
 
 export function createWaiterCallComposition({customerPool,staffPool,
- issueStaffCapability}={}){
+ issueStaffCapability,getStaffMutationProof}={}){
  const customerTransaction=createRoleScopedPostgresTransaction({
   pool:customerPool,role:WAITER_CALL_CUSTOMER_ROLE,
   allowedSql:new Set([WAITER_CALL_CUSTOMER_SQL])});
  const staffTransaction=createRoleScopedPostgresTransaction({
   pool:staffPool,role:WAITER_CALL_STAFF_ROLE,
-  allowedSql:new Set([WAITER_CALL_STAFF_SQL])});
+  allowedSql:new Set([WAITER_CALL_STAFF_SQL]),getStaffMutationProof});
  return createWaiterCallRepository({customerTransaction,staffTransaction,issueStaffCapability});
 }
 

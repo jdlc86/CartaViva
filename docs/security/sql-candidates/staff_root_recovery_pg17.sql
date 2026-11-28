@@ -402,16 +402,23 @@ AS $fence$
 DECLARE proof jsonb; scope text; binding text; credential text; issued bigint; expires bigint;
  key_bytes bytea; key_expiry timestamptz; expected bytea; supplied bytea;
  mismatch integer:=0; i integer; genesis text; s sabora.root_recovery_state_candidate%ROWTYPE;
- root_actor boolean; recovery record;
+ root_actor boolean; actor uuid; recovery record;
 BEGIN
- IF TG_TABLE_NAME='staff_lifecycle_audit' THEN
+ IF TG_NARGS=1 THEN
+  actor:=(to_jsonb(NEW)->>TG_ARGV[0])::uuid;
+  IF actor IS NULL THEN RETURN NEW; END IF;
+  root_actor:=EXISTS(SELECT 1 FROM sabora.staff_members m WHERE m.user_id=actor AND m.role='root');
+  scope:='staff-operation';binding:=actor::text;
+ ELSIF TG_TABLE_NAME='staff_lifecycle_audit' THEN
   IF NEW.actor_kind NOT IN ('root','admin') THEN RETURN NEW; END IF;
+  actor:=NEW.actor_user_id;binding:=NEW.correlation_id::text;
   root_actor:=NEW.actor_kind='root';
   scope:=CASE WHEN root_actor THEN 'first-admin' ELSE 'staff-admin' END;
  ELSE
+  actor:=NEW.actor_user_id;binding:=NEW.correlation_id::text;
   root_actor:=EXISTS(SELECT 1 FROM sabora.root_bootstrap_receipt r
-   WHERE r.singleton AND r.root_user_id=NEW.actor_user_id)
-   OR EXISTS(SELECT 1 FROM sabora.staff_members m WHERE m.user_id=NEW.actor_user_id AND m.role='root');
+   WHERE r.singleton AND r.root_user_id=actor)
+   OR EXISTS(SELECT 1 FROM sabora.staff_members m WHERE m.user_id=actor AND m.role='root');
   scope:='ownership';
  END IF;
  PERFORM pg_advisory_xact_lock(17302101,52426);
@@ -419,16 +426,15 @@ BEGIN
   SELECT a.completed_at,a.credential_hash INTO recovery
    FROM sabora.staff_recovery_registration_candidate a
    JOIN sabora.staff_recovery_intent_candidate i ON i.request_id=a.intent_id
-   WHERE a.subject_user_id=NEW.actor_user_id ORDER BY i.version DESC LIMIT 1;
+   WHERE a.subject_user_id=actor ORDER BY i.version DESC LIMIT 1;
   IF NOT FOUND THEN RETURN NEW; END IF;
   IF recovery.completed_at IS NULL THEN
    RAISE EXCEPTION 'staff_mutation_recovery_forbidden' USING ERRCODE='42501';
   END IF;
  END IF;
- binding:=NEW.correlation_id::text;
  proof:=nullif(current_setting('sabora.root_mutation_proof',true),'')::jsonb;
  IF jsonb_typeof(proof) IS DISTINCT FROM 'array' OR jsonb_array_length(proof)<>8
-  OR proof->>1 IS DISTINCT FROM NEW.actor_user_id::text OR proof->>3 IS DISTINCT FROM scope
+  OR proof->>1 IS DISTINCT FROM actor::text OR proof->>3 IS DISTINCT FROM scope
   OR proof->>4 IS DISTINCT FROM binding OR NOT coalesce(proof->>2 ~ '^[0-9a-f]{64}$',false)
   OR NOT coalesce(proof->>7 ~ '^[0-9a-f]{64}$',false) THEN
   RAISE EXCEPTION 'root_mutation_forbidden' USING ERRCODE='42501';
@@ -441,7 +447,7 @@ BEGIN
   RAISE EXCEPTION 'root_mutation_forbidden' USING ERRCODE='42501';
  END IF;
  expected:=extensions.hmac(convert_to(concat_ws(chr(10),'sabora.root-mutation.v1',proof->>0,
-  NEW.actor_user_id::text,credential,scope,binding,issued::text,expires::text),'UTF8'),key_bytes,'sha256');
+  actor::text,credential,scope,binding,issued::text,expires::text),'UTF8'),key_bytes,'sha256');
  supplied:=decode(proof->>7,'hex');
  FOR i IN 0..31 LOOP mismatch:=mismatch | (get_byte(expected,i)#get_byte(supplied,i)); END LOOP;
  IF mismatch<>0 THEN RAISE EXCEPTION 'root_mutation_forbidden' USING ERRCODE='42501'; END IF;
@@ -455,11 +461,11 @@ BEGIN
   RAISE EXCEPTION 'staff_mutation_recovery_forbidden' USING ERRCODE='42501';
  END IF;
  SELECT r.credential_hash INTO genesis FROM sabora.root_bootstrap_receipt r
-  WHERE r.singleton AND r.root_user_id=NEW.actor_user_id;
+  WHERE r.singleton AND r.root_user_id=actor;
  IF NOT FOUND THEN RAISE EXCEPTION 'root_mutation_forbidden' USING ERRCODE='42501'; END IF;
  SELECT * INTO s FROM sabora.root_recovery_state_candidate WHERE singleton;
  IF (NOT FOUND AND credential=genesis) OR
-   coalesce(s.root_user_id=NEW.actor_user_id AND NOT s.registration_pending
+  coalesce(s.root_user_id=actor AND NOT s.registration_pending
     AND (credential=coalesce(s.primary_credential_hash,genesis) OR credential=s.backup_credential_hash),false)
  THEN RETURN NEW; END IF;
  RAISE EXCEPTION 'root_mutation_forbidden' USING ERRCODE='42501';
@@ -473,6 +479,31 @@ CREATE TRIGGER root_recovery_ownership_fence BEFORE INSERT ON sabora.admin_owner
  FOR EACH ROW EXECUTE FUNCTION sabora.enforce_root_mutation_fence_candidate();
 CREATE TRIGGER root_recovery_first_admin_fence BEFORE INSERT ON sabora.staff_lifecycle_audit
  FOR EACH ROW EXECUTE FUNCTION sabora.enforce_root_mutation_fence_candidate();
+
+-- These rows are written by the existing staff RPCs, inside their business
+-- transactions. At commit, after their normal row locks, the same recovery
+-- fence decides whether the already admitted credential can still write.
+CREATE CONSTRAINT TRIGGER staff_recovery_operational_fence AFTER INSERT ON sabora.order_line_events
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sabora.enforce_root_mutation_fence_candidate('actor_user_id');
+CREATE CONSTRAINT TRIGGER staff_recovery_operational_fence AFTER INSERT ON sabora.pickup_task_events
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sabora.enforce_root_mutation_fence_candidate('actor_user_id');
+CREATE CONSTRAINT TRIGGER staff_recovery_operational_fence AFTER INSERT ON sabora.h6_action_requests
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sabora.enforce_root_mutation_fence_candidate('actor_user_id');
+CREATE CONSTRAINT TRIGGER staff_recovery_operational_fence AFTER INSERT ON sabora.operational_account_closures_candidate
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sabora.enforce_root_mutation_fence_candidate('closed_by');
+CREATE CONSTRAINT TRIGGER staff_recovery_operational_fence AFTER UPDATE ON sabora.economic_settlement_intents_candidate
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(OLD.verified_by IS NULL AND NEW.verified_by IS NOT NULL)
+ EXECUTE FUNCTION sabora.enforce_root_mutation_fence_candidate('verified_by');
+CREATE CONSTRAINT TRIGGER staff_recovery_operational_fence AFTER INSERT ON sabora.management_mutation_receipts_m3
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sabora.enforce_root_mutation_fence_candidate('actor_user_id');
+CREATE CONSTRAINT TRIGGER staff_recovery_operational_fence AFTER INSERT ON sabora.comms_audit_m5
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sabora.enforce_root_mutation_fence_candidate('actor_id');
+CREATE CONSTRAINT TRIGGER staff_recovery_operational_fence AFTER INSERT ON sabora.waiter_call_events
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.actor_kind='staff')
+ EXECUTE FUNCTION sabora.enforce_root_mutation_fence_candidate('actor_id');
+CREATE CONSTRAINT TRIGGER staff_recovery_operational_fence AFTER UPDATE ON sabora.customer_table_change_requests
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(OLD.status='pending' AND NEW.status IN ('approved','rejected'))
+ EXECUTE FUNCTION sabora.enforce_root_mutation_fence_candidate('decided_by');
 
 -- Mail custody belongs to the existing recovery candidate, never a public
 -- table or a new delivery service. The encrypted recipient survives restart;

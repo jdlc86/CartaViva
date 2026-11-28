@@ -81,7 +81,7 @@ export function createRootRecoveryKernelCandidate({pool,keyId,signingSecret,fact
  }
  function issueMutationProof({actorId,credentialHash,deadlineMs,scope,binding}){
   if(!UUID.test(actorId??'')||!HASH.test(credentialHash??'')||
-    !Number.isSafeInteger(deadlineMs)||!['ownership','first-admin','staff-admin'].includes(scope)||
+    !Number.isSafeInteger(deadlineMs)||!['ownership','first-admin','staff-admin','staff-operation'].includes(scope)||
     !/^[A-Za-z0-9_-]{8,128}$/.test(binding??''))
    throw Object.assign(Error('invalid_root_mutation_proof'),{code:'42501'});
   const issued=clock(),expires=Math.min(issued+15000,deadlineMs);

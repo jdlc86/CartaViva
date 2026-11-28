@@ -34,6 +34,10 @@ const TRIGGERS=[
  ['root_recovery_audit_candidate','root_recovery_audit_no_truncate',false],
  ['admin_ownership_audit','root_recovery_ownership_fence',false],
  ['staff_lifecycle_audit','root_recovery_first_admin_fence',false],
+ ...['order_line_events','pickup_task_events','h6_action_requests','management_mutation_receipts_m3',
+  'comms_audit_m5','waiter_call_events','customer_table_change_requests',
+  'operational_account_closures_candidate','economic_settlement_intents_candidate']
+  .map(table=>[table,'staff_recovery_operational_fence',true]),
 ];
 
 export async function createVerifiedRootRecoveryCandidate({control,worker,factorSecret,keyring,rotationDays,

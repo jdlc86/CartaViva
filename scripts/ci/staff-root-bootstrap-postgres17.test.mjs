@@ -728,7 +728,8 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    revokePasskey:async(subject,previous)=>{
     assert.equal(subject,otherId);assert.equal(previous,oldProviderId);revocationCalls++;
     assert.equal((await staffRegistration('complete',staffBinding)).outcome,'denied');
-    providerIds=providerIds.filter(x=>x!==previous);return true;
+    providerIds=providerIds.filter(x=>x!==previous);
+    throw Error('fixture_revocation_response_lost_after_commit');
    },
    logoutAll:async token=>{assert.equal(token,accessToken);logoutCalls++;assert.deepEqual(providerIds,[newProviderId]);return true;},
   };
@@ -810,6 +811,17 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_lifecycle_audit WHERE correlation_id=$1',
    [ordinaryCorrelation])).rows[0].n,0);
   await assert.rejects(runOrdinary(staffNewHash,rollback),e=>e===rollback);
+  const commsAudit=`INSERT INTO sabora.comms_audit_m5(request_id,actor_id,announcement_id,operation,after_state)
+   VALUES($1,$2,$3,'save','{}'::jsonb)`;
+  const commsRequest=randomUUID(),commsAnnouncement=randomUUID();
+  const writeComms=credentialHash=>createRoleScopedPostgresTransaction({pool:admin,role:'sabora_m5_comms_fn_owner',
+   allowedSql:new Set([commsAudit]),getStaffMutationProof:()=>rootKernel.issueMutationProof({actorId:otherId,
+    credentialHash,binding:otherId,scope:'staff-operation',deadlineMs:Date.now()+15000})})(
+   query=>query(commsAudit,[commsRequest,otherId,commsAnnouncement]));
+  await assert.rejects(writeComms(staffOldHash),e=>e.code==='42501'&&e.message==='staff_mutation_recovery_forbidden');
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.comms_audit_m5 WHERE request_id=$1',[commsRequest])).rows[0].n,0);
+  await writeComms(staffNewHash);
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.comms_audit_m5 WHERE request_id=$1',[commsRequest])).rows[0].n,1);
   await assert.rejects(classify(retiredAdminAuthority,{enrollmentId:queuedTarget.enrollmentId}),e=>e.code==='42501');
   await assert.rejects(classify(authority(otherId,'admin',null),{enrollmentId:queuedTarget.enrollmentId}),e=>e.code==='42501');
   await assert.rejects(queueRecovery(retiredAdminAuthority,{enrollmentId:queuedTarget.enrollmentId,requestId:randomUUID()}),e=>e.code==='42501');
@@ -823,7 +835,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.deepEqual(await classify(freshAdminAuthority,{enrollmentId:queuedTarget.enrollmentId}),
    {purpose:'recover',enrollmentId:queuedTarget.enrollmentId,state:'active'});
   const freshIntent=await queueRecovery(freshAdminAuthority,{enrollmentId:queuedTarget.enrollmentId,requestId:randomUUID()});
-  assert.equal(freshIntent.version,2);
+  assert.equal(freshIntent.version,lostDelivery.version+2);
   let freshRecoveryToken;
   assert.equal((await recoveryDispatch.dispatch(freshIntent.intentId,async job=>{
    assert.equal(job.intentId,freshIntent.intentId);freshRecoveryToken=job.token;

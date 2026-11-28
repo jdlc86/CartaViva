@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import {AsyncLocalStorage} from 'node:async_hooks';
 import {createFloorPushComposition} from './floor-web-push.mjs';
 import {performance} from 'node:perf_hooks';
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
@@ -307,6 +308,9 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   const cookieAuth=createCustomerCookieAuth({allowedOrigin:customer.allowedOrigin,
    verifyCustomerSession:createCustomerSessionVerifier({query:sessionQuery}),
    revokeCustomerSession:createCustomerSessionRevoker({query:sessionQuery})});
+  const mutationScope=rootRecovery?new AsyncLocalStorage():null;
+  const getStaffMutationProof=mutationScope?()=>mutationScope.getStore()?.proof:undefined;
+  if(mutationScope)app.addHook('onRequest',(_request,_reply,done)=>mutationScope.run({proof:null},done));
   const b3=await createVerifiedTableChangeB3CustomerFlowCandidate({
    customerPool:tableChange.customerPool,operationsPool:tableChange.operationsPool,
    confirmationPool:tableChange.confirmationPool,h6ReadPool:tableChange.h6ReadPool,
@@ -316,7 +320,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    expectedH6ReadLogin:tableChange.expectedH6ReadLogin,
    expectedFlowLogin:customer.expectedFlowLogin,hashSession:tableChange.hashSession,
    verifyStaff:({verifiedIdentity,verifiedStaff})=>({userId:verifiedIdentity.userId,
-    role:verifiedStaff.role}),secretKey:customer.secretKey
+    role:verifiedStaff.role}),secretKey:customer.secretKey,getStaffMutationProof
   });
   const pending=await createVerifiedPendingTableChangeReader({
    pendingPool:tableChange.pendingPool,expectedLogin:tableChange.expectedPendingLogin,
@@ -329,14 +333,14 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   const customerEconomicTx=createRoleScopedPostgresTransaction({pool:h6.customerPool,
    role:'sabora_h6_customer_runtime',allowedSql:customerEconomicSql});
   const operationsTx=createRoleScopedPostgresTransaction({pool:h6.operationsPool,
-   role:'sabora_h6_operations_runtime',allowedSql:operationsSql});
+   role:'sabora_h6_operations_runtime',allowedSql:operationsSql,getStaffMutationProof});
   const closeTx=createRoleScopedPostgresTransaction({pool:h6.closePool,
-   role:M2_ACCOUNT_CLOSE_ROLE,allowedSql:new Set([CLOSE_ACCOUNT_H6_SQL])});
+   role:M2_ACCOUNT_CLOSE_ROLE,allowedSql:new Set([CLOSE_ACCOUNT_H6_SQL]),getStaffMutationProof});
   const eventTx=createRoleScopedPostgresTransaction({pool:h6.eventPool,
    role:M2_CUSTOMER_EVENT_ROLE,allowedSql:new Set([READ_CUSTOMER_EVENTS_H6_SQL])});
   const h4Tx=createRoleScopedPostgresTransaction({pool:h4.operationsPool,
    role:M2_H4_OPERATIONS_ROLE,allowedSql:new Set([TRANSITION_ORDER_LINE_SQL,
-    dispatchWithoutStripe?READ_H6_DISPATCH_BOARD_SQL:READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
+    dispatchWithoutStripe?READ_H6_DISPATCH_BOARD_SQL:READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL]),getStaffMutationProof});
   const provider=createH6ProviderRepository({withTransaction:providerTx});
   // Signed ingress is optional and restricted to test-mode webhooks.
   // server.mjs remains health-only; no route is exposed by default.
@@ -366,7 +370,21 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   const forRoles=createStaffProtectedHooksFromPool({pool:staff.pool,issuer:staff.issuer,authenticate,
    getTrustedKeys:staff.getTrustedKeys,...(staff.verify?{verify:staff.verify}:{}),
    ...(staff.observe?{observe:staff.observe}:{})});
-  const oneGuard=staffGuard(forRoles);
+  const guard=staffGuard(forRoles);
+  const oneGuard=roles=>{
+   const check=guard(roles);
+   if(!mutationScope)return check;
+   return async(request,reply)=>{
+    await check(request,reply);
+    if(reply.sent||['GET','HEAD'].includes(request.method))return;
+    const scope=mutationScope.getStore(),identity=request.verifiedIdentity;
+    if(!scope||identity?.userId!==request.verifiedStaff?.userId)
+     return reply.code(403).send({error:'staff_recovery_access_denied'});
+    try{scope.proof=rootRecovery.issueMutationProof({actorId:identity.userId,binding:identity.userId,
+     credentialHash:request.verifiedRootCredential,deadlineMs:identity.expiresAt*1000,scope:'staff-operation'});}
+    catch{return reply.code(403).send({error:'staff_recovery_access_denied'});}
+   };
+  };
   if(staff.directory){
    staffDirectory=await createVerifiedStaffDirectoryFromPool({
     pool:staff.directory.pool,role:staff.directory.expectedLogin,
@@ -403,9 +421,9 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   if(management){
    const tablesTx=createRoleScopedPostgresTransaction({pool:management.tablesPool,
     role:M3_TABLES_ROLE,allowedSql:new Set([READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,
-     OCCUPANCY_M3_TABLE_SQL,...(management.tableChangeWindow?[TABLE_CHANGE_WINDOW_M3_SQL]:[])])});
+     OCCUPANCY_M3_TABLE_SQL,...(management.tableChangeWindow?[TABLE_CHANGE_WINDOW_M3_SQL]:[])]),getStaffMutationProof});
    const catalogTx=createRoleScopedPostgresTransaction({pool:management.catalogPool,
-    role:M3_CATALOG_ROLE,allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL,READ_M3_FINANCE_SQL])});
+    role:M3_CATALOG_ROLE,allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL,READ_M3_FINANCE_SQL]),getStaffMutationProof});
    m3Tables=createM3TablesRepository({withTransaction:tablesTx,
     issueCapability:management.issueTablesCapability});
    m3Catalog=createM3CatalogRepository({withTransaction:catalogTx,
@@ -424,7 +442,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    if(management.communications){
     const adminCommsTx=createRoleScopedPostgresTransaction({
      pool:management.communications.adminPool,role:M5_COMMS_ADMIN_ROLE,
-     allowedSql:new Set([READ_M5_COMMS_ADMIN_SQL,MANAGE_M5_COMMS_SQL])});
+     allowedSql:new Set([READ_M5_COMMS_ADMIN_SQL,MANAGE_M5_COMMS_SQL]),getStaffMutationProof});
     const publicCommsTx=createRoleScopedPostgresTransaction({
      pool:management.communications.publicPool,role:M5_COMMS_PUBLIC_ROLE,
      allowedSql:new Set([READ_M5_COMMS_PUBLIC_SQL])});
@@ -467,7 +485,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   if(waiterCalls)registerWaiterCallHttp(app,{cookieAuth,forRoles:oneGuard,
    repository:createWaiterCallComposition({
     customerPool:waiterCalls.customerPool,staffPool:waiterCalls.staffPool,
-    issueStaffCapability:waiterCalls.issueStaffCapability})});
+    issueStaffCapability:waiterCalls.issueStaffCapability,getStaffMutationProof})});
   floorPushService?.register(app,{forRoles:oneGuard});
   registerPublishedCustomerFeatures(app,{tableChange:true,waiterCalls:Boolean(waiterCalls),
    isAvailable:()=>operational});

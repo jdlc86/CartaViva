@@ -176,8 +176,16 @@ export function createStaffRecoveryCeremonyCandidate({registration,provider,issu
      !same(contextFields(await identity(accessToken,intentId)),contextFields(ctx)))throw uncertain();
     const registered=digest('sabora.staff-recovery-registration-receipt.v1',[ceremony,replacement]);
     await requireOutcome('record_registration',binding,registered,'registration_recorded',{replacementProviderId:replacement});
+    const remaining=new Set(old);
     for(const previous of old){
-     if(binding.deadlineMs<=clock()||await provider.revokePasskey(ctx.subjectId,previous)!==true)throw uncertain();
+     if(binding.deadlineMs<=clock())throw uncertain();
+     remaining.delete(previous);
+     // A transport failure is reconciled by an exact inventory read for
+     // this already identified replacement and pre-existing credential.
+     // A still-present target is left fenced without a second DELETE.
+     let acknowledged;
+     try{acknowledged=await provider.revokePasskey(ctx.subjectId,previous);}catch{}
+     if(acknowledged!==true&&!same(await listed(ctx.subjectId),[replacement,...remaining].sort()))throw uncertain();
     }
     if(!same(await listed(ctx.subjectId),[replacement])||binding.deadlineMs<=clock()||
      await provider.logoutAll(accessToken)!==true||!same(await listed(ctx.subjectId),[replacement]))throw uncertain();
