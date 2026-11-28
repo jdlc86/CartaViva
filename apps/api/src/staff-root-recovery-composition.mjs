@@ -5,7 +5,9 @@ import {createRootRecoveryMailCandidate,ROOT_MAIL_LOGIN} from './staff-root-reco
 import {createRootRecoveryResendSender,createStaffRecoveryResendSender} from './staff-invitation-resend.mjs';
 import {createStaffRecoveryDeliveryCandidate} from './staff-recovery-delivery-candidate.mjs';
 import {createStaffRootSecurityCandidate} from './staff-root-security-candidate.mjs';
-import {createStaffRecoveryHttpComposition} from './staff-recovery-http-candidate.mjs';
+import {createStaffRecoveryHttpComposition,registerStaffRecoveryHttpCandidate} from './staff-recovery-http-candidate.mjs';
+import {registerRootRecoveryFactorHttpCandidate} from './staff-root-recovery-http-candidate.mjs';
+import {createPublicRootRecoveryCandidate} from './staff-root-recovery-public-candidate.mjs';
 import {createStaffRecoveryRegistrationCandidate,createStaffRecoveryReceiptReconcilerCandidate}
  from './staff-recovery-registration-candidate.mjs';
 
@@ -34,14 +36,15 @@ const TRIGGERS=[
 ];
 
 export async function createVerifiedRootRecoveryCandidate({control,worker,factorSecret,keyring,rotationDays,
- getRootUserId,resend,hashInviteeEmail,staffRecovery=null,observeFailure=()=>{}}={}){
+ getRootUserId,resend,hashInviteeEmail,staffRecovery=null,publicRecovery=null,observeFailure=()=>{}}={}){
  if(typeof keyring?.active!=='function'||typeof keyring?.resolveKey!=='function'||
   typeof getRootUserId!=='function'||typeof hashInviteeEmail!=='function'||typeof observeFailure!=='function'||!control?.pool||!worker?.pool||
   control.expectedLogin!==ROOT_RECOVERY_LOGIN||worker.expectedLogin!==ROOT_MAIL_LOGIN||
   control.pool===worker.pool||control.keyId===worker.keyId)
   throw Error('invalid_root_recovery_composition');
  const keys=[control.signingSecret,worker.signingSecret,factorSecret,
-  ...(staffRecovery?[staffRecovery.httpSecret,staffRecovery.ticketSecret]:[])];
+  ...(staffRecovery?[staffRecovery.httpSecret,staffRecovery.ticketSecret]:[]),
+  ...(publicRecovery?[publicRecovery.httpSecret,publicRecovery.ticketSecret]:[])];
  const custodyKey=key=>{
   if(!Buffer.isBuffer(key)||key.length!==32||keys.some(other=>timingSafeEqual(key,other)))
    throw Error('invalid_root_recovery_custody_key');
@@ -66,6 +69,8 @@ export async function createVerifiedRootRecoveryCandidate({control,worker,factor
  const staffRecoveryHttp=staffRecovery?createStaffRecoveryHttpComposition({
   ...staffRecovery,origin:resend.managementOrigin,control,keyring:custody,hashInviteeEmail
  }):null;
+ const publicService=publicRecovery?createPublicRootRecoveryCandidate({...publicRecovery,kernel,getRootUserId,
+  origin:resend.managementOrigin}):null;
  const registration=createStaffRecoveryRegistrationCandidate(control);
  const reconcile=createStaffRecoveryReceiptReconcilerCandidate({registration});
  const readiness=()=>Promise.all([
@@ -127,6 +132,12 @@ export async function createVerifiedRootRecoveryCandidate({control,worker,factor
   return task;
  }
  return Object.freeze({security,staffRecoveryHttp,readiness,allowsAccess:kernel.allowsAccess,issueMutationProof:kernel.issueMutationProof,
+  registerPublic(app){
+   if(!publicService)return;
+   const origin=resend.managementOrigin;
+   registerRootRecoveryFactorHttpCandidate(app,{origin,kernel,mail,getRootUserId});
+   registerStaffRecoveryHttpCandidate(app,{origin,root:true,secret:publicRecovery.httpSecret,service:publicService});
+  },
   start(){if(started||closed)throw Error('invalid_root_recovery_worker_state');started=true;return tick();},
   tick,
   async close(){closed=true;clearTimeout(timer);await task;}

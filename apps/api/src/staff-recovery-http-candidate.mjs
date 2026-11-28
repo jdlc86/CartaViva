@@ -1,5 +1,6 @@
 // Candidate-only recovery HTTP boundary, separate from enrollment and login.
-import {createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
+import {createCipheriv,createDecipheriv,randomBytes,randomUUID} from 'node:crypto';
+import {ROOT_RECOVERY_PATH,ROOT_RECOVERY_GRANT_COOKIE} from './staff-root-recovery-http-candidate.mjs';
 import {createStaffRecoveryDeliveryCandidate} from './staff-recovery-delivery-candidate.mjs';
 import {createStaffInvitationClassificationCandidate,createStaffRecoveryIntentCandidate}
  from './staff-invitation-classification-candidate.mjs';
@@ -14,14 +15,21 @@ const JWT=/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const validToken=v=>typeof v==='string'&&v.length===43&&BASE64.test(v)&&Buffer.from(v,'base64url').toString('base64url')===v;
 const exact=(body,keys)=>body!==null&&typeof body==='object'&&!Array.isArray(body)&&
  Object.keys(body).length===keys.length&&keys.every(k=>Object.hasOwn(body,k));
-const cookie=(value,age)=>COOKIE+'='+value+'; Path=/; Max-Age='+age+'; Secure; HttpOnly; SameSite=Strict';
+const cookie=(name,value,age)=>name+'='+value+'; Path=/; Max-Age='+age+'; Secure; HttpOnly; SameSite=Strict';
+function readCookie(request,name){
+ const prefix=name+'=';
+ const parts=(request.headers.cookie??'').split(';').map(x=>x.trim()).filter(x=>x.startsWith(prefix));
+ return parts.length===1?parts[0].slice(prefix.length):null;
+}
 
-export function registerStaffRecoveryHttpCandidate(app,{origin,secret,service,clock=Date.now}={}){
+export function registerStaffRecoveryHttpCandidate(app,{origin,secret,service,clock=Date.now,root=false}={}){
  const base=new URL(origin);
  if(base.protocol!=='https:'||base.origin!==origin||!(secret instanceof Uint8Array)||secret.byteLength!==32||
-  typeof clock!=='function'||!['exchange','options','register'].every(k=>typeof service?.[k]==='function'))
+  typeof clock!=='function'||typeof root!=='boolean'||!['exchange','options','register'].every(k=>typeof service?.[k]==='function'))
   throw Error('invalid_staff_recovery_http_config');
- const key=Buffer.from(secret),aad=Buffer.from('sabora.staff-recovery.http.v1\n'+origin);
+ const path=root?ROOT_RECOVERY_PATH:STAFF_RECOVERY_PATH;
+ const name=root?'__Host-sabora-root-recovery-session':COOKIE;
+ const key=Buffer.from(secret),aad=Buffer.from((root?'sabora.root-recovery.http.v1':'sabora.staff-recovery.http.v1')+'\n'+origin);
  function seal(session){
   const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);
   cipher.setAAD(aad);
@@ -32,15 +40,14 @@ export function registerStaffRecoveryHttpCandidate(app,{origin,secret,service,cl
  }
  function open(request){
   try{
-   const parts=(request.headers.cookie??'').split(';').map(x=>x.trim()).filter(x=>x.startsWith(COOKIE+'='));
-   if(parts.length!==1)return null;
-   const value=parts[0].slice(COOKIE.length+1);
+   const value=readCookie(request,name);
    if(!value||value.length>3600||!BASE64.test(value))return null;
    const data=Buffer.from(value,'base64url');
    if(data.length<29||data.toString('base64url')!==value)return null;
    const decipher=createDecipheriv('aes-256-gcm',key,data.subarray(0,12));decipher.setAAD(aad);decipher.setAuthTag(data.subarray(12,28));
    const session=JSON.parse(Buffer.concat([decipher.update(data.subarray(28)),decipher.final()]).toString('utf8'));
-   if(!exact(session,['intentId','accessToken','expiresAt'])||!UUID.test(session.intentId)||
+   if(!exact(session,root?['intentId','accessToken','expiresAt','grantHash']:['intentId','accessToken','expiresAt'])||
+    (root&&!/^[0-9a-f]{64}$/.test(session.grantHash??''))||!UUID.test(session.intentId)||
     typeof session.accessToken!=='string'||!JWT.test(session.accessToken)||
     !Number.isSafeInteger(session.expiresAt)||session.expiresAt<=clock())return null;
    return session;
@@ -54,47 +61,56 @@ export function registerStaffRecoveryHttpCandidate(app,{origin,secret,service,cl
   if(request.headers.host!==base.host||request.headers.origin!==origin||request.headers.authorization!==undefined||
    request.url.includes('?'))return denied(reply);
  };
- app.post(STAFF_RECOVERY_PATH+'/accept',{preHandler:guard,bodyLimit:1024},async(request,reply)=>{
+ app.post(path+'/accept',{preHandler:guard,bodyLimit:1024},async(request,reply)=>{
   const body=request.body;
-  if(!exact(body,['intentId','token'])||!UUID.test(body.intentId??'')||!validToken(body.token))return invalid(reply);
+  if(root?!exact(body,[]):(!exact(body,['intentId','token'])||!UUID.test(body.intentId??'')||!validToken(body.token)))return invalid(reply);
+  const intentId=root?randomUUID():body.intentId.toLowerCase();
+  const token=root?readCookie(request,ROOT_RECOVERY_GRANT_COOKIE):body.token;
+  if(root&&!validToken(token))return denied(reply);
+  const grantClear=cookie(ROOT_RECOVERY_GRANT_COOKIE,'',0);
+  if(root)reply.header('Set-Cookie',grantClear);
   try{
-   const result=await service.exchange({intentId:body.intentId.toLowerCase(),token:body.token});
+   const result=await service.exchange({intentId,token});
    if(result?.outcome!=='ready'||typeof result.accessToken!=='string'||!JWT.test(result.accessToken)||
+    (root&&!/^[0-9a-f]{64}$/.test(result.grantHash??''))||
     !Number.isSafeInteger(result.expiresAtMs))return denied(reply);
    const expiresAt=Math.min(clock()+300000,result.expiresAtMs);
    const age=Math.floor((expiresAt-clock())/1000);
    if(age<=0)return denied(reply);
-   const value=seal({intentId:body.intentId.toLowerCase(),accessToken:result.accessToken,expiresAt});
-   return reply.header('Set-Cookie',cookie(value,age)).send({outcome:'ready'});
+   const value=seal({intentId,accessToken:result.accessToken,expiresAt,...(root?{grantHash:result.grantHash}:{})});
+   return reply.header('Set-Cookie',cookie(name,value,age)).send({outcome:'ready'});
   }catch(error){return failed(reply,error);}
  });
- app.post(STAFF_RECOVERY_PATH+'/options',{preHandler:guard,bodyLimit:1024},async(request,reply)=>{
+ app.post(path+'/options',{preHandler:guard,bodyLimit:1024},async(request,reply)=>{
   if(!exact(request.body,[]))return invalid(reply);
   const session=open(request);if(!session)return denied(reply);
   try{
-   const result=await service.options({intentId:session.intentId,accessToken:session.accessToken});
+   const result=await service.options(session);
    return {options:result.options,ticket:result.ticket};
   }catch(error){return failed(reply,error);}
  });
- app.post(STAFF_RECOVERY_PATH+'/register',{preHandler:guard,bodyLimit:49152},async(request,reply)=>{
+ app.post(path+'/register',{preHandler:guard,bodyLimit:49152},async(request,reply)=>{
   const body=request.body;
   if(!exact(body,['ticket','credential'])||typeof body.ticket!=='string'||body.ticket.length>3000||
    !body.credential||typeof body.credential!=='object'||Array.isArray(body.credential))return invalid(reply);
   const session=open(request);if(!session)return denied(reply);
   try{
-   const result=await service.register({intentId:session.intentId,accessToken:session.accessToken,ticket:body.ticket,credential:body.credential});
-   if(result?.outcome!=='completed')throw Error('staff_recovery_not_completed');
-   return reply.header('Set-Cookie',cookie('',0)).send({outcome:'completed'});
+   const result=await service.register({...session,ticket:body.ticket,credential:body.credential});
+   if(result?.outcome!=='completed'||(root&&!/^[A-Z2-7]{25}[AEIMQUY4]$/.test(result.recoveryCode??'')))
+    throw Error('staff_recovery_not_completed');
+   return reply.header('Set-Cookie',cookie(name,'',0)).send({outcome:'completed',...(root?{recoveryCode:result.recoveryCode}:{})});
   }catch(error){
    // The remote result may be uncertain. Do not offer an automatic replay.
-   reply.header('Set-Cookie',cookie('',0));
+   reply.header('Set-Cookie',cookie(name,'',0));
    return failed(reply,error);
   }
  });
- app.post(STAFF_RECOVERY_PATH+'/cancel',{preHandler:guard,bodyLimit:1024},async(request,reply)=>{
+ app.post(path+'/cancel',{preHandler:guard,bodyLimit:1024},async(request,reply)=>{
   if(!exact(request.body,[]))return invalid(reply);
   // Local exit only; no claim about revocation or remote reconciliation.
-  return reply.header('Set-Cookie',cookie('',0)).code(204).send();
+  reply.header('Set-Cookie',cookie(name,'',0));
+  if(root)reply.header('Set-Cookie',cookie(ROOT_RECOVERY_GRANT_COOKIE,'',0));
+  return reply.code(204).send();
  });
 }
 

@@ -116,6 +116,7 @@ export function createStaffRecoveryCeremonyCandidate({registration,provider,issu
  async function requireOutcome(action,binding,evidenceHash,expected,details=null){
   const result=await registration(action,{...binding,...(evidenceHash===null?{}:{evidenceHash}),...(details===null?{}:{details})});
   if(result?.outcome!==expected)throw uncertain();
+  return result;
  }
  return Object.freeze({
   async options({accessToken,intentId}={}){
@@ -182,8 +183,7 @@ export function createStaffRecoveryCeremonyCandidate({registration,provider,issu
      await provider.logoutAll(accessToken)!==true||!same(await listed(ctx.subjectId),[replacement]))throw uncertain();
     const revoked=digest('sabora.staff-recovery-revocation-receipt.v1',[registered,...old,replacement,'global-logout-acknowledged']);
     await requireOutcome('record_revocation',binding,revoked,'revocation_recorded');
-    await requireOutcome('complete',binding,null,'completed');
-    return Object.freeze({outcome:'completed'});
+    return await requireOutcome('complete',binding,null,'completed');
    }catch{throw uncertain();}
   }
  });

@@ -23,6 +23,7 @@ CREATE TABLE sabora.root_recovery_state_candidate(
  grant_hash text,grant_expires_at timestamptz,
  registration_pending boolean NOT NULL DEFAULT false,
  pending_operation_hash text CHECK(pending_operation_hash ~ '^[0-9a-f]{64}$'),
+ pending_session_hash text CHECK(pending_session_hash ~ '^[0-9a-f]{64}$'),
  pending_registration_deadline timestamptz,
  pending_credential_hash text CHECK(pending_credential_hash ~ '^[0-9a-f]{64}$'),
  pending_ceremony_hash text CHECK(pending_ceremony_hash ~ '^[0-9a-f]{64}$'),
@@ -36,6 +37,7 @@ CREATE TABLE sabora.root_recovery_state_candidate(
  CHECK(registration_pending=(pending_registration_deadline IS NOT NULL)),
  CHECK((pending_credential_hash IS NULL)=(pending_ceremony_hash IS NULL)),
  CHECK(registration_pending OR pending_credential_hash IS NULL),
+ CHECK(registration_pending OR pending_session_hash IS NULL),
  CHECK(pending_registration_receipt_hash IS NULL OR pending_credential_hash IS NOT NULL),
  CHECK(pending_revocation_receipt_hash IS NULL OR pending_registration_receipt_hash IS NOT NULL),
  CHECK((link_hash IS NULL)=(link_expires_at IS NULL)),
@@ -111,6 +113,8 @@ BEGIN
    WHEN 'challenge' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NULL AND p_days IS NULL
    WHEN 'attempt' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NOT NULL AND p_days IS NULL
    WHEN 'claim' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
+   WHEN 'bind_public_session' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NULL AND p_days IS NULL
+   WHEN 'check_public_session' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NULL AND p_days IS NULL
    WHEN 'add_backup' THEN p_a IS NOT NULL AND p_b IS NOT NULL AND p_c IS NOT NULL AND p_days IS NULL
    WHEN 'backup_status' THEN p_a IS NOT NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
    WHEN 'expire_unprepared' THEN p_a IS NULL AND p_b IS NULL AND p_c IS NULL AND p_days IS NULL
@@ -165,7 +169,7 @@ BEGIN
    IF s.registration_pending AND s.pending_registration_deadline<=v_now
     AND s.pending_credential_hash IS NULL THEN
     UPDATE sabora.root_recovery_state_candidate SET registration_pending=false,
-     pending_operation_hash=NULL,pending_registration_deadline=NULL WHERE singleton;
+     pending_operation_hash=NULL,pending_registration_deadline=NULL,pending_session_hash=NULL WHERE singleton;
     v_result:='registration_expired';
    ELSE
     RETURN QUERY SELECT CASE WHEN s.registration_pending THEN 'registration_pending' ELSE 'denied' END,v_fails,v_block;
@@ -183,11 +187,18 @@ BEGIN
     v_result:='code_replaced';
    END IF;
   ELSIF s.registration_pending THEN
+   IF p_action='bind_public_session' AND p_a=s.pending_operation_hash
+    AND s.pending_registration_deadline>v_now AND s.pending_session_hash IS NULL AND s.pending_credential_hash IS NULL THEN
+    UPDATE sabora.root_recovery_state_candidate SET pending_session_hash=p_b WHERE singleton;
+    v_result:='public_session_bound';
+   ELSIF p_action='check_public_session' AND p_a=s.pending_operation_hash
+    AND s.pending_registration_deadline>v_now AND p_b=s.pending_session_hash AND s.pending_credential_hash IS NULL THEN
+    RETURN QUERY SELECT 'public_session_bound'::text,v_fails,v_block; RETURN;
    -- Only trusted internal provider reconciliation can advance these
    -- phases. A durable credential/ceremony binding precedes external
    -- registration. Positive registration and revocation evidence must
    -- refer to that same binding, never a difference between listings.
-   IF p_action='prepare_registration' AND p_a=s.pending_operation_hash
+   ELSIF p_action='prepare_registration' AND p_a=s.pending_operation_hash
     AND s.pending_registration_deadline>v_now AND s.pending_credential_hash IS NULL
     AND p_b IS DISTINCT FROM coalesce(s.primary_credential_hash,v_genesis_hash)
     AND p_b IS DISTINCT FROM s.backup_credential_hash AND p_b IS DISTINCT FROM v_genesis_hash
@@ -229,7 +240,7 @@ BEGIN
      SET state='cancelled',recipient_envelope=NULL,token_envelope=NULL,finished_at=v_now
      WHERE root_user_id=p_actor AND state='queued' AND purpose IN ('verify','link','challenge');
     UPDATE sabora.root_recovery_state_candidate SET registration_pending=false,pending_operation_hash=NULL,
-     pending_registration_deadline=NULL,
+     pending_registration_deadline=NULL,pending_session_hash=NULL,
      pending_credential_hash=NULL,pending_ceremony_hash=NULL,pending_registration_receipt_hash=NULL,pending_revocation_receipt_hash=NULL,
      attention_mail_id=NULL,
      retired_credential_hashes=array_remove(s.retired_credential_hashes||ARRAY[coalesce(s.primary_credential_hash,v_genesis_hash),s.backup_credential_hash],NULL),

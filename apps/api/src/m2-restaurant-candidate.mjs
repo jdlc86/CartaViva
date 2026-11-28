@@ -204,7 +204,9 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
     throw Error('invalid_m2_restaurant_candidate');
    const staffRecovery=staff.rootRecovery.staffRecovery;
    rootRecovery=await createVerifiedRootRecoveryCandidate({...staff.rootRecovery,observeFailure,
-    staffRecovery:staffRecovery==null?null:{...staffRecovery,issuer:staff.issuer,getTrustedKeys:staff.getTrustedKeys}
+    staffRecovery:staffRecovery==null?null:{...staffRecovery,issuer:staff.issuer,getTrustedKeys:staff.getTrustedKeys},
+    publicRecovery:staff.rootRecovery.publicRecovery==null?null:{...staff.rootRecovery.publicRecovery,
+     issuer:staff.issuer,getTrustedKeys:staff.getTrustedKeys}
    });
    staffPasskey=createStaffPasskeySession({...passkey,issuer:staff.issuer,
     getTrustedKeys:staff.getTrustedKeys,rootAccess:rootRecovery.allowsAccess});
@@ -374,6 +376,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    registerStaffRevocationHttp(app,{forRoles:oneGuard,coordinator:staffRevocation});
   }
   rootRecovery?.staffRecoveryHttp?.register(app,{forRoles});
+  rootRecovery?.registerPublic(app);
   identityLifecycle?.register(app,{forRoles});
   staffPasskey?.register(app,{forRoles,...(rootRecovery?{rootSecurity:rootRecovery.security}:{}),
    ...(identityLifecycle?{rootBootstrap:identityLifecycle.rootBootstrap}:{}),features:{

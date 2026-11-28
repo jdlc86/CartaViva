@@ -27,7 +27,7 @@ import type {TableChangeQueueGateway} from './views/TableChangeRequestsPanel';
 import {TeamView} from './views/TeamView';
 import {StaffEnrollmentView,takeStaffEnrollmentInvitation} from './views/StaffEnrollmentView';
 import {createStaffEnrollmentGateway,createStaffRecoveryGateway} from './staff-enrollment-gateway';
-import {StaffRecoveryView,takeStaffRecoveryInvitation} from './views/StaffRecoveryView';
+import {StaffRecoveryView,takeStaffRecoveryInvitation,takeRootRecoveryInvitation} from './views/StaffRecoveryView';
 import {createStaffRecoveryAdminGateway,type StaffRecoveryAdminGateway} from './staff-recovery-admin-gateway';
 import {registerManagementServiceWorker} from './pwa';
 import type {StaffGatewayAuth} from './staff-gateway-auth.js';
@@ -535,7 +535,11 @@ function startStaffLogin(element: HTMLElement, rootEmailProof: string|null) {
 
 if (typeof document !== 'undefined') {
   const element = document.getElementById('root');
-  if(element&&distributedManagement&&/^#recuperacion-personal(?:\?|$)/.test(window.location.hash)){
+  const rootRecovery=element&&distributedManagement?takeRootRecoveryInvitation():null;
+  if(element&&rootRecovery){
+    createRoot(element).render(<StaffRecoveryView rootInvitation={rootRecovery}
+      gateway={createStaffRecoveryGateway(window.fetch.bind(window),true)}/>);
+  }else if(element&&distributedManagement&&/^#recuperacion-personal(?:\?|$)/.test(window.location.hash)){
     const invitation=takeStaffRecoveryInvitation();
     createRoot(element).render(<StaffRecoveryView invitation={invitation}
       gateway={createStaffRecoveryGateway(window.fetch.bind(window))}/>);

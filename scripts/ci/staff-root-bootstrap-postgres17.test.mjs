@@ -9,11 +9,12 @@ import {startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createStaffRootSecurityCandidate} from '../../apps/api/src/staff-root-security-candidate.mjs';
 import {createStaffRecoveryRegistrationCandidate,createStaffRecoveryCeremonyCandidate,createStaffRecoveryReceiptReconcilerCandidate} from '../../apps/api/src/staff-recovery-registration-candidate.mjs';
-import {createStaffRecoveryHttpComposition,STAFF_RECOVERY_PATH,STAFF_RECOVERY_ADMIN_PATH} from '../../apps/api/src/staff-recovery-http-candidate.mjs';
+import {createStaffRecoveryHttpComposition,registerStaffRecoveryHttpCandidate,STAFF_RECOVERY_PATH,STAFF_RECOVERY_ADMIN_PATH} from '../../apps/api/src/staff-recovery-http-candidate.mjs';
 import {createStaffRecoveryDeliveryCandidate} from '../../apps/api/src/staff-recovery-delivery-candidate.mjs';
 import {createStaffInvitationClassificationCandidate,createStaffRecoveryIntentCandidate} from '../../apps/api/src/staff-invitation-classification-candidate.mjs';
 import {registerRootRecoveryFactorHttpCandidate,ROOT_RECOVERY_PATH} from '../../apps/api/src/staff-root-recovery-http-candidate.mjs';
 import {createVerifiedRootRecoveryCandidate} from '../../apps/api/src/staff-root-recovery-composition.mjs';
+import {createPublicRootRecoveryCandidate} from '../../apps/api/src/staff-root-recovery-public-candidate.mjs';
 import {hashRootCredentialId} from '../../apps/api/src/staff-root-credential-id.mjs';
 import {createRootRecoveryKernelCandidate,generateRootRecoveryCode,generateRootRecoveryToken,ROOT_MUTATION_PROOF_SQL,ROOT_RECOVERY_LOGIN,ROOT_RECOVERY_SQL} from '../../apps/api/src/staff-root-recovery-candidate.mjs';
 import {ROOT_BOOTSTRAP_SQL} from '../../apps/api/src/staff-root-bootstrap-candidate.mjs';
@@ -216,6 +217,11 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
  registerOwnershipGovernanceHttp(app,{forRoles,repository:ownership});
  passkey.register(app,{forRoles,features:{tableChange:false,waiterCalls:false,management:false,ownership:true,staffFirstAdmin:true,rootSecurity:true,staffRecovery:true},rootBootstrap:staffIdentity.rootBootstrap,rootSecurity:createStaffRootSecurityCandidate({kernel:rootKernel,mail:rootMail})});
  registerRootRecoveryFactorHttpCandidate(app,{origin,kernel:rootKernel,mail:rootMail,getRootUserId:async()=>rootId});
+ let rootAuthProvider;
+ registerStaffRecoveryHttpCandidate(app,{origin,root:true,secret:randomBytes(32),
+  service:createPublicRootRecoveryCandidate({origin,kernel:rootKernel,issuer,getTrustedKeys:async()=>[jwk],
+   getRootUserId:async()=>rootId,ticketSecret:randomBytes(32),
+   providerForRoot:async({subjectId})=>{assert.equal(subjectId,rootId);return rootAuthProvider;}})});
  let recoveryProviderFor;
  createStaffRecoveryHttpComposition({control:recoveryConfig,keyring,hashInviteeEmail:hashEmail,
   origin,issuer,getTrustedKeys:async()=>[jwk],providerFor:scope=>recoveryProviderFor(scope),
@@ -1293,6 +1299,85 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.ok(inbox.some(m=>m.email==='security@demo.invalid'&&m.purpose==='recovered'&&m.token===null));
    assert.ok(inbox.some(m=>m.email==='security@demo.invalid'&&m.purpose==='notice'&&m.token===null));
    assert.ok(inbox.some(m=>m.email==='new-security@demo.invalid'&&m.purpose==='link'));
+   // Full public ROOT path through the built PWA. Auth scopes are restricted
+   // in the fixture exactly as the production provider adapter requires.
+   const receivedLink=inbox.findLast(m=>m.email==='new-security@demo.invalid'&&m.purpose==='link').token;
+   const formerProviderId=randomUUID(),newRootProviderId=randomUUID(),challengeId=randomUUID();
+   const rootNonce=randomBytes(32).toString('base64url'),authProof=generateRootRecoveryToken();
+   enrollmentUserId=rootId;enrollmentSession=randomUUID();
+   const rootAuthToken=mintEnrollment(),authEmail='root-auth@demo.invalid';
+   let providerIds=[formerProviderId],proofExchanges=0,registrations=0,revocations=0,logouts=0,newRootCredential;
+   rootAuthProvider={
+    generateRecoveryProof:async()=>({authProof}),
+    exchangeRecoveryProof:async proof=>{
+     assert.equal(proof,authProof);proofExchanges++;return {accessToken:rootAuthToken};
+    },
+    user:async token=>token===rootAuthToken?{id:rootId,email:authEmail,is_anonymous:false,
+     email_confirmed_at:new Date(Date.now()-1000).toISOString()}:null,
+    registrationOptions:async token=>{
+     assert.equal(token,rootAuthToken);
+     return {challenge_id:challengeId,expires_at:Math.floor(Date.now()/1000)+60,
+      options:{rp:{id:new URL(origin).hostname,name:'Sabora'},challenge:rootNonce,
+       user:{id:enc(rootId),name:authEmail,displayName:'ROOT'},pubKeyCredParams:[{type:'public-key',alg:-7}],
+       authenticatorSelection:{residentKey:'required',userVerification:'required'},attestation:'none'}};
+    },
+    listPasskeys:async subject=>{assert.equal(subject,rootId);return [...providerIds];},
+    verifyRegistration:async(token,challenge,credential)=>{
+     assert.equal(token,rootAuthToken);assert.equal(challenge,challengeId);
+     newRootCredential=credential.id;registrations++;
+     assert.equal(await rootKernel.allowsAccess(rootId,hashRootCredentialId(newRootCredential)),false);
+     providerIds.push(newRootProviderId);return {id:newRootProviderId};
+    },
+    revokePasskey:async(subject,previous)=>{
+     assert.equal(subject,rootId);assert.equal(previous,formerProviderId);revocations++;
+     providerIds=providerIds.filter(x=>x!==previous);return true;
+    },
+    logoutAll:async token=>{assert.equal(token,rootAuthToken);logouts++;return true;}
+   };
+   assert.equal((await publicRecovery('/accept',{})).statusCode,403);
+   const publicContext=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'});
+   try{
+    const page=await publicContext.newPage(),virtual=await publicContext.newCDPSession(page);
+    await virtual.send('WebAuthn.enable');
+    await virtual.send('WebAuthn.addVirtualAuthenticator',{options:{protocol:'ctap2',transport:'internal',
+     hasResidentKey:true,hasUserVerification:true,isUserVerified:true,automaticPresenceSimulation:true}});
+    await page.goto(origin+'/#recuperacion-root?'+new URLSearchParams({purpose:'link',token:receivedLink}));
+    await page.getByRole('heading',{name:'Recuperar acceso ROOT'}).waitFor();
+    assert.equal(new URL(page.url()).hash,'#recuperacion-root');
+    assert.equal((await mail.list(rootId)).length,0,'opening the link must not queue anything');
+    await page.getByRole('button',{name:'Solicitar comprobación'}).click();
+    await page.getByText('Revisa el correo de seguridad y abre el enlace del nuevo desafío.').waitFor();
+    const [publicChallengeJob]=await mail.list(rootId);
+    assert.equal((await mail.dispatch(rootId,publicChallengeJob,mailSender)).outcome,'accepted');
+    const publicChallenge=inbox.at(-1);
+    assert.equal(publicChallenge.purpose,'challenge');
+    await page.goto(origin+'/#recuperacion-root?'+new URLSearchParams({purpose:'challenge',token:publicChallenge.token}));
+    await page.reload();
+    await page.getByLabel('Código de recuperación').fill(replacementCode);
+    await page.getByRole('button',{name:'Verificar código'}).click();
+    await page.getByRole('button',{name:'Registrar nueva passkey'}).waitFor();
+    const restricted=(await publicContext.cookies()).find(c=>c.name==='__Host-sabora-root-recovery-session');
+    assert.ok(restricted?.httpOnly&&restricted.secure&&restricted.sameSite==='Strict');
+    assert.ok(!restricted.value.includes(rootAuthToken));
+    assert.equal((await state({host:new URL(origin).host,origin,cookie:restricted.name+'='+restricted.value})).statusCode,401);
+    const registered=page.waitForResponse(r=>r.url().endsWith(ROOT_RECOVERY_PATH+'/register'));
+    await page.getByRole('button',{name:'Registrar nueva passkey'}).click();
+    const registrationResponse=await registered;
+    assert.equal(registrationResponse.status(),200,await registrationResponse.text());
+    const result=await registrationResponse.json();
+    assert.deepEqual(Object.keys(result).sort(),['outcome','recoveryCode']);
+    assert.equal(result.outcome,'completed');
+    await page.getByText(result.recoveryCode,{exact:true}).waitFor();
+    assert.ok(!(await publicContext.cookies()).some(c=>c.name===restricted.name));
+    assert.equal((await publicRecovery('/options',{},
+     {host:new URL(origin).host,origin,cookie:restricted.name+'='+restricted.value})).statusCode,403);
+    assert.equal((await admin.query('SELECT code_hash FROM sabora.root_recovery_state_candidate WHERE singleton')).rows[0].code_hash,
+     hash('code',result.recoveryCode));
+    assert.deepEqual([proofExchanges,registrations,revocations,logouts],[1,1,1,1]);
+    assert.deepEqual(providerIds,[newRootProviderId]);
+    assert.equal((await attempt(rootId,grantId,code,'/verify',replacementId)).statusCode,401);
+    assert.equal((await attempt(rootId,grantId,code,'/verify',newRootCredential)).statusCode,200);
+   }finally{await publicContext.close();}
   }finally{/* pool owned by test.after */}
   const audit=(await admin.query(`SELECT action,actor_kind FROM sabora.staff_lifecycle_audit
     WHERE enrollment_id=$1 ORDER BY occurred_at`,[id])).rows;

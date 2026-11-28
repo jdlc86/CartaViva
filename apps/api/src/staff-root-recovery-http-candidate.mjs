@@ -4,12 +4,12 @@
 import {generateRootRecoveryToken} from './staff-root-recovery-candidate.mjs';
 
 export const ROOT_RECOVERY_PATH='/api/v1/staff/root-recovery';
-const COOKIE='__Host-sabora-root-recovery-grant';
+export const ROOT_RECOVERY_GRANT_COOKIE='__Host-sabora-root-recovery-grant';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const tokenValid=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{43}$/.test(v)&&Buffer.from(v,'base64url').toString('base64url')===v;
 const exact=(body,keys)=>body!==null&&typeof body==='object'&&!Array.isArray(body)&&
  Object.keys(body).length===keys.length&&keys.every(k=>Object.hasOwn(body,k));
-const cookie=(value,age)=>COOKIE+'='+value+'; Path=/; Max-Age='+age+'; Secure; HttpOnly; SameSite=Strict';
+const cookie=(value,age)=>ROOT_RECOVERY_GRANT_COOKIE+'='+value+'; Path=/; Max-Age='+age+'; Secure; HttpOnly; SameSite=Strict';
 
 export function registerRootRecoveryFactorHttpCandidate(app,{origin,kernel,mail,getRootUserId}={}){
  const base=new URL(origin);

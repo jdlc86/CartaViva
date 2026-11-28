@@ -21,12 +21,15 @@ export function createStaffEnrollmentGateway(fetchImpl:typeof fetch){
 export type StaffEnrollmentGateway=ReturnType<typeof createStaffEnrollmentGateway>;
 
 const RECOVERY='/api/v1/staff/recovery';
-export function createStaffRecoveryGateway(fetchImpl:typeof fetch){
+const ROOT_RECOVERY='/api/v1/staff/root-recovery';
+type RecoveryAction=Action|'begin'|'authorize';
+export function createStaffRecoveryGateway(fetchImpl:typeof fetch,root=false){
   if(typeof fetchImpl!=='function')throw new EnrollmentError(503);
   return Object.freeze({
-    async request(action:Action,body:unknown){
-      if(!['accept','options','register','cancel'].includes(action))throw new EnrollmentError(400);
-      const response=await fetchImpl(RECOVERY+'/'+action,{method:'POST',credentials:'same-origin',
+    async request(action:RecoveryAction,body:unknown){
+      if(!['accept','options','register','cancel'].includes(action)&&
+        !(root&&['begin','authorize'].includes(action)))throw new EnrollmentError(400);
+      const response=await fetchImpl((root?ROOT_RECOVERY:RECOVERY)+'/'+action,{method:'POST',credentials:'same-origin',
         cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',
         headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(!response.ok)throw new EnrollmentError(response.status);
