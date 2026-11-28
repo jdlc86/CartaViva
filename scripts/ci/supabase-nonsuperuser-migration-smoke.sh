@@ -427,7 +427,7 @@ docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$da
 echo 'sabora_s55_dispatch_board_snapshot_nonsuperuser_verified'
 for identity_overlay in staff_root_bootstrap staff_first_admin_bootstrap \
  staff_invitation_outbox_schema staff_invitation_custody staff_invitation_custody_restricted \
- staff_invitation_dispatch_envelope staff_invitation_directory_outbox staff_first_admin_durable \
+ staff_invitation_dispatch_envelope staff_invitation_directory_outbox staff_invitation_worker staff_first_admin_durable \
  staff_root_recovery; do
   echo "sabora_identity_delta_installing:$identity_overlay"
   docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
@@ -438,8 +438,8 @@ done
   WHERE rolname IN ('sabora_root_bootstrap_fn_owner','sabora_root_recovery_fn_owner',
    'sabora_staff_lifecycle_fn_owner','sabora_staff_invitation_enqueue_fn_owner',
    'sabora_staff_custody_fn_owner','sabora_staff_custody_reader_fn_owner','sabora_staff_enrollment_fn_owner',
-   'sabora_staff_identity_fn_owner','sabora_staff_directory_fn_owner'))
- SELECT count(*)=9 AND bool_and(NOT (rolcanlogin OR rolsuper OR rolbypassrls)
+   'sabora_staff_identity_fn_owner','sabora_staff_directory_fn_owner','sabora_staff_invitation_dispatch_fn_owner'))
+ SELECT count(*)=10 AND bool_and(NOT (rolcanlogin OR rolsuper OR rolbypassrls)
   AND NOT pg_has_role(current_user,oid,'SET') AND NOT has_schema_privilege(oid,'sabora','CREATE'))
  AND has_function_privilege('sabora_root_bootstrap_fn_owner','extensions.hmac(bytea,bytea,text)','EXECUTE')
  AND has_function_privilege('sabora_root_recovery_fn_owner','extensions.hmac(bytea,bytea,text)','EXECUTE')

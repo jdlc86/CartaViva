@@ -114,6 +114,33 @@ const RECOVERY_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const RECOVERY_JWT=/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const RECOVERY_SECRET=/^sb_secret_[A-Za-z0-9_-]{20,150}$/;
 const recoveryError=()=>Error('staff_recovery_auth_provider_unavailable');
+
+export function createGatewayInvitationProvider({managementOrigin,secretKey,publishableKey,...config}={}){
+ const origin=new URL(managementOrigin);
+ const unavailable=()=>Error('staff_invitation_auth_provider_unavailable');
+ if(origin.protocol!=='https:'||origin.origin!==managementOrigin||!RECOVERY_SECRET.test(secretKey??''))throw unavailable();
+ const request=createAuthGatewayRequest(config);
+ const provider=createGatewayPasskeyProvider({publishableKey,...config});
+ return Object.freeze({
+  async createInvitationProof(recipient){
+   const email=normalizeStaffInviteeEmail(recipient);
+   const body=JSON.stringify({type:'invite',email,redirect_to:origin.origin});
+   try{
+    const response=await request('/auth/v1/admin/generate_link',{method:'POST',signal:AbortSignal.timeout(5000),body,
+     headers:{apikey:secretKey,'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}});
+    if(response.status!==200)throw unavailable();
+    const result=JSON.parse(await response.text());
+    if(!RECOVERY_UUID.test(result?.id??'')||result.email!==email||result.is_anonymous!==false||
+      result.verification_type!=='invite'||![origin.origin,origin.origin+'/'].includes(result.redirect_to)||
+      typeof result.hashed_token!=='string'||! /^[A-Za-z0-9_-]{32,512}$/.test(result.hashed_token))throw unavailable();
+    return result.hashed_token;
+   }catch{throw unavailable();}
+  },
+  exchangeInvitation:({authProof})=>provider.exchangeEmailProof({purpose:'invite',tokenHash:authProof}),
+  provider
+ });
+}
+
 export function createGatewayRecoveryProvider({subjectId,email,managementOrigin,secretKey,publishableKey,...config}={}){
  const origin=new URL(managementOrigin);
  if(origin.protocol!=='https:'||origin.origin!==managementOrigin||!RECOVERY_UUID.test(subjectId??'')||

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
-import {createGatewayJwksFetch,createGatewayPasskeyProvider,createGatewayRecoveryProvider} from '../apps/api/src/gateway-jwks-fetch.mjs';
+import {createGatewayJwksFetch,createGatewayPasskeyProvider,createGatewayRecoveryProvider,createGatewayInvitationProvider} from '../apps/api/src/gateway-jwks-fetch.mjs';
 
 function requestFixture(body,statusCode=200){
  let captured,capturedBody;
@@ -139,4 +139,33 @@ test('candidate recovery transport binds existing subject, exact purpose and sep
  assert.ok(calls.every(c=>c.options.hostname==='project.supabase.co'&&c.options.headers.host==='project.supabase.co'));
  assert.ok(calls.every(c=>c.options.path.startsWith('/auth/v1/admin/')?c.options.headers.apikey===secretKey:c.options.headers.apikey===publishableKey));
  assert.equal(Object.hasOwn(provider,'createUser'),false);
+});
+
+test('invitation Auth transport requests an exact invite and rejects an unexpected proof or destination',async()=>{
+ const managementOrigin='https://gestion.example.invalid:8443',email='staff@example.invalid';
+ const publishableKey='sb_publishable_abcdefghijklmnopqrstuvwxyz012345',secretKey='sb_secret_abcdefghijklmnopqrstuvwxyz012345';
+ const hashedToken='a'.repeat(64);
+ const invited={id:'af496fc8-9d11-40a5-b2bc-010ed472863e',email,is_anonymous:false,
+  verification_type:'invite',redirect_to:managementOrigin+'/',hashed_token:hashedToken,email_otp:'not-returned'};
+ const responses=[invited,{...invited,redirect_to:'https://elsewhere.example.invalid'},
+  {...invited,email:'another@example.invalid'},{access_token:'aaa.bbb.ccc',refresh_token:'not-returned'}];
+ const calls=[];
+ const provider=createGatewayInvitationProvider({issuer:'https://project.supabase.co/auth/v1',
+  connectHost:'sabora-egress',connectPort:15443,managementOrigin,secretKey,publishableKey,tlsConnect:()=>{},
+  requestImpl(options,callback){
+   const req=new EventEmitter();req.destroy=()=>{};
+   req.end=body=>{
+    calls.push([options.path,options.headers.apikey,JSON.parse(body)]);
+    const response=Readable.from([Buffer.from(JSON.stringify(responses.shift()))]);
+    response.statusCode=200;response.headers={};callback(response);
+   };
+   return req;
+  }});
+ assert.equal(await provider.createInvitationProof(email),hashedToken);
+ await assert.rejects(provider.createInvitationProof(email),/staff_invitation_auth_provider_unavailable/);
+ await assert.rejects(provider.createInvitationProof(email),/staff_invitation_auth_provider_unavailable/);
+ assert.deepEqual(await provider.exchangeInvitation({authProof:hashedToken}),{accessToken:'aaa.bbb.ccc'});
+ assert.deepEqual(calls,[...Array.from({length:3},()=>['/auth/v1/admin/generate_link',secretKey,
+  {type:'invite',email,redirect_to:managementOrigin}]),
+  ['/auth/v1/verify',publishableKey,{type:'invite',token_hash:hashedToken}]]);
 });

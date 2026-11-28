@@ -7,6 +7,7 @@ import {registerStaffEnrollmentHttpCandidate} from './staff-enrollment-http-cand
 import {createStaffInviteeEmailHasher} from './staff-lifecycle-capability.mjs';
 import {createStaffVerifiedEnrollmentCandidate,STAFF_ENROLLMENT_LOGIN}
  from './staff-verified-enrollment-candidate.mjs';
+import {createStaffInvitationWorkerCandidate} from './staff-invitation-worker-candidate.mjs';
 
 const ROOT_ROUTINE=['sabora.consume_root_bootstrap_candidate(uuid,uuid,uuid,text,bigint,bigint,text,text)',
  'sabora_root_bootstrap_fn_owner'];
@@ -18,11 +19,12 @@ const ENROLLMENT_ROUTINES=[
 const denied=()=>Error('invalid_staff_identity_lifecycle_dependencies');
 
 export async function createVerifiedStaffIdentityLifecycleCandidate({origin,issuer,getTrustedKeys,
- bootstrap,firstAdmin,admin,enrollment,invitationWorker,keyring,emailHashSecret,
- issueRootMutationProof}={}){
+ bootstrap,firstAdmin,admin,enrollment,invitationDispatch,keyring,emailHashSecret,
+ issueRootMutationProof,observeFailure}={}){
  if(enrollment?.expectedLogin!==STAFF_ENROLLMENT_LOGIN||typeof enrollment.exchangeInvitation!=='function'||
-  !['readiness','start','close'].every(method=>typeof invitationWorker?.[method]==='function'))
+  invitationDispatch?.resend?.managementOrigin!==origin)
   throw denied();
+ const invitationWorker=createStaffInvitationWorkerCandidate({...invitationDispatch,keyring,observeFailure});
  const keys=[firstAdmin?.secret,admin?.secret,enrollment.secret,enrollment.cookieSecret,emailHashSecret];
  if(keys.some((key,index)=>!(key instanceof Uint8Array)||key.length!==32||
   keys.slice(0,index).some(previous=>timingSafeEqual(previous,key))))throw denied();
@@ -53,6 +55,7 @@ export async function createVerifiedStaffIdentityLifecycleCandidate({origin,issu
     exchangeInvitation:enrollment.exchangeInvitation});
   },
   start:()=>invitationWorker.start(),
+  wakeInvitations:()=>invitationWorker.tick(),
   close:()=>invitationWorker.close()
  });
 }

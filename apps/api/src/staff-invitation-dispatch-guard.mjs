@@ -39,6 +39,11 @@ export async function dispatchStaffInvitation({withTransaction,repository,jobId,
     throw Error('invalid_staff_dispatch_config');
   const decision=await authorizeStaffInvitationDispatch({withTransaction,repository,jobId,fence});
   if(!decision.authorized)return decision;
+  return sendAuthorizedStaffInvitation({jobId,fence,readDelivery,send,recordOutcome});
+}
+
+// Both callers must commit the dispatch fence before opening the envelope.
+export async function sendAuthorizedStaffInvitation({jobId,fence,readDelivery,send,recordOutcome}){
   let outcome='unknown',providerId=null;
   try{
     const delivery=await readDelivery({jobId,fence});

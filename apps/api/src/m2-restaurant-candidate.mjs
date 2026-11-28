@@ -217,7 +217,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    staffPasskey=createStaffPasskeySession({...passkey,issuer:staff.issuer,
     getTrustedKeys:staff.getTrustedKeys,rootAccess:rootRecovery.allowsAccess});
    if(staff.identityLifecycle)identityLifecycle=await createVerifiedStaffIdentityLifecycleCandidate({
-    ...staff.identityLifecycle,origin:passkey.origin,issuer:staff.issuer,getTrustedKeys:staff.getTrustedKeys,
+    ...staff.identityLifecycle,origin:passkey.origin,issuer:staff.issuer,getTrustedKeys:staff.getTrustedKeys,observeFailure,
     issueRootMutationProof:rootRecovery.issueMutationProof
    });
   }

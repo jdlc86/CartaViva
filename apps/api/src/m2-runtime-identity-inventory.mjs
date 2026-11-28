@@ -47,7 +47,7 @@ const ROOT_RECOVERY = Object.freeze([
  ['staff.rootRecovery.worker.pool','staff.rootRecovery.worker.expectedLogin']
 ]);
 const STAFF_IDENTITY_LIFECYCLE=Object.freeze(
- ['bootstrap','firstAdmin','admin','enrollment'].map(name=>
+ ['bootstrap','firstAdmin','admin','enrollment','invitationDispatch'].map(name=>
   ['staff.identityLifecycle.'+name+'.pool','staff.identityLifecycle.'+name+'.expectedLogin']));
 const LOGIN = /^[a-z][a-z0-9_]{0,62}$/;
 const invalid = () => Error('m2_restaurant_candidate_isolation_required');

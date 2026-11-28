@@ -23,12 +23,9 @@ import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protec
 import {createStaffLifecycleDirectoryCapabilityIssuer,createStaffInviteeEmailHasher} from '../../apps/api/src/staff-lifecycle-capability.mjs';
 import {createVerifiedStaffIdentityLifecycleCandidate} from '../../apps/api/src/staff-identity-lifecycle-composition.mjs';
 import {createStaffVerifiedEnrollmentCandidate,STAFF_ENROLLMENT_LOGIN} from '../../apps/api/src/staff-verified-enrollment-candidate.mjs';
-import {createStaffDirectoryDispatchReaderCandidate,DIRECTORY_OUTBOX_SQL} from '../../apps/api/src/staff-invitation-durable-lifecycle-candidate.mjs';
-import {createStaffInvitationOutboxRepository} from '../../apps/api/src/staff-invitation-outbox-repository-candidate.mjs';
-import {claimCurrentStaffInvitation} from '../../apps/api/src/staff-invitation-claim-candidate.mjs';
-import {dispatchStaffInvitation} from '../../apps/api/src/staff-invitation-dispatch-guard.mjs';
-import {recordStaffInvitationDeliveryOutcome} from '../../apps/api/src/staff-invitation-delivery-outcome-candidate.mjs';
-import {createStaffInvitationResendSender,createRootRecoveryResendSender,createStaffRecoveryResendSender} from '../../apps/api/src/staff-invitation-resend.mjs';
+import {DIRECTORY_OUTBOX_SQL} from '../../apps/api/src/staff-invitation-durable-lifecycle-candidate.mjs';
+import {createStaffInvitationWorkerCandidate,STAFF_INVITATION_WORKER_ROUTINES} from '../../apps/api/src/staff-invitation-worker-candidate.mjs';
+import {createRootRecoveryResendSender,createStaffRecoveryResendSender} from '../../apps/api/src/staff-invitation-resend.mjs';
 import {createRootRecoveryMailCandidate,ROOT_MAIL_LOGIN} from '../../apps/api/src/staff-root-recovery-mail-candidate.mjs';
 import {FIRST_ADMIN_BOOTSTRAP_LOGIN} from '../../apps/api/src/staff-lifecycle-coordinator.mjs';
 import {createStaffLifecycleRepository} from '../../apps/api/src/staff-lifecycle-repository.mjs';
@@ -70,7 +67,8 @@ test.before(async()=>{
  await admin.query(await readFile(new URL('../../docs/security/sql-candidates/staff_first_admin_bootstrap_pg17.sql',import.meta.url),'utf8'));
  for(const filename of ['staff_invitation_outbox_schema_pg17.sql','staff_invitation_custody_pg17.sql',
   'staff_invitation_custody_restricted_pg17.sql','staff_invitation_dispatch_envelope_pg17.sql',
-  'staff_invitation_directory_outbox_pg17.sql','staff_first_admin_durable_pg17.sql','staff_root_recovery_pg17.sql'])
+  'staff_invitation_directory_outbox_pg17.sql','staff_invitation_worker_pg17.sql',
+  'staff_first_admin_durable_pg17.sql','staff_root_recovery_pg17.sql'])
   {
    const sql=await readFile(new URL('../../docs/security/sql-candidates/'+filename,import.meta.url),'utf8');
    try{await admin.query(sql);}catch(error){
@@ -101,7 +99,7 @@ test.before(async()=>{
  GRANT EXECUTE ON FUNCTION sabora.resolve_staff_first_admin_subject_candidate(text,uuid,uuid,text,text,bigint,bigint,text),
  sabora.read_staff_first_admin_state_candidate(text,uuid,bigint,bigint,text) TO ${FIRST_ADMIN_BOOTSTRAP_LOGIN};
  GRANT EXECUTE ON FUNCTION sabora.resolve_staff_admin_subject_candidate(text,uuid,uuid,text,text,bigint,bigint,text) TO ${normalLogin};
- GRANT EXECUTE ON FUNCTION sabora.read_staff_invitation_directory_dispatch_candidate(uuid,uuid) TO ${dispatchLogin};
+ GRANT EXECUTE ON FUNCTION ${STAFF_INVITATION_WORKER_ROUTINES.join(',')} TO ${dispatchLogin};
  GRANT EXECUTE ON FUNCTION sabora.accept_staff_invitation_verified_candidate(text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,text),
  sabora.check_staff_registration_candidate(text,uuid,uuid,uuid,text,bigint,text),
  sabora.register_staff_passkey_verified_candidate(text,uuid,uuid,text,text,bigint,bigint,text,text,uuid,uuid,uuid,text) TO ${STAFF_ENROLLMENT_LOGIN};
@@ -192,7 +190,24 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
  const forRoles=createStaffProtectedHooksFromPool({pool:staffPool,issuer,
   getTrustedKeys:async()=>[jwk],authenticate:passkey.authenticate});
  const issueFirst=createStaffLifecycleDirectoryCapabilityIssuer({keyId:firstKey,secret:firstSecret,databaseRole:FIRST_ADMIN_BOOTSTRAP_LOGIN});
- let enrollmentProvider,exchangeEnrollment,dispatchStarted=false;
+ let enrollmentProvider,exchangeEnrollment;
+ const delivered=new Map(),invitationAttempts=new Set();
+ const invitationDispatch={pool:dispatchPool,expectedLogin:dispatchLogin,
+  createInvitationProof:async()=>randomBytes(32).toString('base64url'),
+  resend:{managementOrigin:origin,from:'sab@example.test',apiKey:'re_first_admin_fixture',
+   fetchImpl:async(url,options)=>{
+    assert.equal(url,'https://api.resend.com/emails');
+    const key=options.headers['Idempotency-Key'];
+    assert.ok(!invitationAttempts.has(key));invitationAttempts.add(key);
+    const body=JSON.parse(options.body),link=new URL(body.text.split('\n\n').at(-1));
+    const fields=new URLSearchParams(link.hash.split('?')[1]);
+    if(body.to[0]==='uncertain-invitation@demo.invalid')throw Error('ci_invitation_response_lost');
+    delivered.set(fields.get('enrollmentId'),{email:body.to[0],token:fields.get('token'),proof:fields.get('proof')});
+    return Response.json({id:randomUUID()});
+   }}};
+ const secondaryDispatch=createStaffInvitationWorkerCandidate({...invitationDispatch,keyring});
+ await secondaryDispatch.readiness();
+ await assert.rejects(dispatchPool.query('SELECT * FROM sabora.staff_invitation_outbox'),e=>e.code==='42501');
  const enrollmentConfig={pool:enrollmentPool,expectedLogin:STAFF_ENROLLMENT_LOGIN,keyId:enrollmentKey,
   secret:enrollmentSecret,cookieSecret:randomBytes(32),exchangeInvitation:input=>exchangeEnrollment(input),
   provider:{user:token=>enrollmentProvider.user(token),
@@ -202,13 +217,11 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   bootstrap:{pool,expectedLogin:login},
   firstAdmin:{pool:firstPool,expectedLogin:FIRST_ADMIN_BOOTSTRAP_LOGIN,keyId:firstKey,secret:firstSecret},
   admin:{pool:normalPool,expectedLogin:normalLogin,keyId:normalKey,secret:normalSecret},
-  enrollment:enrollmentConfig,invitationWorker:{
-   async readiness(){assert.equal((await dispatchPool.query('SELECT current_user AS role')).rows[0].role,dispatchLogin);},
-   async start(){dispatchStarted=true;},async close(){dispatchStarted=false;}
-  },keyring,emailHashSecret,issueRootMutationProof:rootKernel.issueMutationProof});
+  enrollment:enrollmentConfig,invitationDispatch,keyring,emailHashSecret,issueRootMutationProof:rootKernel.issueMutationProof});
  staffIdentity.register(app,{forRoles});
- app.addHook('onClose',()=>staffIdentity.close());
+ app.addHook('onClose',async()=>{await Promise.all([staffIdentity.close(),secondaryDispatch.close()]);});
  await staffIdentity.start();
+ secondaryDispatch.start();
  await assertOwnershipRuntimeIdentity({pool:ownershipPool,expectedLogin:ownershipLogin});
  const ownership=createOwnershipGovernanceRepository({
   withTransaction:createRoleScopedPostgresTransaction({pool:ownershipPool,role:OWNERSHIP_ROLE,allowedSql:new Set([OWNERSHIP_SQL,ROOT_MUTATION_PROOF_SQL])}),
@@ -308,26 +321,11 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   await assert.rejects(sqlRepo.transition((_sql,values)=>firstPool.query(DIRECTORY_OUTBOX_SQL,values),forbidden),e=>e.code==='42501');
   const ordinary=(payload,headers=rootHeaders)=>app.inject({method:'POST',url:'/api/v1/staff/lifecycle',headers,payload});
   assert.equal((await ordinary(inviteBody('ordinary-root@demo.invalid'))).statusCode,403);
-  const repository=createStaffInvitationOutboxRepository();
-  const withTransaction=async work=>{const c=await admin.connect();try{await c.query('BEGIN');const result=await work(q=>c.query(q));await c.query('COMMIT');return result;}catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}};
-  const delivered=new Map();
-  const readDelivery=createStaffDirectoryDispatchReaderCandidate({query:(...args)=>dispatchPool.query(...args),keyring,
-   createEnrollmentUrl:async({token,enrollmentId,recipient})=>{
-    return origin+'/#enrolamiento?'+new URLSearchParams({enrollmentId,token,proof:randomBytes(32).toString('base64url')});
-   }});
-  const send=createStaffInvitationResendSender({managementOrigin:origin,from:'sab@example.test',apiKey:'re_first_admin_fixture',
-   fetchImpl:async(url,options)=>{assert.equal(url,'https://api.resend.com/emails');
-    const body=JSON.parse(options.body),link=new URL(body.text.split('\n\n').at(-1));
-    const fields=new URLSearchParams(link.hash.split('?')[1]);delivered.set(fields.get('enrollmentId'),{email:body.to[0],token:fields.get('token')});
-    return Response.json({id:randomUUID()});}});
   async function deliver(id,version){
-   assert.equal(dispatchStarted,true);
-   const jobId=(await admin.query('SELECT id FROM sabora.staff_invitation_outbox WHERE enrollment_id=$1 AND invite_version=$2',[id,version])).rows[0].id;
-   const claim=await claimCurrentStaffInvitation({withTransaction,repository,jobId});
-   assert.equal(claim.claimed,true);
-   assert.deepEqual(await dispatchStaffInvitation({withTransaction,repository,jobId,fence:claim.fence,readDelivery,send,
-    recordOutcome:input=>recordStaffInvitationDeliveryOutcome({withTransaction,repository,...input})}),
-    {recorded:true,state:'delivered',retryable:false,ambiguous:false});
+   await Promise.all([staffIdentity.wakeInvitations(),secondaryDispatch.tick()]);
+   assert.deepEqual((await admin.query(`SELECT state,attempts,provider_outcome FROM sabora.staff_invitation_outbox
+    WHERE enrollment_id=$1 AND invite_version=$2`,[id,version])).rows,
+    [{state:'delivered',attempts:1,provider_outcome:'accepted'}]);
    return delivered.get(id);
   }
   await panel.getByLabel('Nombre',{exact:true}).fill('Primer');
@@ -387,7 +385,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   await assert.rejects(accept(id,original.token),e=>e.code==='42501');
   confirmedEmail='wrong@example.invalid';await assert.rejects(accept(id,current.token),e=>e.code==='42501');
   confirmedEmail=current.email;
-  const enrollmentProof=randomBytes(32).toString('base64url');
+  const enrollmentProof=current.proof;
   exchangeEnrollment=async input=>input.enrollmentId===id&&input.authProof===enrollmentProof?{accessToken}:null;
   const enrolmentContext=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block'});
   try{
@@ -632,6 +630,19 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const kitchen=await ordinary(inviteBody('recovery-kitchen@demo.invalid','kitchen'),adminHeaders);
   assert.equal(kitchen.statusCode,201,kitchen.body);
   const consumedTarget=await activateForRecovery(kitchen.json().enrollmentId,'kitchen');
+  const ambiguous=await ordinary(inviteBody('uncertain-invitation@demo.invalid','waiter'),adminHeaders);
+  assert.equal(ambiguous.statusCode,201,ambiguous.body);
+  await Promise.all([staffIdentity.wakeInvitations(),secondaryDispatch.tick()]);
+  const ambiguousState=async()=>(await admin.query(`SELECT state,attempts,provider_outcome FROM sabora.staff_invitation_outbox
+   WHERE enrollment_id=$1`,[ambiguous.json().enrollmentId])).rows;
+  assert.deepEqual(await ambiguousState(),[{state:'failed',attempts:1,provider_outcome:'unknown'}]);
+  const attemptCount=invitationAttempts.size;
+  const restartedDispatch=createStaffInvitationWorkerCandidate({...invitationDispatch,keyring});
+  try{
+   await restartedDispatch.readiness();restartedDispatch.start();await restartedDispatch.tick();
+   assert.equal(invitationAttempts.size,attemptCount);
+   assert.deepEqual(await ambiguousState(),[{state:'failed',attempts:1,provider_outcome:'unknown'}]);
+  }finally{await restartedDispatch.close();}
   const queuedByAdmin=await authorizeFromPanel(adminPage,'ordinary-waiter@demo.invalid');
   assert.equal(queuedByAdmin.enrollmentId,queuedTarget.enrollmentId);
   const consumedByAdmin=await authorizeFromPanel(adminPage,'recovery-kitchen@demo.invalid');
