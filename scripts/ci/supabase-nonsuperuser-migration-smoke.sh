@@ -437,9 +437,13 @@ done
  WITH owners AS (SELECT oid,rolname,rolcanlogin,rolsuper,rolbypassrls FROM pg_catalog.pg_roles
   WHERE rolname IN ('sabora_root_bootstrap_fn_owner','sabora_root_recovery_fn_owner',
    'sabora_staff_lifecycle_fn_owner','sabora_staff_invitation_enqueue_fn_owner',
-   'sabora_staff_custody_fn_owner','sabora_staff_custody_reader_fn_owner','sabora_staff_enrollment_fn_owner'))
- SELECT count(*)=7 AND bool_and(NOT (rolcanlogin OR rolsuper OR rolbypassrls)
+   'sabora_staff_custody_fn_owner','sabora_staff_custody_reader_fn_owner','sabora_staff_enrollment_fn_owner',
+   'sabora_staff_identity_fn_owner','sabora_staff_directory_fn_owner'))
+ SELECT count(*)=9 AND bool_and(NOT (rolcanlogin OR rolsuper OR rolbypassrls)
   AND NOT pg_has_role(current_user,oid,'SET') AND NOT has_schema_privilege(oid,'sabora','CREATE'))
+ AND has_function_privilege('sabora_root_bootstrap_fn_owner','extensions.hmac(bytea,bytea,text)','EXECUTE')
+ AND has_function_privilege('sabora_root_recovery_fn_owner','extensions.hmac(bytea,bytea,text)','EXECUTE')
+ AND has_function_privilege('sabora_staff_enrollment_fn_owner','extensions.hmac(bytea,bytea,text)','EXECUTE')
  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN owners o ON p.proowner=o.oid
   WHERE p.pronamespace='sabora'::regnamespace AND p.prosecdef AND
    (has_function_privilege('anon',p.oid,'EXECUTE') OR has_function_privilege('authenticated',p.oid,'EXECUTE')

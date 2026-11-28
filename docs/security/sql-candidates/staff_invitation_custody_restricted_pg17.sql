@@ -2,10 +2,6 @@
 BEGIN;
 CREATE ROLE sabora_staff_custody_fn_owner NOLOGIN NOINHERIT NOSUPERUSER
   NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
-REVOKE ALL ON SCHEMA sabora FROM sabora_staff_custody_fn_owner;
-REVOKE ALL ON ALL TABLES IN SCHEMA sabora FROM sabora_staff_custody_fn_owner;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA sabora FROM sabora_staff_custody_fn_owner;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora FROM sabora_staff_custody_fn_owner;
 GRANT USAGE ON SCHEMA sabora TO sabora_staff_custody_fn_owner;
 -- CV005 grants the installer only the ownership transfer within this transaction.
 GRANT CREATE ON SCHEMA sabora TO sabora_staff_custody_fn_owner;

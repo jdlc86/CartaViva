@@ -6,14 +6,11 @@ BEGIN;
 
 DO $role$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_catalog.pg_roles
-     WHERE rolname = 'sabora_staff_invitation_enqueue_fn_owner'
-  ) THEN
-    CREATE ROLE sabora_staff_invitation_enqueue_fn_owner
-      NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS
-      NOCREATEDB NOCREATEROLE NOREPLICATION;
-  END IF;
+  -- The outbox tables and owner are introduced atomically. An existing
+  -- principal could already have grants outside the installation boundary.
+  CREATE ROLE sabora_staff_invitation_enqueue_fn_owner
+    NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS
+    NOCREATEDB NOCREATEROLE NOREPLICATION;
 
   IF EXISTS (
     SELECT 1 FROM pg_catalog.pg_roles role
@@ -49,6 +46,7 @@ GRANT CREATE ON SCHEMA sabora TO sabora_staff_invitation_enqueue_fn_owner;
 GRANT sabora_staff_invitation_enqueue_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 GRANT CREATE ON SCHEMA sabora TO sabora_staff_lifecycle_fn_owner;
 GRANT sabora_staff_lifecycle_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
+GRANT sabora_staff_identity_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 
 CREATE TABLE sabora.staff_invitation_outbox (
   id uuid PRIMARY KEY,
@@ -116,13 +114,6 @@ ALTER TABLE sabora.staff_invitation_outbox ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sabora.staff_invitation_outbox FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON sabora.staff_invitation_outbox FROM PUBLIC;
 
-REVOKE ALL ON SCHEMA sabora FROM sabora_staff_invitation_enqueue_fn_owner;
-REVOKE ALL ON ALL TABLES IN SCHEMA sabora
-  FROM sabora_staff_invitation_enqueue_fn_owner;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA sabora
-  FROM sabora_staff_invitation_enqueue_fn_owner;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora
-  FROM sabora_staff_invitation_enqueue_fn_owner;
 GRANT USAGE ON SCHEMA sabora TO sabora_staff_invitation_enqueue_fn_owner;
 GRANT SELECT (id,enrollment_id,invite_version,invite_token_hash,state),
       INSERT (id,enrollment_id,invite_version,invite_token_hash),
@@ -278,4 +269,5 @@ REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_invitation_enqueue_fn_owner;
 REVOKE sabora_staff_invitation_enqueue_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_lifecycle_fn_owner;
 REVOKE sabora_staff_lifecycle_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
+REVOKE sabora_staff_identity_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 COMMIT;

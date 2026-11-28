@@ -9,6 +9,7 @@ GRANT CREATE ON SCHEMA sabora TO sabora_staff_custody_reader_fn_owner;
 GRANT sabora_staff_custody_reader_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 GRANT CREATE ON SCHEMA sabora TO sabora_staff_lifecycle_fn_owner;
 GRANT sabora_staff_lifecycle_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
+GRANT sabora_staff_directory_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER TABLE sabora.staff_invitation_outbox
  ADD COLUMN custody_required boolean NOT NULL DEFAULT false,
  ADD COLUMN provider_message_id uuid UNIQUE,
@@ -481,6 +482,7 @@ REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_custody_reader_fn_owner;
 REVOKE sabora_staff_custody_reader_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_lifecycle_fn_owner;
 REVOKE sabora_staff_lifecycle_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
+REVOKE sabora_staff_directory_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_enrollment_fn_owner;
 REVOKE sabora_staff_enrollment_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 COMMIT;
