@@ -41,24 +41,38 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   const pickupAttempts = useRef(new Map<string, {action: string; correlationId: string}>());
   const incidentAttempts = useRef(createIncidentOperationAttempts());
   const [workspace, setWorkspace] = useState<OrderWorkspace>('kitchen');
-  const [waiterCalls,setWaiterCalls]=useState<readonly PendingWaiterCall[]>([]);
+  const [waiterCalls,setWaiterCalls]=useState<readonly PendingWaiterCall[]|null>(null);
   const [callBusy,setCallBusy]=useState<string|null>(null);
   const [callError,setCallError]=useState<string|null>(null);
   const callReadEpoch=useRef(0);
   const callAttempts=useRef(new Map<string,string>());
   const loadWaiterCalls=useCallback(async()=>{
     const epoch=++callReadEpoch.current;
-    if(!gateway?.listWaiterCalls){setWaiterCalls([]);return;}
+    if(!gateway?.listWaiterCalls){setWaiterCalls(null);return;}
     try{
       const items=await gateway.listWaiterCalls();
       if(epoch===callReadEpoch.current){setWaiterCalls(items);setCallError(null);}
     }catch{
       if(epoch===callReadEpoch.current){
-        setWaiterCalls([]);setCallError('No se pudo comprobar la lista de llamadas; no se presentan datos obsoletos.');
+        setWaiterCalls(null);setCallError('No se pudo comprobar la lista de llamadas.');
       }
     }
   },[gateway]);
-  useEffect(()=>{void loadWaiterCalls();return()=>{callReadEpoch.current++;};},[loadWaiterCalls]);
+  useEffect(()=>{
+    const online=()=>{setCallError(null);void loadWaiterCalls();};
+    const offline=()=>{
+      callReadEpoch.current++;
+      setWaiterCalls(null);setCallError('Sin conexión. Se comprobarán las llamadas al reconectar.');
+    };
+    void loadWaiterCalls();
+    window.addEventListener('online',online);
+    window.addEventListener('offline',offline);
+    return()=>{
+      callReadEpoch.current++;
+      window.removeEventListener('online',online);
+      window.removeEventListener('offline',offline);
+    };
+  },[loadWaiterCalls]);
   const attendWaiterCall=async(callId:string)=>{
     if(!gateway?.attendWaiterCall||callBusy)return;
     const requestId=callAttempts.current.get(callId)??crypto.randomUUID();
@@ -68,7 +82,9 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
       await gateway.attendWaiterCall({callId,requestId});
       callAttempts.current.delete(callId);
       await loadWaiterCalls();
-    }catch{setCallError('La atención no se ha confirmado. Consulta el estado antes de reintentar.');}
+    }catch{
+      setWaiterCalls(null);setCallError('La atención no se ha confirmado. Consulta el estado antes de reintentar.');
+    }
     finally{setCallBusy(null);}
   };
   const [phase, setPhase] = useState<LoadState>(gateway ? 'loading' : 'idle');
@@ -329,7 +345,7 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
            Actualizar llamadas</button>
          </div>
          {callError?<p className="field-error" role="alert">{callError}</p>:null}
-         {waiterCalls.length?<>
+         {waiterCalls?.length?<>
           <p role="alert" className="field-error">Llamadas pendientes de atender: {waiterCalls.length}. Este aviso se mantiene visible hasta que un camarero registre su atención.</p>
           <div className="order-board" aria-live="polite">
            {waiterCalls.map(call=><article className="order-card" key={call.id}>
@@ -346,7 +362,8 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
             </header>
            </article>)}
           </div>
-         </>:<p role="status">No hay llamadas pendientes confirmadas.</p>}
+         </>:waiterCalls?<p role="status">No hay llamadas pendientes confirmadas.</p>:
+          !callError?<p role="status">Comprobando llamadas pendientes…</p>:null}
          <p className="honest-operational-note">Cada llamada permanece visible hasta marcarla como atendida. Los avisos se actualizan mediante eventos durables, sin sondeo periódico.</p>
         </section>:null}
 
@@ -377,14 +394,19 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
             description={gateway ? 'No hay líneas autorizadas en este estado.' : 'La vista permanecerá vacía hasta recibir una proyección autorizada; no se simulan comandas ni tiempos.'}/>
         ) : (
           <div className="order-board" aria-live="polite">
-            {orders.map((order) => (
+            {orders.map((order) => {
+              const confirmed=order.lines.filter(line=>line.status==='confirmed');
+              const pendingDispatchId=confirmed.some(line=>line.pendingDispatchId!==undefined)
+                ? confirmed.find(line=>line.pendingDispatchId)?.pendingDispatchId
+                : confirmed.length>0?h6ByOrder.get(order.orderId)?.dispatchId:undefined;
+              return (
               <article className="order-card" key={order.orderId}>
                 <header className="order-card__header">
                   <div><span>Mesa {order.tableNumber}</span><strong>{order.customerLabel}</strong></div>
                   <div className="button-row">
-                    {h6ByOrder.get(order.orderId)?.dispatchId&&order.lines.some(line=>line.status==='confirmed')?
+                    {pendingDispatchId&&(board?.role==='admin'||board?.role==='kitchen')?
                       <button className="button button--primary" type="button" disabled={Boolean(pendingOperation)}
-                        onClick={()=>void acknowledgeDispatch(h6ByOrder.get(order.orderId)!.dispatchId!)}>Confirmar recepción</button>:null}
+                        onClick={()=>void acknowledgeDispatch(pendingDispatchId)}>Confirmar recepción</button>:null}
                     <button className="filter-button" type="button" onClick={() => void showHistory(order.orderId)}>Ver historial</button>
                   </div>
                 </header>
@@ -403,7 +425,7 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
                           </span> : line.pickup?.state === 'ready' ? <span className="pickup-assignment">Aviso activo para sala</span> : null}
                         </div>
                         {action ? (
-                          <button className="button button--primary order-line__action" type="button" disabled={pending} onClick={() => void transition(line)}>
+                          <button className="button button--primary order-line__action" type="button" disabled={pending||Boolean(line.pendingDispatchId)} onClick={() => void transition(line)}>
                             {pending ? 'Confirmando…' : action.label}
                           </button>
                         ) : pickupActions.length ? <div className="button-row order-line__pickup-actions">
@@ -427,7 +449,7 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
                   </>:<button className="filter-button" type="button" onClick={()=>setIncidentOrderId(order.orderId)}>Registrar incidencia</button>}
                 </div>:null}
               </article>
-            ))}
+            );})}
           </div>
         )}
 

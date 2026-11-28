@@ -1,7 +1,7 @@
 // Management PWA: offline shell only. Never persist API responses, QR tokens,
 // staff/customer identities, mutable catalog, orders, account balances or SSE.
 const APP='management';
-const CACHE='sabora-management-shell-v2';
+const CACHE='sabora-management-shell-v3';
 const SCOPE=new URL(self.registration.scope);
 const ROOT=SCOPE.pathname;
 const OFFLINE=new URL('offline.html',SCOPE).href;
@@ -65,4 +65,33 @@ self.addEventListener('fetch',event=>{
    return response;
   })());
  }
+});
+
+self.addEventListener('push',event=>{
+ let data;
+ try{data=event.data?.json();}catch{return;}
+ if(!data||!['call','pickup'].includes(data.kind)||!/^[A-Za-z0-9_-]{32}$/.test(data.tag)||
+    !/^[A-Za-z0-9-]{1,36}$/.test(data.occurrence))return;
+ event.waitUntil((async()=>{
+  const tag='sabora-floor-'+data.tag;
+  const open=await self.registration.getNotifications({tag});
+  const duplicate=open.some(notification=>notification.data?.occurrence===data.occurrence);
+  await self.registration.showNotification(data.kind==='call'?'Llamada pendiente':'Plato listo para recoger',{
+   body:'Consulta Comandas en Sabora Gestión.',tag,renotify:!duplicate,
+   ...(duplicate?{}:{vibrate:[180]}),data:{occurrence:data.occurrence},
+   icon:new URL('icons/sabora-mark-192.png',SCOPE).href
+  });
+ })());
+});
+
+self.addEventListener('notificationclick',event=>{
+ if(!event.notification.tag.startsWith('sabora-floor-'))return;
+ event.notification.close();
+ event.waitUntil((async()=>{
+  const target=new URL('#comandas',SCOPE);
+  const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+  const active=windows.find(client=>inScope(new URL(client.url))&&new URL(client.url).pathname===ROOT);
+  if(active){await active.navigate(target.href);await active.focus();}
+  else await self.clients.openWindow(target.href);
+ })());
 });

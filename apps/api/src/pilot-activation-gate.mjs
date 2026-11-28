@@ -37,6 +37,7 @@ export function assertPilotActivation(evidence) {
 // release. This declaration is not an access-control mechanism or evidence
 // that backup, restore or rollback was performed.
 const GENESIS_DEFERRED=Object.freeze(['backupRestoreVerified','rollbackVerified']);
+const GENESIS_PENDING=Object.freeze(['twoPwasValidated','operationalBootstrapVerified']);
 const GENESIS_SCOPE=Object.freeze({"mode":"deferred-first-test-activation","testDataOnly":true,"realUsersAllowed":false,"backupPerformed":false,"restorePerformed":false});
 export function isFirstTestActivationScope(scope){
  return scope!==null&&typeof scope==='object'&&!Array.isArray(scope)&&
@@ -45,9 +46,9 @@ export function isFirstTestActivationScope(scope){
 }
 export function assertFirstTestActivation(evidence,scope){
  if(!isFirstTestActivationScope(scope)||!evidence||typeof evidence!=='object'||Array.isArray(evidence)||
-    !GENESIS_DEFERRED.every(key=>Object.hasOwn(evidence,key)&&evidence[key]===false)||
-    !REQUIRED.filter(key=>!GENESIS_DEFERRED.includes(key)).every(key=>Object.hasOwn(evidence,key)&&evidence[key]===true))
+    !REQUIRED.every(key=>Object.hasOwn(evidence,key)&&
+      evidence[key]===!(GENESIS_DEFERRED.includes(key)||GENESIS_PENDING.includes(key))))
   throw Error('pilot_first_test_activation_blocked');
  return Object.freeze({ready:true,missing:Object.freeze([]),deferred:GENESIS_DEFERRED,
-  mode:'first_test_activation_admission_unverified'});
+  pendingAfterStart:GENESIS_PENDING,mode:'first_test_activation_admission_unverified'});
 }

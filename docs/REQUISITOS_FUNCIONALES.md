@@ -96,6 +96,12 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 - Resumen por trabajador y cantidades por categoría, incluidas categorías futuras.
 - No contar cancelados. **Pendiente definir** si «lista» equivale a consumo facturable, y cómo rectificar una comanda lista pero no servida. No afirmar que deslizar equivale a entrega.
 
+### Avisos de sala para llamadas y recogidas
+
+- Una sola llamada pendiente por mesa en la ocupación vigente. El servidor envía el primer aviso al confirmar la llamada y repite cada 30 segundos hasta que cualquier camarero la marca atendida. El cambio de ocupación invalida el aviso anterior. El calendario persiste tras reinicios y la bandeja muestra el estado confirmado al reconectar.
+- Las llamadas y los platos listos o devueltos a la recogida se notifican a los dispositivos suscritos de los camareros activos autorizados. Soporte inicial para Chrome en Android y Windows y para la PWA instalada en pantalla de inicio en iOS/iPadOS 16.4 o posterior, incluso con la PWA cerrada si el sistema permite la entrega.
+- El dispositivo solicita el permiso mediante un control accesible. Web Push y vibración se solicitan en la medida que los permite el dispositivo. La bandeja y su sincronización siguen disponibles sin ese permiso. La PWA evita duplicar la vibración local cuando el dispositivo ya recibe avisos por Web Push.
+
 ## Comunicaciones del restaurante
 - Canal exclusivamente interno: solo anuncios creados por el restaurante. No integrar noticias externas, RSS, RTVE ni redacción automática mediante IA.
 - En la PWA de gestión, Configuración → Comunicaciones: editor visual sencillo, atractivo y rápido, con título, texto enriquecido básico, accesos rápidos a emojis, imagen opcional y vista previa del resultado en móvil. Evitar herramientas de maquetación complejas.

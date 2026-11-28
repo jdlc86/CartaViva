@@ -8,6 +8,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CORRELATION = /^[A-Za-z0-9_-]{8,128}$/;
 const ROLES = new Set(['admin', 'waiter', 'kitchen']);
 const ADMIN_ACTIONS = new Set(['invite', 'activate', 'resend', 'suspend', 'revoke']);
+const FIRST_ADMIN_ACTIONS = new Set(['invite','activate','resend','revoke']);
+export const FIRST_ADMIN_BOOTSTRAP_LOGIN='sabora_staff_first_admin_login';
 
 export const STAFF_INVITATION_DELIVERY_TOKEN = Symbol('staffInvitationDeliveryToken');
 
@@ -26,7 +28,7 @@ function exactDataRecord(value, keys) {
   });
 }
 
-function verifiedActor(context, adminRequired) {
+function verifiedActor(context, adminRequired, requiredRole='admin') {
   if (!context || typeof context !== 'object' || Array.isArray(context) ||
       !context.verifiedIdentity || typeof context.verifiedIdentity !== 'object' ||
       Array.isArray(context.verifiedIdentity) ||
@@ -37,7 +39,7 @@ function verifiedActor(context, adminRequired) {
   if (!adminRequired) return actorId;
   const staff = context.verifiedStaff;
   if (!staff || typeof staff !== 'object' || Array.isArray(staff) ||
-      staff.role !== 'admin' || !UUID.test(staff.userId) ||
+      staff.role !== requiredRole || !UUID.test(staff.userId) ||
       staff.userId.toLowerCase() !== actorId) {
     throw Error('staff_lifecycle_admin_forbidden');
   }
@@ -69,18 +71,26 @@ export function createStaffLifecycleCoordinator({
   withTransaction,
   repository,
   issueCapability,
+  issueRootMutationProof,
+  setRootMutationProof,
   issueInvitationToken,
   hashInviteeEmail,
   verifyCredentialRegistration,
   uuid,
+  revocationOnly = false,
+  firstAdminBootstrapOnly = false,
 } = {}) {
   if (typeof withTransaction !== 'function' ||
       !repository || typeof repository.transition !== 'function' ||
       typeof issueCapability !== 'function' ||
+      ((issueRootMutationProof !== undefined || setRootMutationProof !== undefined) &&
+       (typeof issueRootMutationProof !== 'function' || typeof setRootMutationProof !== 'function')) ||
+      typeof revocationOnly !== 'boolean' || typeof firstAdminBootstrapOnly !== 'boolean' ||
+      (revocationOnly && firstAdminBootstrapOnly) || (!revocationOnly && (
       typeof issueInvitationToken !== 'function' ||
       typeof hashInviteeEmail !== 'function' ||
       typeof verifyCredentialRegistration !== 'function' ||
-      typeof uuid !== 'function') {
+      typeof uuid !== 'function'))) {
     throw Error('invalid_staff_lifecycle_coordinator_config');
   }
 
@@ -95,8 +105,11 @@ export function createStaffLifecycleCoordinator({
         throw Error('invalid_staff_lifecycle_request');
       }
       const action = actionDescriptor.value;
+      if (revocationOnly && action !== 'revoke') throw Error('invalid_staff_lifecycle_request');
       const adminRequired = ADMIN_ACTIONS.has(action);
-      const actorId = verifiedActor(context, adminRequired);
+      if(firstAdminBootstrapOnly&&!FIRST_ADMIN_ACTIONS.has(action))
+        throw Error('invalid_staff_lifecycle_request');
+      const actorId = verifiedActor(context, adminRequired, firstAdminBootstrapOnly?'root':'admin');
       let enrollmentId;
       let subjectUserId = null;
       let requestedRole = null;
@@ -112,7 +125,8 @@ export function createStaffLifecycleCoordinator({
 
       if (action === 'invite') {
         if (!exactDataRecord(input, ['action', 'email', 'givenName', 'familyName', 'requestedRole', 'correlationId']) ||
-            !ROLES.has(input.requestedRole)) throw Error('invalid_staff_lifecycle_request');
+            !ROLES.has(input.requestedRole) ||
+            (firstAdminBootstrapOnly && input.requestedRole!=='admin')) throw Error('invalid_staff_lifecycle_request');
         enrollmentId = uuid();
         if (!UUID.test(enrollmentId)) throw Error('invalid_staff_lifecycle_uuid');
         try { inviteeEmail = normalizeStaffInviteeEmail(input.email); }
@@ -200,12 +214,24 @@ export function createStaffLifecycleCoordinator({
         inviteeEmail,
         correlationId,
       });
-      const result = await withTransaction(async (query) =>
-        repository.transition(query, capability));
+      const durable=repository.storesInvitationMaterial===true;
+      const result = await withTransaction(async (query) => {
+        if (adminRequired && issueRootMutationProof) {
+          const proof = issueRootMutationProof({
+            actorId, credentialHash: context.verifiedRootCredential,
+            deadlineMs: Math.min(capability.expiresAtMs, context.verifiedIdentity.expiresAt * 1000),
+            scope: firstAdminBootstrapOnly ? 'first-admin' : 'staff-admin', binding: correlationId,
+          });
+          await setRootMutationProof(query, proof);
+        }
+        return durable
+          ? repository.transition(query, capability, deliveryToken)
+          : repository.transition(query, capability);
+      });
       // A repeated correlation reuses the original durable transition, but a
       // freshly generated invitation token is NOT the original stored hash.
       // Never hand this new, invalid token to a delivery provider.
-      return deliveryResult(result, result.repeated === true ? null : deliveryToken);
+      return deliveryResult(result, durable || result.repeated === true ? null : deliveryToken);
     },
   });
 }

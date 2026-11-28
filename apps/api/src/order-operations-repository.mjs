@@ -30,6 +30,12 @@ export const READ_H6_DELIVERY_BOARD_SQL=`SELECT *
                $6::bigint, $7::uuid, $8::integer, $9::integer,
                $10::bigint, $11::bigint, $12::text
              )`;
+export const READ_H6_DISPATCH_BOARD_SQL=`SELECT *
+             FROM sabora.read_order_operations_dispatch_board_h6_candidate(
+               $1::text, $2::text, $3::uuid, $4::text, $5::text,
+               $6::bigint, $7::uuid, $8::integer, $9::integer,
+               $10::bigint, $11::bigint, $12::text
+             )`;
 export const READ_ORDER_HISTORY_SQL=`SELECT *
              FROM sabora.read_order_operations_history_authorized_candidate(
                $1::text, $2::text, $3::uuid, $4::text, $5::uuid,
@@ -120,8 +126,11 @@ function assertRoleStatus(role, status) {
   }
 }
 
-export function createOrderOperationsRepository({deliveryBoardCandidate = false} = {}) {
-  if (typeof deliveryBoardCandidate !== 'boolean') throw Error('invalid_order_operations_repository_config');
+export function createOrderOperationsRepository({deliveryBoardCandidate = false, dispatchSnapshot = false} = {}) {
+  if (typeof deliveryBoardCandidate !== 'boolean' || typeof dispatchSnapshot !== 'boolean' ||
+      (dispatchSnapshot && !deliveryBoardCandidate)) throw Error('invalid_order_operations_repository_config');
+  const signedBoardSql=dispatchSnapshot ? READ_H6_DISPATCH_BOARD_SQL :
+    deliveryBoardCandidate ? READ_H6_DELIVERY_BOARD_SQL : READ_H4_ORDER_BOARD_SQL;
   return Object.freeze({
     async verifyMembership(query, {actorId, role}) {
       if (typeof query !== 'function' || !UUID.test(actorId) || !ROLES.has(role)) {
@@ -213,7 +222,7 @@ export function createOrderOperationsRepository({deliveryBoardCandidate = false}
           throw Error('invalid_order_operation_read_capability');
         }
         result = await query(
-          (deliveryBoardCandidate ? READ_H6_DELIVERY_BOARD_SQL : READ_H4_ORDER_BOARD_SQL),
+          signedBoardSql,
           [
             capability.keyId,
             capability.databaseRole,
@@ -273,6 +282,8 @@ export function createOrderOperationsRepository({deliveryBoardCandidate = false}
             typeof row?.name !== 'string' || row.name.trim().length === 0 || row.name.length > 160 ||
             !Number.isSafeInteger(row?.quantity) || row.quantity < 1 || row.quantity > 20 ||
             !STATUSES.has(row?.status) ||
+            (dispatchSnapshot && capability !== null && row.pending_dispatch_id !== null &&
+              (!UUID.test(row.pending_dispatch_id ?? '') || role === 'waiter' || row.status !== 'confirmed')) ||
             (row.notification_id !== null && !UUID.test(row.notification_id)) ||
             (row.status === 'ready' && (!UUID.test(row.notification_id) ||
               row.notification_acknowledged_at !== null)) ||
@@ -339,6 +350,7 @@ export function createOrderOperationsRepository({deliveryBoardCandidate = false}
           status: row.status,
           notification,
           pickup,
+          ...(dispatchSnapshot && capability !== null ? {pendingDispatchId:row.pending_dispatch_id} : {}),
           ...(deliveryBoardCandidate && capability !== null ? {
             delivery: Object.freeze({
               tableId: row.delivery_table_id,

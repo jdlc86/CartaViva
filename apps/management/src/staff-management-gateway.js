@@ -1,5 +1,6 @@
 const CORRELATION=/^[A-Za-z0-9_-]{8,128}$/;
 const CODE=/^[0-9A-Z]{3}$/;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class StaffManagementGatewayError extends Error {
   constructor(code,details=null){super(code);this.name='StaffManagementGatewayError';this.code=code;this.details=details;}
@@ -31,9 +32,38 @@ function maintenance(value,action){
   return Object.freeze({...value});
 }
 
+async function lifecycleAction(send,action,state,input,path='/api/v1/staff/lifecycle'){
+  const {enrollmentId,correlationId}=input;
+  if(!UUID.test(enrollmentId??'')||!CORRELATION.test(correlationId??''))throw Error('invalid_staff_lifecycle_action');
+  const value=await mutation(send,path,{action,...input});
+  if(value?.enrollmentId!==enrollmentId||value.state!==state||typeof value.repeated!=='boolean')
+    throw new StaffManagementGatewayError('invalid_response');
+  return Object.freeze({enrollmentId,state,repeated:value.repeated});
+}
+
 export function createStaffManagementGateway({send=globalThis.fetch}={}){
   if(typeof send!=='function')throw Error('invalid_staff_management_gateway');
   return Object.freeze({
+    async revokeAccess({enrollmentId,reason,correlationId}={}){
+      if(!UUID.test(enrollmentId??'')||typeof reason!=='string'||!reason.trim()||
+        reason.trim().length>500||!CORRELATION.test(correlationId??''))
+        throw Error('invalid_staff_revocation');
+      const value=await mutation(send,'/api/v1/staff/lifecycle',{action:'revoke',
+        enrollmentId,subjectUserId:null,reason:reason.trim(),correlationId});
+      if(value?.enrollmentId!==enrollmentId||value.state!=='revoked'||typeof value.repeated!=='boolean')
+        throw new StaffManagementGatewayError('invalid_response');
+      return Object.freeze({enrollmentId,state:'revoked',repeated:value.repeated});
+    },
+    async resendInvitation({enrollmentId,correlationId}={}){
+      return lifecycleAction(send,'resend','invited',{enrollmentId,correlationId});
+    },
+    async activateAccess({enrollmentId,correlationId}={}){
+      return lifecycleAction(send,'activate','active',{enrollmentId,correlationId,subjectUserId:null});
+    },
+    async suspendAccess({enrollmentId,reason,correlationId}={}){
+      if(typeof reason!=='string'||!reason.trim()||reason.trim().length>500)throw Error('invalid_staff_suspension');
+      return lifecycleAction(send,'suspend','suspended',{enrollmentId,correlationId,subjectUserId:null,reason:reason.trim()});
+    },
     async invite({email,givenName,familyName,requestedRole,correlationId}={}){
       if(typeof email!=='string'||typeof givenName!=='string'||typeof familyName!=='string'||
         !['admin','waiter','kitchen'].includes(requestedRole)||!CORRELATION.test(correlationId??''))
@@ -56,4 +86,37 @@ export function createStaffManagementGateway({send=globalThis.fetch}={}){
         {action:'recover',reason:reason.trim(),confirmed:true,correlationId}),'recover');
     },
   });
+}
+
+// ROOT-only genesis transport; never offers ordinary directory or suspension.
+export function createStaffFirstAdminGateway({send}={}){
+ if(typeof send!=='function')throw Error('invalid_staff_first_admin_gateway');
+ const path='/api/v1/staff/bootstrap/first-admin';
+ return Object.freeze({
+  async read(){
+   const value=await responseJson(await send(path,{method:'GET',cache:'no-store',redirect:'error',credentials:'omit',headers:{Accept:'application/json'}}));
+   if(!['empty','current','closed','blocked'].includes(value?.phase))throw new StaffManagementGatewayError('invalid_response');
+   if(value.phase!=='current'){
+    if(value.member!==null)throw new StaffManagementGatewayError('invalid_response');
+    return {phase:value.phase,member:null};
+   }
+   const m=value.member;
+   if(!UUID.test(m?.enrollmentId??'')||!['invited','accepted','registered','active'].includes(m.state)||
+      ![m.givenName,m.familyName,m.email,m.operationalDisplayId].every(x=>typeof x==='string'&&x.length>0))
+    throw new StaffManagementGatewayError('invalid_response');
+   return {phase:'current',member:{enrollmentId:m.enrollmentId,givenName:m.givenName,familyName:m.familyName,email:m.email,operationalDisplayId:m.operationalDisplayId,state:m.state}};
+  },
+  async invite({email,givenName,familyName,correlationId}){
+   if(!CORRELATION.test(correlationId??'')||![email,givenName,familyName].every(x=>typeof x==='string'&&x.trim()))throw Error('invalid_staff_invite');
+   const value=await mutation(send,path,{action:'invite',email,givenName,familyName,requestedRole:'admin',correlationId});
+   if(!UUID.test(value?.enrollmentId??'')||value.state!=='invited'||typeof value.repeated!=='boolean')throw new StaffManagementGatewayError('invalid_response');
+   return {enrollmentId:value.enrollmentId,state:value.state,repeated:value.repeated};
+  },
+  resendInvitation({enrollmentId,correlationId}){return lifecycleAction(send,'resend','invited',{enrollmentId,correlationId},path);},
+  activateAccess({enrollmentId,correlationId}){return lifecycleAction(send,'activate','active',{enrollmentId,correlationId,subjectUserId:null},path);},
+  revokeAccess({enrollmentId,correlationId,reason}){
+   if(typeof reason!=='string'||!reason.trim()||reason.trim().length>500)throw Error('invalid_staff_revocation');
+   return lifecycleAction(send,'revoke','revoked',{enrollmentId,correlationId,subjectUserId:null,reason:reason.trim()},path);
+  }
+ });
 }

@@ -50,7 +50,7 @@ test('authenticated M3 gateway uses fresh bearer, omits cookies and restricts ad
  assert.equal(tokens,2);assert.equal(calls.length,2);
  assert.equal(calls[0].path,'/api/v1/admin/tables?afterNumber=2&limit=10');
  assert.equal(calls[0].options.credentials,'omit');
- assert.equal(calls[0].options.headers.Authorization,'Bearer token_1_abcdefghijklmnop');
+ assert.equal(new Headers(calls[0].options.headers).get('Authorization'),'Bearer token_1_abcdefghijklmnop');
  assert.equal(Object.hasOwn(calls[0].options.headers,'Cookie'),false);
  gateway.revoke();
  await assert.rejects(gateway.listTables(),/m3_management_auth_unavailable/);

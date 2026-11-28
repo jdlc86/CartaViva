@@ -3,8 +3,8 @@ import { createStaffAuthorization } from './staff-authorization.mjs';
 
 // Route-scoped composition: no global hooks and no operational routes registered.
 // The caller must supply a trusted JWKS provider and a durable membership lookup.
-export function createProtectedRouteHooks({ issuer, getTrustedKeys, lookupStaff, verify } = {}) {
-  const authenticate = createAuthenticationHook({ issuer, getTrustedKeys, verify });
+export function createProtectedRouteHooks({ issuer, getTrustedKeys, lookupStaff, verify,
+  authenticate = createAuthenticationHook({ issuer, getTrustedKeys, verify }) } = {}) {
   const authorize = createStaffAuthorization({ lookupStaff });
   return function forRoles(allowedRoles) {
     if (!Array.isArray(allowedRoles) || allowedRoles.length === 0 ||

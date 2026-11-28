@@ -4,6 +4,10 @@ export const RECORD_AUTHORIZATION_H6_SQL=`SELECT payment_attempt_id,payment_stat
  FROM sabora.record_h6_authorization_outcome_candidate($1::uuid,$2::text,$3::text,$4::timestamptz,$5::text)`;
 export const LIST_SCHEDULABLE_H6_SQL=`SELECT order_id,grouping_deadline,server_now
  FROM sabora.list_schedulable_h6_rounds_candidate($1::integer)`;
+export const LIST_H6_WITHOUT_STRIPE_SQL=`SELECT order_id,grouping_deadline,server_now
+ FROM sabora.list_h6_rounds_without_stripe_candidate($1::integer)
+ ORDER BY grouping_deadline,order_id`;
+export const REQUEST_H6_WITHOUT_STRIPE_SQL=`SELECT sabora.request_h6_dispatch_without_stripe_candidate($1::uuid) AS dispatched`;
 export const REQUEST_DUE_CAPTURE_H6_SQL=`SELECT payment_attempt_id,provider_intent_id,capture_key,
  dispatch_id,dispatch_key,action,repeated,amount_cents
  FROM sabora.request_h6_capture_evidence_candidate($1::uuid,clock_timestamp())`;
@@ -36,14 +40,21 @@ const rows=async promise=>{
 export function createH6ProviderRepository({withTransaction}={}){
  if(typeof withTransaction!=='function')throw Error('invalid_h6_provider_repository');
  return Object.freeze({
-  async listSchedulable({limit=100}={}){
-   if(!Number.isSafeInteger(limit)||limit<1||limit>100)
+  async listSchedulable({limit=100,withoutStripe=false}={}){
+   if(!Number.isSafeInteger(limit)||limit<1||limit>100||typeof withoutStripe!=='boolean')
     throw Error('invalid_h6_dispatch_limit');
-   const result=await withTransaction(query=>query(LIST_SCHEDULABLE_H6_SQL,[limit]));
+   const sql=withoutStripe?LIST_H6_WITHOUT_STRIPE_SQL:LIST_SCHEDULABLE_H6_SQL;
+   const result=await withTransaction(query=>query(sql,[limit]));
    if(!result||!Array.isArray(result.rows))throw Error('invalid_h6_dispatch_schedule');
    return result.rows.map(row=>Object.freeze({
     orderId:row.order_id,groupingDeadline:row.grouping_deadline,serverNow:row.server_now
    }));
+  },
+  async requestDispatchWithoutStripe({orderId}={}){
+   if(!UUID.test(orderId??''))throw Error('invalid_h6_dispatch_request');
+   const result=await withTransaction(query=>rows(query(REQUEST_H6_WITHOUT_STRIPE_SQL,[orderId])));
+   if(typeof result.dispatched!=='boolean')throw Error('invalid_h6_provider_sql_result');
+   return result.dispatched;
   },
   requestDueCapture({orderId}={}){
    if(!UUID.test(orderId??''))throw Error('invalid_h6_capture_request');

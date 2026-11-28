@@ -195,12 +195,25 @@
           "surface": "management",
           "path": "apps/management/src/views/OrdersView.tsx",
           "marker": "Marcar atendida"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/views/FloorPushSettings.tsx",
+          "marker": "Activar avisos en este dispositivo"
         }
       ],
       "api": [
         {
           "path": "apps/api/src/waiter-call-candidate.mjs",
           "marker": "registerWaiterCallHttp"
+        },
+        {
+          "path": "apps/api/src/published-customer-features.mjs",
+          "marker": "/api/v1/customer/features"
+        },
+        {
+          "path": "apps/api/src/floor-web-push.mjs",
+          "marker": "createFloorPushComposition"
         }
       ],
       "evidence": [
@@ -218,9 +231,192 @@
           "kind": "browser-management",
           "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
           "marker": "manager.getByRole('button',{name:'Marcar atendida'})"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "managementContext.setOffline(false)"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "Llamadas pendientes de atender: 1."
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "fixtureFloorVibrations"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "ServiceWorker.deliverPushMessage"
         }
       ],
-      "note": "Código candidato con llamadas por mesa y visita actual, roles SQL mínimos, JWT/HMAC, auditoría y outbox; evaluación real PG17/Chromium exigida antes de cierre técnico. No acredita aprobación visual humana, recordatorios fuera de la PWA, ocupación física ni activación de producción."
+      "note": "H1-B/F07. Agenda durable de avisos de sala, entrega inmediata y cada 30 s, cese al atender, Web Push opt-in por dispositivo y vibración local cuando el dispositivo no está suscrito. El ensayo utiliza proveedores simulados. Véase SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md."
+    },
+    {
+      "id": "H1-C-cambio-mesa",
+      "status": "CANDIDATO_TECNICO",
+      "surfaces": ["client", "management"],
+      "ui": [
+        {"surface": "client", "path": "apps/client/src/App.tsx", "marker": "Solicitar cambio de mesa"},
+        {"surface": "management", "path": "apps/management/src/views/ConfigurationView.tsx", "marker": "Guardar plazo"}
+      ],
+      "api": [
+        {"path": "apps/api/src/table-change-http-candidate.mjs", "marker": "registerTableChangeStaffHttp"},
+        {"path": "apps/api/src/m3-management-http.mjs", "marker": "/api/v1/admin/table-change-window"}
+      ],
+      "evidence": [
+        {"kind": "postgres17", "path": "scripts/ci/table-change-root-postgres17.test.mjs", "marker": "the server must enforce the normative 90-second response window"},
+        {"kind": "browser-client", "path": "scripts/ci/table-change-root-postgres17.test.mjs", "marker": "Solicitar cambio de mesa"},
+        {"kind": "browser-management", "path": "scripts/ci/ownership-governance-postgres17.test.mjs", "marker": "Guardar plazo"},
+        {"kind": "postgres17", "path": "scripts/ci/ownership-governance-postgres17.test.mjs", "marker": "expires_at:pendingBeforeWindow.expires_at"}
+      ],
+      "note": "F08/H6/B3. El delta candidato habilita la escritura del plazo al ADMIN titular y conserva vencimientos existentes. Véase SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md."
+    },
+    {
+      "id": "H1-D-despacho-agrupado",
+      "status": "PENDIENTE",
+      "surfaces": ["client", "management"],
+      "ui": [
+        {"surface": "client", "path": "apps/client/src/App.tsx", "marker": "Confirmar pedido"},
+        {"surface": "management", "path": "apps/management/src/views/OrdersView.tsx", "marker": "Confirmar recepción"}
+      ],
+      "api": [
+        {"path": "apps/api/src/operational-activation-manifest.mjs", "marker": "groupedDispatchWithoutStripe"},
+        {"path": "apps/api/src/order-operations-repository.mjs", "marker": "pendingDispatchId"},
+        {"path": "apps/api/src/floor-web-push.mjs", "marker": "createFloorPushComposition"}
+      ],
+      "evidence": [
+        {"kind": "postgres17", "path": "scripts/ci/table-change-root-postgres17.test.mjs", "marker": "two workers may not duplicate dispatch events"},
+        {"kind": "browser-management", "path": "scripts/ci/table-change-root-postgres17.test.mjs", "marker": "Confirmar recepción"},
+        {"kind": "postgres17", "path": "scripts/ci/table-change-root-postgres17.test.mjs", "marker": "deliveredPickup"}
+      ],
+      "blockers": ["Acreditar el nuevo SHA del ensayo que incorpora la entrega Web Push y conservar la aceptación propietaria separada"],
+      "note": "F21 conserva el scheduler H6 y el vencimiento SQL. El tablero de cocina recupera el UUID de despacho en el resync y la agenda añade un aviso por versión lista para recoger o recuperada. Véase SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md."
+    },
+    {
+      "id": "H1-identidad-personal",
+      "status": "PENDIENTE",
+      "surfaces": [
+        "management"
+      ],
+      "ui": [
+        {
+          "surface": "management",
+          "path": "apps/management/src/main.tsx",
+          "marker": "Entrar con passkey"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/views/TeamView.tsx",
+          "marker": "Revocar acceso"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/views/RootSecurityPanel.tsx",
+          "marker": "Restablecer contador con passkey"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/views/RootSecurityPanel.tsx",
+          "marker": "Verificar correo con passkey"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/views/StaffRecoveryView.tsx",
+          "marker": "Registrar nueva passkey"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/views/StaffRecoveryAdminPanel.tsx",
+          "marker": "Autorizar recuperación"
+        }
+      ],
+      "api": [
+        {
+          "path": "apps/api/src/staff-passkey-session.mjs",
+          "marker": "createStaffPasskeySession"
+        },
+        {
+          "path": "apps/api/src/m2-restaurant-candidate.mjs",
+          "marker": "registerStaffRevocationHttp"
+        },
+        {
+          "path": "apps/api/src/staff-passkey-session.mjs",
+          "marker": "root-security"
+        },
+        {
+          "path": "apps/api/src/m2-restaurant-candidate.mjs",
+          "marker": "createVerifiedRootRecoveryCandidate"
+        },
+        {
+          "path": "apps/api/src/staff-recovery-http-candidate.mjs",
+          "marker": "registerStaffRecoveryHttpCandidate"
+        },
+        {
+          "path": "apps/api/src/staff-recovery-http-candidate.mjs",
+          "marker": "registerStaffRecoveryAdminHttpCandidate"
+        },
+        {
+          "path": "apps/api/src/m2-restaurant-candidate.mjs",
+          "marker": "rootRecovery?.staffRecoveryHttp?.register"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "manager.getByRole('button',{name:'Entrar con passkey'})"
+        },
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "CV-014 PG17 + Fastify + Chromium passkey login"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/staff-directory-postgres17.test.mjs",
+          "marker": "PG17 + Chromium passkey connects own profile, administrative directory and durable revocation"
+        },
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/staff-root-bootstrap-postgres17.test.mjs",
+          "marker": "PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, revocation and ownership closure"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/staff-root-bootstrap-postgres17.test.mjs",
+          "marker": "Verificar correo con passkey"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/staff-root-bootstrap-postgres17.test.mjs",
+          "marker": "Recuperar acceso a Sabora Gestión"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/staff-root-bootstrap-postgres17.test.mjs",
+          "marker": "authorizeFromPanel"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/staff-root-bootstrap-postgres17.test.mjs",
+          "marker": "Alta de personal en Sabora Gestión"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/staff-root-bootstrap-postgres17.test.mjs",
+          "marker": "Recuperar acceso ROOT"
+        }
+      ],
+      "blockers": [
+        "Verificar el flujo con Supabase Auth alojado y una identidad ficticia",
+        "Acreditar recuperación pública del mismo ROOT, reconciliar efectos remotos inciertos y extender la protección transaccional a los escritores fuera de identidad y titularidad; admitir el ciclo en el manifiesto y validar el delta mínimo V2",
+        "Obtener la aceptación del propietario"
+      ],
+      "note": "S54 conecta el correo de seguridad ROOT a la PWA, incorpora un fence SQL en titularidad y primer ADMIN y compone un trabajador candidato con Resend inyectado. El ensayo usa proveedor aislado. El informe SABORA_S54_ROOT_RECOVERY_H1_A_REVIEW_2026-11-26.md delimita la recuperación pública, Auth alojado, delta y aceptación pendientes. S54-10/11 añaden registro candidato de respaldo y frontera de factores HTTP de laboratorio, con fases durables antes de finalización; CI pendiente, no se acredita Auth alojado ni recuperación pública completa. S54-12 conserva la fecha límite de registro, distingue caducidad sin efecto externo de incertidumbre y encola el aviso de éxito atómicamente; pruebas candidatas, sin promoción de estado. S54-16: S54-12 corregido y CI 7/7 en acd8ddbf; clasificador de invitación candidato de solo lectura, nuevo SHA pendiente; recuperación no ROOT sin recorrido público aún. S54-17 añade intención de recuperación versionada y firmada con revalidación bajo locks; todavía no constituye un recorrido funcional público. S54-19: S54-17 7/7 PASS en 87277ea4; entrega y consumo internos candidatos con fixtures, nuevo SHA pendiente; no se habilita recuperación pública. S54-21: 990306d2 7/7 PASS; candidato interno de fence y registro/revocación con recibos simulados, sin habilitación pública ni prueba remota. S54-34 conecta la entrega de recuperación no ROOT al trabajador candidato compartido y separa AAD por intención; ensayo PG17 ampliado, CI pendiente, sin habilitación operativa ni cambio de estado. S55-10: sesión restringida y recorrido candidato no ROOT en la PWA y harness; CI del árbol pendiente, proveedor alojado y montaje operativo no acreditados. No se promueve el estado. S55-11: autorización candidata ROOT/ADMIN titular desde Equipo; ensayo ampliado pendiente CI, sin montaje operativo ni cambio de estado."
     }
   ]
 }

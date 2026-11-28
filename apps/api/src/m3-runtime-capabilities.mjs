@@ -46,7 +46,8 @@ async function assertExact({pool,expectedLogin,role,signatures}){
   throw rejected('query');
  }finally{if(client)try{client.release(!valid);}catch{}}
 }
-export const assertM3TablesCapability=options=>assertExact({...options,
- role:M3_TABLES_ROLE,signatures:M3_TABLES_SIGNATURES});
+export const assertM3TablesCapability=({tableChangeWindow=false,...options})=>assertExact({...options,
+ role:M3_TABLES_ROLE,signatures:tableChangeWindow?[...M3_TABLES_SIGNATURES,
+  'sabora.table_change_window_m3_candidate(jsonb,integer,integer)']:M3_TABLES_SIGNATURES});
 export const assertM3CatalogCapability=options=>assertExact({...options,
  role:M3_CATALOG_ROLE,signatures:M3_CATALOG_SIGNATURES});

@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {readFile} from 'node:fs/promises';
 import {dirname,resolve} from 'node:path';
 import {pathToFileURL as modulePathToFileURL} from 'node:url';
-import {createHash,randomBytes,randomUUID,createHmac,generateKeyPairSync,sign} from 'node:crypto';
+import {createHash,randomBytes,randomUUID,createHmac,createECDH,generateKeyPairSync,sign} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {F12_FUNCTION_SQL,assertF12SqlIdentity} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs';
@@ -16,7 +17,7 @@ import {createH6OperationsRepository,createH6CustomerEventRepository,
  READ_CUSTOMER_EVENTS_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
-import {createOrderOperationsRepository,TRANSITION_ORDER_LINE_SQL,READ_H6_DELIVERY_BOARD_SQL,
+import {createOrderOperationsRepository,TRANSITION_ORDER_LINE_SQL,READ_H6_DELIVERY_BOARD_SQL,READ_H6_DISPATCH_BOARD_SQL,
  READ_ORDER_HISTORY_SQL} from '../../apps/api/src/order-operations-repository.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
 import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
@@ -25,6 +26,7 @@ import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capabil
 import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
 import {assertH6RuntimeIdentity} from '../../apps/api/src/h6-sql-preflight.mjs';
 import {createH6ProviderRepository,LIST_SCHEDULABLE_H6_SQL,REQUEST_DUE_CAPTURE_H6_SQL,
+ LIST_H6_WITHOUT_STRIPE_SQL,REQUEST_H6_WITHOUT_STRIPE_SQL,
  RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
  RECORD_CAPTURE_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,REQUEST_REFUND_H6_SQL,
  RECORD_REFUND_H6_SQL} from '../../apps/api/src/h6-provider-repository.mjs';
@@ -36,6 +38,7 @@ import {registerH6StripeWebhookHttp} from '../../apps/api/src/h6-stripe-webhook-
 import {createH6StripeAdapter} from '../../apps/api/src/h6-stripe-adapter.mjs';
 import {createH6PaymentOrchestrator} from '../../apps/api/src/h6-payment-orchestrator.mjs';
 import {createH6DeferredDispatchScheduler} from '../../apps/api/src/h6-deferred-dispatch-scheduler.mjs';
+import {createFloorPushComposition,FLOOR_PUSH_ROUTINES} from '../../apps/api/src/floor-web-push.mjs';
 import {createPostgresH6OutboxNotifier,registerH6CustomerEventStreamHttp}
  from '../../apps/api/src/h6-event-stream.mjs';
 import {mountVerifiedTableChangeB3JwtHttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
@@ -46,6 +49,8 @@ import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-p
 import {createCustomerFlowTransport} from '../../apps/client/src/customer-flow-transport.ts';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createM2RestaurantCandidate} from '../../apps/api/src/m2-restaurant-candidate.mjs';
+import {registerPublishedCustomerFeatures} from '../../apps/api/src/published-customer-features.mjs';
+import {startPublishedClientPwa} from './published-client-pwa-fixture.mjs';
 import {startDisposableM3Runtime} from './disposable-h6-runtime-bootstrap.mjs';
 import {createM3AuthenticatedManagementGateway} from '../../apps/management/src/m3-authenticated-management-gateway.js';
 import {createM3ManagementCapabilityIssuer} from '../../apps/api/src/m3-management-capability.mjs';
@@ -2741,8 +2746,6 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   assert.equal(await page.getByRole('radio',{name:/Pagar ahora|Pagar al terminar/}).count(),0,
    'already selected payment mode is not offered in subsequent rounds');
  };
- const priorB3Flag=process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE;
- process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE='isolated_pg17';
  const suffix=process.pid.toString(36);
  const specs=[
   {role:'sabora_f12_customer_runtime',login:'sabora_b3_physical_request_'+suffix,
@@ -2948,6 +2951,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // Two REAL personnel identities, not two sessions impersonating one user.
   const secondWaiterId='b0a00000-0000-4000-8000-000000000311';
   const jwtSecondWaiter=staffJwt(secondWaiterId);
+  const floorWaiterId=randomUUID();
   const jwtKitchen=staffJwt('b0a00000-0000-4000-8000-000000000310');
   const jwtCustomer=staffJwt('b0a00000-0000-4000-8000-000000000301');
   const jwtExpired=staffJwt('b0a00000-0000-4000-8000-000000000307',
@@ -3011,16 +3015,21 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // Reuse the existing H4 signed RPC; this route is transition-only and
   // explicitly forbids retired physical pickup. The kitchen actor is
   // verified by JWT, PostgreSQL staff membership and the H4 HMAC.
+  const dispatchSnapshot=process.env.SABORA_CI_F21_FULL_WINDOW==='true';
+  const originalPickup=dispatchSnapshot?(await admin.query(`SELECT pg_get_functiondef(
+   'sabora.manage_pickup_task_h6_candidate(text,text,uuid,text,text,uuid,bigint,text,bigint,bigint,text)'::regprocedure) AS ddl`)).rows[0].ddl:null;
+  if(dispatchSnapshot)await admin.query(await readFile(new URL(
+   '../../docs/security/sql-candidates/h6_dispatch_board_snapshot_pg17.sql',import.meta.url),'utf8'));
   const h4KitchenTx=createRoleScopedPostgresTransaction({pool:pools[11],
    role:specs[11].role,allowedSql:new Set([TRANSITION_ORDER_LINE_SQL,
-    READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
+    dispatchSnapshot?READ_H6_DISPATCH_BOARD_SQL:READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
   const h4KitchenIssuer=createOrderOperationCapabilityIssuer({
    keyId:staffSigningKeyId,secret:staffSigningSecret,databaseRole:specs[11].login});
   const h4ReadIssuer=createOrderOperationReadCapabilityIssuer({
    keyId:staffSigningKeyId,secret:staffSigningSecret,databaseRole:specs[11].login});
   const h4KitchenOperations=createOrderOperationsCoordinator({
    withTransaction:h4KitchenTx,
-   repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
+   repository:createOrderOperationsRepository({deliveryBoardCandidate:true,dispatchSnapshot}),
    issueTransitionCapability:h4KitchenIssuer,issueReadCapability:h4ReadIssuer
   });
   const signedStripeSecret='whsec_B3F20IsolatedCandidate_0001';
@@ -3198,6 +3207,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     secretKey:'sabora_b3_ephemeral_test_secret_key_32_bytes_minimum',
     cookieAuth:customerCookieAuth,
    }),{mounted:true});
+   registerPublishedCustomerFeatures(http,{tableChange:true,waiterCalls:false,isAvailable:()=>true});
    registerH6CustomerEventStreamHttp(http,{cookieAuth:customerCookieAuth,
     events:customerEvents,subscribeCommitted:customerEventNotifier.subscribe,
     heartbeatMs:5000});
@@ -3356,15 +3366,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await fixture.query(`INSERT INTO sabora.restaurant_settings(singleton,name)
      VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
     await fixture.query(`INSERT INTO sabora.staff_members(user_id,role,state)
-     VALUES($1,'waiter','active'),($2,'kitchen','active'),($3,'waiter','active')`,
+     VALUES($1,'waiter','active'),($2,'kitchen','active'),($3,'waiter','active'),($4,'waiter','active')`,
      [httpFixture.waiter,'b0a00000-0000-4000-8000-000000000310',
-      secondWaiterId]);
+      secondWaiterId,floorWaiterId]);
     // H6 pickup claims require the employee's real compact operational
     // identity, not merely an active JWT/role. Mirror the existing H4
     // enrollment fixture inside this disposable PG17 transaction; do not
     // bypass bind_pickup_claimed_display_id_candidate or relax its check.
     const kitchenActor='b0a00000-0000-4000-8000-000000000310';
-    const staffActors=[httpFixture.waiter,kitchenActor,secondWaiterId];
+    const staffActors=[httpFixture.waiter,kitchenActor,secondWaiterId,floorWaiterId];
     await fixture.query(`INSERT INTO sabora.staff_enrollments(
      id,invitee_email_hash,requested_role,state,auth_user_id,invite_token_hash,
      credential_evidence_hash,created_by,created_at,last_invited_at,accepted_at,
@@ -3383,7 +3393,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       ($2::uuid,'kitchen','b3-kitchen@example.invalid',
        'b3-kitchen-token','b3-kitchen-passkey','Karla','Cocina','840','KC-840'),
       ($3::uuid,'waiter','b3-waiter-b@example.invalid',
-       'b3-waiter-b-token','b3-waiter-b-passkey','Lucia','Sala','841','LS-841')
+       'b3-waiter-b-token','b3-waiter-b-passkey','Lucia','Sala','841','LS-841'),
+      ($4::uuid,'waiter','f21-waiter@example.invalid',
+       'f21-waiter-token','f21-waiter-passkey','Sara','Ruiz','842','SR-842')
      ) source(user_id,role,email,token,credential,given_name,family_name,code,display_id)`,
      staffActors);
     const assignedCodes=await fixture.query(`UPDATE sabora.staff_employee_code_pool pool
@@ -3392,8 +3404,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      WHERE pool.code=enrollment.employee_code
        AND enrollment.auth_user_id=ANY($1::uuid[])
        AND pool.enrollment_id IS NULL`,[staffActors]);
-    assert.equal(assignedCodes.rowCount,3,
-     'all three isolated staff actors need reserved compact display IDs');
+    assert.equal(assignedCodes.rowCount,staffActors.length,
+     'all isolated staff actors need reserved compact display IDs');
     await fixture.query(`INSERT INTO sabora.order_operation_signing_keys
      (key_id,hmac_key,not_before,expires_at)
      VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')`,
@@ -3973,10 +3985,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     // Fastify and management-browser journey. Only the public catalog
     // presentation is an explicitly isolated HTTP fixture: the order,
     // quote, session, QR and account transfer use the live SQL functions.
-    const {pathToFileURL,fileURLToPath}=await import('node:url');
     const chromium=await loadChromium();
-    const clientRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
-    const {createServer}=await import(pathToFileURL(clientRequire.resolve('vite')).href);
     let clientVite,clientBrowser,clientContext;
     let confirmedOrderBody=null;
     const customerBrowserErrors=[];
@@ -3984,13 +3993,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal(http.server.listening,true,'management and client must use one live API');
      const address=http.server.address();
      assert.ok(address&&typeof address==='object'&&address.port>0);
-     clientVite=await createServer({
-      root:fileURLToPath(new URL('../../apps/client/',import.meta.url)),
-      mode:'test',logLevel:'error',
-      server:{host:'127.0.0.1',port:0,strictPort:false,
-       proxy:{'/api':{target:'http://127.0.0.1:'+address.port,changeOrigin:false}}}
-     });
-     await clientVite.listen();
+     clientVite=await startPublishedClientPwa({apiOrigin:'http://127.0.0.1:'+address.port});
      const uiAddress=clientVite.httpServer?.address();
      assert.ok(uiAddress&&typeof uiAddress==='object'&&uiAddress.port>0);
      const origin='http://127.0.0.1:'+uiAddress.port;
@@ -4354,6 +4357,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       item.accountId===uiCashDiner.account&&item.settlementIntentId===externalIntentId&&
       item.providerConfirmed===false&&item.externalVerified===false),
      'signed staff projection must expose the pending external intent with explicit booleans');
+     const {pathToFileURL,fileURLToPath}=await import('node:url');
      const cashierRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
      const {createServer:createCashVite}=await import(
       pathToFileURL(cashierRequire.resolve('vite')).href);
@@ -6502,14 +6506,24 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      rejectVite=await createRejectVite({
       root:rejectFileURLToPath(new URL('../../apps/client/',import.meta.url)),
       mode:'test',logLevel:'error',
-      server:{host:'127.0.0.1',port:0,strictPort:false,
+      // Freeze dev-server dependency discovery for this multi-device journey.
+      // A late optimization/full reload can destroy a page.evaluate context
+      // after a durable request has already been created. Keep every real
+      // browser gesture, SQL race and assertion; no navigation retry.
+      optimizeDeps:{noDiscovery:true,include:[
+       'react','react-dom','react-dom/client','react/jsx-runtime','react/jsx-dev-runtime'
+      ]},
+      server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,
        proxy:{'/api':{target:'http://127.0.0.1:'+http.server.address().port,
         changeOrigin:false}}}
      });
      rejectManageVite=await createRejectManageVite({
       root:rejectFileURLToPath(new URL('../../apps/management/',import.meta.url)),
       logLevel:'error',
-      server:{host:'127.0.0.1',port:0,strictPort:false,
+      optimizeDeps:{noDiscovery:true,include:[
+       'react','react-dom','react-dom/client','react/jsx-runtime','react/jsx-dev-runtime','qrcode'
+      ]},
+      server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,
        proxy:{'/api':{target:'http://127.0.0.1:'+http.server.address().port,
         changeOrigin:false}}}
      });
@@ -7132,6 +7146,13 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // grouping_deadline, forced first_confirmed_at, virtual clock or test HTTP
   // route. The same real client PWA confirms first/grouped/late orders.
   if(process.env.SABORA_CI_F21_FULL_WINDOW==='true'){
+   await admin.query(await readFile(new URL(
+    '../../docs/security/sql-candidates/h6_grouped_dispatch_without_stripe_pg17.sql',import.meta.url),'utf8'));
+   const providerWithoutStripe=createH6ProviderRepository({
+    withTransaction:createRoleScopedPostgresTransaction({pool:pools[7],
+     role:'sabora_h6_provider_runtime',allowedSql:new Set([
+      LIST_H6_WITHOUT_STRIPE_SQL,REQUEST_H6_WITHOUT_STRIPE_SQL])})
+   });
    const {pathToFileURL,fileURLToPath}=await import('node:url');
    const ciRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
    const {createServer}=await import(pathToFileURL(ciRequire.resolve('vite')).href);
@@ -7244,6 +7265,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(catalogRefresh.status(),200,await catalogRefresh.text());
     const revisionReadBody=await revisionRead.json();
     assert.equal(revisionReadBody.state,'invalidated');
+    assert.ok(!(await providerWithoutStripe.listSchedulable({withoutStripe:true}))
+     .some(entry=>entry.orderId===first.orderId),
+     'an invalidated revision must drop out of the durable schedule');
     assert.equal(revisionReadBody.lines[0].itemName,'Plato de integración');
     assert.equal(revisionReadBody.lines[0].affected,true);
     await firstUi.page.getByRole('combobox',
@@ -7387,14 +7411,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      }
     });
     notifier=liveListener;
-    // This F21 scheduler has a cash-only dispatch callback and no Stripe
-    // capture transport. The sealed provider listing is GLOBAL: an earlier
-    // pay_now fixture may become due during the real five-minute window.
-    // Keep the real provider query but scope this test-only worker to the
-    // F21 account. A cash round on that account returning 'capture' still
-    // fails below; no production scheduler, SQL or deadline is changed.
+    // Use the same SQL boundary as the distributable Stripe-disabled worker.
+    // Scope the acceptance worker to this account so prior fixtures stay
+    // available for the remaining H6 regression cases.
     const listNaturalWindowSchedulable=async opts=>{
-     const entries=await h6Provider.listSchedulable(opts);
+     const entries=await providerWithoutStripe.listSchedulable({...opts,withoutStripe:true});
      if(entries.length===0)return entries;
      const ownRows=(await admin.query(`SELECT order_id FROM sabora.order_rounds
       WHERE account_id=$1 AND order_id=ANY($2::uuid[])`,
@@ -7405,12 +7426,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const createScheduler=()=>createH6DeferredDispatchScheduler({
      listSchedulable:listNaturalWindowSchedulable,
      dispatchDue:async({orderId})=>{
-      const result=await h6Provider.requestDueCapture({orderId});
-      assert.equal(result.action,'dispatch',
-       'natural-window cash rounds cannot initiate an unobserved Stripe capture');
-      dispatchedIds.add(orderId);
-      dispatchWaiters.get(orderId)?.();
-      return result;
+      const dispatched=await providerWithoutStripe.requestDispatchWithoutStripe({orderId});
+      if(dispatched){
+       dispatchedIds.add(orderId);
+       dispatchWaiters.get(orderId)?.();
+      }
+      return dispatched;
      },
      subscribeCommitted:notifier.subscribe,
      onFailure:error=>naturalErrors.push('dispatch:'+error.message)
@@ -7418,6 +7439,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     beforeRestart=createScheduler();
     schedulers.push(beforeRestart);
     await beforeRestart.start();
+    assert.equal(await providerWithoutStripe.requestDispatchWithoutStripe({orderId:grouped.orderId}),false,
+     'the SQL fence must reject a direct request before the grouping deadline');
     assert.equal(await eventCount(),1,
      'only the explicitly corrected revision may ship before the natural deadline');
     assert.ok(Number.isSafeInteger(listenerBackend)&&listenerBackend>0);
@@ -7458,6 +7481,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.ok(historic.every(row=>row.state==='dispatch_requested'
      &&row.dispatch_state==='requested'&&row.account_id===first.accountId));
     assert.equal(await eventCount(),2,'two workers may not duplicate dispatch events');
+    assert.equal(await providerWithoutStripe.requestDispatchWithoutStripe({orderId:grouped.orderId}),false,
+     'replaying an already requested dispatch must not emit another event');
     await Promise.all([a.wake(),b.wake()]);
     assert.equal(await eventCount(),2);
     // A genuinely late checkout gets an already-due deadline and is
@@ -7492,7 +7517,144 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(dispatches.length,3);
     assert.ok(dispatches.every(row=>row.state==='requested'
      &&row.account_id===first.accountId&&row.origin===httpFixture.naturalTable));
-    for(const [index,dispatch] of dispatches.entries()){
+    // The kitchen PWA reopens with an empty local state and no stream events.
+    // It must recover the exact acknowledgement ID via the authorized board.
+    const kitchenTarget=dispatches.find(row=>row.order_id===grouped.orderId);
+    const managementVite=await createServer({
+     root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+     mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+      proxy:{'/api':{target:'http://127.0.0.1:'+http.server.address().port,changeOrigin:false}}}
+    });
+    let kitchenContext,floorContext,floorPushWorker;
+    try{
+     await managementVite.listen();
+     kitchenContext=await browser.newContext({serviceWorkers:'block'});
+     await kitchenContext.route('**/api/v1/operations/events',route=>route.abort());
+     const kitchen=await kitchenContext.newPage();
+     const managementOrigin=managementVite.resolvedUrls.local[0];
+     const mount=async(page,token,role)=>{
+      await page.evaluate(async ({token,role})=>{
+       const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+       mountAuthenticatedManagementApp({element:document.getElementById('root'),
+        getAccessToken:async()=>token,staffRole:role});
+      },{token,role});
+     };
+     const groupedLines=(await admin.query('SELECT id FROM sabora.order_lines WHERE order_id=$1',
+      [grouped.orderId])).rows;
+     assert.equal(groupedLines.length,1);
+     const line=kitchen.locator('[data-line-id="'+groupedLines[0].id+'"]');
+     const card=kitchen.locator('.order-card').filter({has:line});
+     await kitchen.goto(managementOrigin+'#comandas');
+     await mount(kitchen,jwtKitchen,'kitchen');
+     await card.getByRole('button',{name:'Confirmar recepción'}).waitFor();
+     await kitchen.reload(); // destroy the document and its in-memory events
+     await mount(kitchen,jwtKitchen,'kitchen');
+     await card.getByRole('button',{name:'Confirmar recepción'}).waitFor();
+     assert.equal(await line.getByRole('button',{name:'Iniciar preparación'}).isDisabled(),true);
+     const path='/api/v1/operations/dispatches/'+kitchenTarget.id+'/ack';
+     const [response]=await Promise.all([
+      kitchen.waitForResponse(r=>r.url().endsWith(path)),
+      card.getByRole('button',{name:'Confirmar recepción'}).click()
+     ]);
+     assert.equal(response.status(),200,await response.text());
+     assert.equal((await response.json()).state,'acknowledged');
+     const replay=await http.inject({method:'POST',url:path,
+      headers:{authorization:'Bearer '+jwtKitchen},payload:response.request().postDataJSON()});
+     assert.equal(replay.statusCode,200,replay.body);
+     await card.getByRole('button',{name:'Confirmar recepción'}).waitFor({state:'hidden'});
+     assert.equal(await line.getByRole('button',{name:'Iniciar preparación'}).isEnabled(),true);
+     await line.getByRole('button',{name:'Iniciar preparación'}).click();
+     const markReady=line.getByRole('button',{name:'Marcar lista'});
+     await markReady.waitFor();
+     const [prepared]=await Promise.all([
+      kitchen.waitForResponse(r=>r.request().method()==='POST'&&
+       r.request().postDataJSON()?.targetStatus==='ready'),
+      markReady.click()
+     ]);
+     assert.equal(prepared.status(),201,await prepared.text());
+     assert.equal((await prepared.json()).currentStatus,'ready');
+     const floorJwt=staffJwt(floorWaiterId);
+     const floorPushLogin='sabora_b3_floor_push_'+suffix;
+     await admin.query(`CREATE ROLE ${floorPushLogin} LOGIN NOINHERIT PASSWORD '${password}'`);
+     createdRoles.push(floorPushLogin);
+     await admin.query('GRANT USAGE ON SCHEMA sabora TO '+floorPushLogin);
+     await admin.query('GRANT EXECUTE ON FUNCTION '+FLOOR_PUSH_ROUTINES.join(',')+' TO '+floorPushLogin);
+     const pushUrl=new URL(url);pushUrl.username=floorPushLogin;pushUrl.password=password;
+     const pushPool=new Pool({connectionString:pushUrl.toString(),max:4,connectionTimeoutMillis:3000});
+     pools.push(pushPool);
+     const floorDevice='https://fcm.googleapis.com/fcm/send/fixture-f21-floor';
+     const publicKey=createECDH('prime256v1').generateKeys('base64url');
+     await pushPool.query("SELECT sabora.manage_floor_push_candidate($1,'enable',$2,$3,$4)",
+      [floorWaiterId,floorDevice,publicKey,randomBytes(16).toString('base64url')]);
+     const notifications=[];
+     floorPushWorker=createFloorPushComposition({pool:pushPool,expectedLogin:floorPushLogin,
+      origin:new URL(managementOrigin).origin,publicKey,send:async(device,payload)=>{
+       if(device.endpoint===floorDevice)notifications.push(payload);
+       return 'accepted';
+      }});
+     await floorPushWorker.readiness();
+     const {id:pickupId,version:pickupVersion}=(await admin.query('SELECT id,version FROM sabora.pickup_tasks WHERE order_line_id=$1',
+      [groupedLines[0].id])).rows[0];
+     const pickupPushTag=createHash('sha256').update('pickup:'+pickupId).digest('base64url').slice(0,32);
+     const deliveredPickup=()=>notifications.filter(payload=>payload.tag===pickupPushTag);
+     const drainPush=async count=>{
+      for(let turn=0;turn<32&&deliveredPickup().length<count;turn++)await floorPushWorker.tick();
+      assert.equal(deliveredPickup().length,count);
+     };
+     floorPushWorker.start();
+     await drainPush(1);
+     assert.deepEqual(deliveredPickup(),[{kind:'pickup',tag:pickupPushTag,occurrence:String(pickupVersion)}]);
+     const readyBoard='/api/v1/operations/order-lines?status=ready&limit=100';
+     assert.equal((await http.inject({method:'GET',url:readyBoard,
+      headers:{authorization:'Bearer '+jwtWaiter}})).statusCode,403);
+     const authorizedFloor=await http.inject({method:'GET',url:readyBoard,
+      headers:{authorization:'Bearer '+floorJwt}});
+     assert.equal(authorizedFloor.statusCode,200,authorizedFloor.body);
+     assert.ok(authorizedFloor.json().items.some(item=>item.lineId===groupedLines[0].id&&item.pickup?.state==='ready'));
+     assert.deepEqual((await admin.query(`SELECT b.table_id=d.table_id AND b.session_id=d.session_id AS same_occupation,
+      b.visit_key<>d.visit_key AS separate_qr_authorization
+      FROM sabora.order_line_delivery_destinations d
+      JOIN sabora.customer_account_operational_bindings b ON b.account_id=d.account_id
+      WHERE d.order_line_id=$1`,[groupedLines[0].id])).rows,
+      [{same_occupation:true,separate_qr_authorization:true}]);
+     floorContext=await browser.newContext({serviceWorkers:'block'});
+     const floor=await floorContext.newPage();
+     await floor.goto(managementOrigin+'#resumen');
+     await mount(floor,floorJwt,'waiter');
+     const floorAlerts=floor.getByRole('complementary',{name:'Avisos de sala'});
+     await floorAlerts.getByText(/Platos listos para recoger/).waitFor();
+     await floorAlerts.getByRole('button',{name:'Ir a comandas'}).click();
+     await floor.getByRole('button',{name:'Sala',exact:true}).click();
+     const readyLine=floor.locator('[data-line-id="'+groupedLines[0].id+'"]');
+     const claimPath='/api/v1/operations/order-lines/'+groupedLines[0].id+'/pickup-claim';
+     const [pickup]=await Promise.all([
+      floor.waitForResponse(r=>r.url().endsWith(claimPath)),
+      readyLine.getByRole('button',{name:'Voy a recoger'}).click()
+     ]);
+     assert.equal(pickup.status(),200,await pickup.text());
+     assert.equal((await pickup.json()).outcome,'claimed');
+     await readyLine.getByText(/En recogida/).waitFor();
+     assert.deepEqual((await admin.query(`SELECT l.status,t.state,t.claimed_by
+      FROM sabora.order_lines l JOIN sabora.pickup_tasks t ON t.order_line_id=l.id WHERE l.id=$1`,
+      [groupedLines[0].id])).rows,[{status:'ready',state:'claimed',claimed_by:floorWaiterId}]);
+     await floorPushWorker.tick();
+     assert.equal(deliveredPickup().length,1);
+     await readyLine.getByRole('button',{name:'Cancelo'}).click();
+     await readyLine.getByText('Aviso activo para sala').waitFor();
+     await drainPush(2);
+     assert.equal(deliveredPickup()[1].occurrence,String(BigInt(pickupVersion)+2n));
+     await floorPushWorker.tick();
+     assert.equal(deliveredPickup().length,2);
+     // Preserve the original F21 final state for the remaining H6 assertions.
+     await readyLine.getByRole('button',{name:'Voy a recoger'}).click();
+     await readyLine.getByText(/En recogida/).waitFor();
+    }finally{
+     await floorPushWorker?.close();
+     await floorContext?.close();
+     await kitchenContext?.close();
+     await managementVite.close();
+    }
+    for(const [index,dispatch] of dispatches.filter(row=>row!==kitchenTarget).entries()){
      const ack=await http.inject({method:'POST',
       url:'/api/v1/operations/dispatches/'+dispatch.id+'/ack',
       headers:{authorization:'Bearer '+jwtKitchen,'content-type':'application/json'},
@@ -7560,6 +7722,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     if(notifier)await notifier.close();
     if(browser)await browser.close();
     await clientVite.close();
+    await admin.query(`DROP FUNCTION sabora.list_h6_rounds_without_stripe_candidate(integer),
+     sabora.request_h6_dispatch_without_stripe_candidate(uuid),
+     sabora.read_order_operations_dispatch_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text);
+     REVOKE SELECT(id) ON sabora.kitchen_dispatches FROM sabora_order_operations_fn_owner`);
+    await admin.query(originalPickup);
    }
   }
   }finally{await http.close();}
@@ -8711,8 +8878,6 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    /invalid_b3_confirmation_capabilities/,
    'a revoked writer privilege must prevent candidate construction');
  }finally{
-  if(priorB3Flag===undefined)delete process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE;
-  else process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE=priorB3Flag;
   if(customerEventNotifier)await customerEventNotifier.close();
   for(const connection of connections)connection.release();
   for(const pool of pools)await pool.end();

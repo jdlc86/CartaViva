@@ -86,3 +86,14 @@ test('noncanonical wrapped base64url remains rejected',()=>{
     ciphertext:`${envelope.ciphertext.slice(0,midpoint)}\n${envelope.ciphertext.slice(midpoint)}`}),
   /invalid_staff_delivery_envelope/);
 });
+
+test('recovery envelopes cannot be used for invitation or a different recovery intent',()=>{
+ const recoveryIntentId='c0000000-0000-4000-8000-000000000001';
+ const invite=sealStaffInvitationToken(args),recovery=sealStaffInvitationToken({...args,recoveryIntentId});
+ assert.equal(open(invite),token);
+ assert.equal(open(recovery,{recoveryIntentId}),token);
+ assert.throws(()=>open(recovery),/staff_delivery_decryption_denied/);
+ assert.throws(()=>open(invite,{recoveryIntentId}),/staff_delivery_decryption_denied/);
+ assert.throws(()=>open(recovery,{recoveryIntentId:'c0000000-0000-4000-8000-000000000002'}),/staff_delivery_decryption_denied/);
+ assert.throws(()=>sealStaffInvitationToken({...args,recoveryIntentId:null}),/invalid_staff_delivery_envelope_context/);
+});

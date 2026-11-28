@@ -1,4 +1,6 @@
 import Fastify from 'fastify';
+import {AsyncLocalStorage} from 'node:async_hooks';
+import {createFloorPushComposition} from './floor-web-push.mjs';
 import {performance} from 'node:perf_hooks';
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
 import {validateM2RuntimeSqlIdentities} from './m2-runtime-identity-inventory.mjs';
@@ -16,6 +18,7 @@ import {createCustomerSessionRevoker} from './customer-session-revoker.mjs';
 import {createCustomerCookieAuth} from './customer-cookie-session-candidate.mjs';
 import {createCatalogScopedQuery} from './catalog-scoped-query.mjs';
 import {registerCatalogHttpRoute} from './catalog-http-route.mjs';
+import {registerPublishedCustomerFeatures} from './published-customer-features.mjs';
 import {createVerifiedTableChangeB3CustomerFlowCandidate,
  assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole}
  from './table-change-isolated-sql-composition-candidate.mjs';
@@ -30,11 +33,21 @@ import {registerTableChangeStaffHttp,registerTableChangeStaffPendingHttp}
  from './table-change-http-candidate.mjs';
 import {createTableChangeCommitNotifier} from './table-change-state-stream-candidate.mjs';
 import {createStaffProtectedHooksFromPool} from './staff-protected-hooks-from-pool.mjs';
+import {createVerifiedStaffDirectoryFromPool} from './staff-directory-composition.mjs';
+import {registerStaffDirectoryHttpCandidate} from './staff-directory-http-candidate.mjs';
+import {preflightStaffDirectoryIdentity} from './staff-directory-identity-preflight.mjs';
+import {createVerifiedStaffLifecycleFromPool} from './staff-lifecycle-composition.mjs';
+import {registerStaffRevocationHttp} from './staff-lifecycle-http-candidate.mjs';
+import {preflightStaffLifecycleIdentity} from './staff-lifecycle-identity-preflight.mjs';
+import {createVerifiedStaffIdentityLifecycleCandidate} from './staff-identity-lifecycle-composition.mjs';
+import {createStaffPasskeySession} from './staff-passkey-session.mjs';
+import {createVerifiedRootRecoveryCandidate} from './staff-root-recovery-composition.mjs';
+import {ROOT_MUTATION_PROOF_SQL} from './staff-root-recovery-candidate.mjs';
 import {preflightOrderTransitionStaffIdentity}
  from './order-operations-identity-preflight.mjs';
 import {createOrderOperationsCoordinator} from './order-operations-coordinator.mjs';
 import {createOrderOperationsRepository,TRANSITION_ORDER_LINE_SQL,
- READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL}
+ READ_H6_DELIVERY_BOARD_SQL,READ_H6_DISPATCH_BOARD_SQL,READ_ORDER_HISTORY_SQL}
  from './order-operations-repository.mjs';
 import {registerOrderOperationsHttp} from './order-operations-http.mjs';
 import {assertH6RuntimeIdentity} from './h6-sql-preflight.mjs';
@@ -42,6 +55,7 @@ import {createH6CustomerPaymentFlow} from './h6-customer-payment-flow.mjs';
 import {createH6PaymentOrchestrator} from './h6-payment-orchestrator.mjs';
 import {registerH6StripeWebhookHttp} from './h6-stripe-webhook-http.mjs';
 import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,LIST_SCHEDULABLE_H6_SQL,
+ LIST_H6_WITHOUT_STRIPE_SQL,REQUEST_H6_WITHOUT_STRIPE_SQL,
  REQUEST_DUE_CAPTURE_H6_SQL,REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,
  RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,RECORD_REFUND_H6_SQL,
  REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL}
@@ -62,7 +76,7 @@ import {assertM2CustomerEventCapability,assertM2AccountCloseCapability,
 import {assertM3TablesCapability,assertM3CatalogCapability,
  M3_TABLES_ROLE,M3_CATALOG_ROLE} from './m3-runtime-capabilities.mjs';
 import {createM3TablesRepository,createM3CatalogRepository,READ_M3_TABLES_SQL,
- MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,READ_M3_CATALOG_SQL,
+ MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,TABLE_CHANGE_WINDOW_M3_SQL,READ_M3_CATALOG_SQL,
  MANAGE_M3_CATALOG_SQL,createM3FinanceRepository,READ_M3_FINANCE_SQL} from './m3-management-repository.mjs';
 import {registerM3ManagementHttp} from './m3-management-http.mjs';
 import {OWNERSHIP_ROLE,OWNERSHIP_SQL,assertOwnershipRuntimeIdentity,
@@ -104,7 +118,8 @@ const staffGuard=forRoles=>roles=>{
 // Separate opt-in assembly. It owns Fastify/listeners/scheduler, but never
 // reads environment variables, creates LOGINs or imports server.mjs.
 export async function createM2RestaurantCandidate({customer,tableChange,staff,h4,h6,
- management=null,waiterCalls=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,
+ management=null,waiterCalls=null,floorPush=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,
+ dispatchWithoutStripe=false,
  observeFailure=()=>{},observability=null,requireTrustedKeysOnReadiness=false}={}){
  const app=Fastify({logger:false,trustProxy:false});
  // Telemetry must never receive arbitrary provider/SQL exception details.
@@ -115,11 +130,12 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   try{observability?.recordOperation({component:'database',
    operation:'check',outcome,durationMs:performance.now()-started});}catch{}
  };
- let tableNotifier,h6Notifier,scheduler,announcementStream,closed=false,
-  operational=false,notificationDependencyLost=false;
+ let tableNotifier,h6Notifier,scheduler,announcementStream,rootRecovery,identityLifecycle,floorPushService,closed=false,
+  operational=false,notificationDependencyLost=false,dispatchSchedulerFailed=false;
  const closeServices=async()=>{
   if(closed)return;closed=true;operational=false;
-  await Promise.allSettled([scheduler?.close(),announcementStream?.close(),tableNotifier?.close(),h6Notifier?.close()]);
+  await Promise.allSettled([scheduler?.close(),announcementStream?.close(),tableNotifier?.close(),
+   h6Notifier?.close(),rootRecovery?.close(),identityLifecycle?.close(),floorPushService?.close()]);
  };
  try{
   // Explicit diagnostics injection for the full H3-H6/M3 HTTP composition.
@@ -137,6 +153,10 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
      typeof customer.allowedOrigin!=='string'||typeof customer.secretKey!=='string'||
      Buffer.byteLength(customer.secretKey,'utf8')<32||
      typeof staff.issuer!=='string'||typeof staff.getTrustedKeys!=='function'||
+     (staff.directory!=null&&((!staff.passkey&&!staff.rootRecovery)||typeof staff.directory.issueCapability!=='function'))||
+     (staff.rootRecovery!=null&&(staff.passkey||!management?.ownership||!staff.rootRecovery.passkey||
+      staff.rootRecovery.passkey.origin!==staff.rootRecovery.resend?.managementOrigin))||
+     (staff.revocation!=null&&typeof staff.revocation.issueCapability!=='function')||
      typeof h4.issueTransitionCapability!=='function'||typeof h4.issueReadCapability!=='function'||
      typeof h6.issueStaffCapability!=='function'||typeof h6.issueCloseCapability!=='function'||
      !h6.stripe||
@@ -144,11 +164,13 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
      // A payment-disabled production runtime stays webhook-disabled.
      (h6.webhook!=null&&typeof h6.stripe.retrieveCapturableEvidence!=='function')||
      typeof observeFailure!=='function'||typeof enableDeferredDispatch!=='boolean'||
+     typeof dispatchWithoutStripe!=='boolean'||(dispatchWithoutStripe&&(!enableDeferredDispatch||h6.webhook!=null))||
      (management!==null&&(!management||typeof management!=='object'||
        typeof management.expectedTablesLogin!=='string'||
        typeof management.expectedCatalogLogin!=='string'||
        typeof management.issueTablesCapability!=='function'||
        typeof management.issueCatalogCapability!=='function'||
+       (management.tableChangeWindow!==undefined&&typeof management.tableChangeWindow!=='boolean')||
        typeof management.qr?.secret!=='string'||typeof management.qr?.origin!=='string'||
        typeof management.qr?.restaurantCode!=='string'||
        (management.communications!==undefined&&(
@@ -173,9 +195,34 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   // The canonical SQL slot inventory is validated before any query/HTTP route.
   // It has no environment access and reports only generic denial on conflict.
   validateM2RuntimeSqlIdentities({
-   customer,tableChange,staff,h4,h6,management,waiterCalls
+   customer,tableChange,staff,h4,h6,management,waiterCalls,floorPush
   });
+  if(floorPush){
+   if(!staff.passkey&&!staff.rootRecovery)throw Error('invalid_m2_restaurant_candidate');
+   floorPushService=createFloorPushComposition({...floorPush,observeFailure});
+   await floorPushService.readiness();
+  }
 
+  let staffPasskey=staff.passkey;
+  if(staff.rootRecovery){
+   const {passkey}=staff.rootRecovery;
+   if(!(passkey.secret instanceof Uint8Array)||passkey.secret.byteLength<32||
+    !['options','verify','user','logout'].every(method=>typeof passkey.provider?.[method]==='function'))
+    throw Error('invalid_m2_restaurant_candidate');
+   const staffRecovery=staff.rootRecovery.staffRecovery;
+   rootRecovery=await createVerifiedRootRecoveryCandidate({...staff.rootRecovery,observeFailure,
+    staffRecovery:staffRecovery==null?null:{...staffRecovery,issuer:staff.issuer,getTrustedKeys:staff.getTrustedKeys},
+    publicRecovery:staff.rootRecovery.publicRecovery==null?null:{...staff.rootRecovery.publicRecovery,
+     issuer:staff.issuer,getTrustedKeys:staff.getTrustedKeys}
+   });
+   staffPasskey=createStaffPasskeySession({...passkey,issuer:staff.issuer,
+    getTrustedKeys:staff.getTrustedKeys,rootAccess:rootRecovery.allowsAccess});
+   if(staff.identityLifecycle)identityLifecycle=await createVerifiedStaffIdentityLifecycleCandidate({
+    ...staff.identityLifecycle,origin:passkey.origin,issuer:staff.issuer,getTrustedKeys:staff.getTrustedKeys,observeFailure,
+    issueRootMutationProof:rootRecovery.issueMutationProof
+   });
+  }
+  let staffDirectory,staffRevocation;
   const preflight=async()=>{
    // Readiness includes the configured issuer and a bounded trusted JWKS
    // source. Routes must not be considered ready merely because SQL works.
@@ -214,12 +261,21 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    await assertPendingReaderCapabilities({pool:tableChange.pendingPool,
     expectedLogin:tableChange.expectedPendingLogin});
    await preflightOrderTransitionStaffIdentity({pool:staff.pool,role:staff.expectedLogin});
+   if(rootRecovery)await rootRecovery.readiness();
+   if(identityLifecycle)await identityLifecycle.readiness();
+   if(floorPushService)await floorPushService.readiness();
+   if(staffDirectory)await preflightStaffDirectoryIdentity({
+    pool:staff.directory.pool,role:staff.directory.expectedLogin
+   });
+   if(staffRevocation)await preflightStaffLifecycleIdentity({
+    pool:staff.revocation.pool,role:staff.revocation.expectedLogin
+   });
    await assertM2H4OperationsCapability({pool:h4.operationsPool,
-    expectedLogin:h4.expectedOperationsLogin});
+    expectedLogin:h4.expectedOperationsLogin,dispatchSnapshot:dispatchWithoutStripe});
    await assertH6RuntimeIdentity({pool:h6.customerPool,
     expectedLogin:h6.expectedCustomerLogin,capability:'sabora_h6_customer_runtime'});
    await assertH6RuntimeIdentity({pool:h6.providerPool,
-    expectedLogin:h6.expectedProviderLogin,capability:'sabora_h6_provider_runtime'});
+    expectedLogin:h6.expectedProviderLogin,capability:'sabora_h6_provider_runtime',dispatchWithoutStripe});
    await assertH6RuntimeIdentity({pool:h6.operationsPool,
     expectedLogin:h6.expectedOperationsLogin,capability:'sabora_h6_operations_runtime'});
    await assertM2AccountCloseCapability({pool:h6.closePool,
@@ -228,7 +284,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
     expectedLogin:h6.expectedEventLogin});
    if(management){
     await assertM3TablesCapability({pool:management.tablesPool,
-     expectedLogin:management.expectedTablesLogin});
+     expectedLogin:management.expectedTablesLogin,tableChangeWindow:management.tableChangeWindow});
     await assertM3CatalogCapability({pool:management.catalogPool,
      expectedLogin:management.expectedCatalogLogin});
     if(management.ownership){
@@ -252,6 +308,9 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   const cookieAuth=createCustomerCookieAuth({allowedOrigin:customer.allowedOrigin,
    verifyCustomerSession:createCustomerSessionVerifier({query:sessionQuery}),
    revokeCustomerSession:createCustomerSessionRevoker({query:sessionQuery})});
+  const mutationScope=rootRecovery?new AsyncLocalStorage():null;
+  const getStaffMutationProof=mutationScope?()=>mutationScope.getStore()?.proof:undefined;
+  if(mutationScope)app.addHook('onRequest',(_request,_reply,done)=>mutationScope.run({proof:null},done));
   const b3=await createVerifiedTableChangeB3CustomerFlowCandidate({
    customerPool:tableChange.customerPool,operationsPool:tableChange.operationsPool,
    confirmationPool:tableChange.confirmationPool,h6ReadPool:tableChange.h6ReadPool,
@@ -261,7 +320,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    expectedH6ReadLogin:tableChange.expectedH6ReadLogin,
    expectedFlowLogin:customer.expectedFlowLogin,hashSession:tableChange.hashSession,
    verifyStaff:({verifiedIdentity,verifiedStaff})=>({userId:verifiedIdentity.userId,
-    role:verifiedStaff.role}),secretKey:customer.secretKey
+    role:verifiedStaff.role}),secretKey:customer.secretKey,getStaffMutationProof
   });
   const pending=await createVerifiedPendingTableChangeReader({
    pendingPool:tableChange.pendingPool,expectedLogin:tableChange.expectedPendingLogin,
@@ -269,18 +328,19 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
     role:verifiedStaff.role})
   });
   const providerTx=createRoleScopedPostgresTransaction({pool:h6.providerPool,
-   role:'sabora_h6_provider_runtime',allowedSql:providerSql});
+   role:'sabora_h6_provider_runtime',allowedSql:dispatchWithoutStripe?
+    new Set([...providerSql,LIST_H6_WITHOUT_STRIPE_SQL,REQUEST_H6_WITHOUT_STRIPE_SQL]):providerSql});
   const customerEconomicTx=createRoleScopedPostgresTransaction({pool:h6.customerPool,
    role:'sabora_h6_customer_runtime',allowedSql:customerEconomicSql});
   const operationsTx=createRoleScopedPostgresTransaction({pool:h6.operationsPool,
-   role:'sabora_h6_operations_runtime',allowedSql:operationsSql});
+   role:'sabora_h6_operations_runtime',allowedSql:operationsSql,getStaffMutationProof});
   const closeTx=createRoleScopedPostgresTransaction({pool:h6.closePool,
-   role:M2_ACCOUNT_CLOSE_ROLE,allowedSql:new Set([CLOSE_ACCOUNT_H6_SQL])});
+   role:M2_ACCOUNT_CLOSE_ROLE,allowedSql:new Set([CLOSE_ACCOUNT_H6_SQL]),getStaffMutationProof});
   const eventTx=createRoleScopedPostgresTransaction({pool:h6.eventPool,
    role:M2_CUSTOMER_EVENT_ROLE,allowedSql:new Set([READ_CUSTOMER_EVENTS_H6_SQL])});
   const h4Tx=createRoleScopedPostgresTransaction({pool:h4.operationsPool,
    role:M2_H4_OPERATIONS_ROLE,allowedSql:new Set([TRANSITION_ORDER_LINE_SQL,
-    READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
+    dispatchWithoutStripe?READ_H6_DISPATCH_BOARD_SQL:READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL]),getStaffMutationProof});
   const provider=createH6ProviderRepository({withTransaction:providerTx});
   // Signed ingress is optional and restricted to test-mode webhooks.
   // server.mjs remains health-only; no route is exposed by default.
@@ -304,21 +364,66 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   const composedOperations=Object.freeze({...operations,
    closeAccount:closeOperations.closeAccount});
   const customerEvents=createH6CustomerEventRepository({withTransaction:eventTx});
-  const forRoles=createStaffProtectedHooksFromPool({pool:staff.pool,issuer:staff.issuer,
+  const authenticate=staffPasskey?.authenticate??(staff.requirePasskey
+   ? async (_request,reply)=>reply.header('Cache-Control','no-store').code(401).send({error:'unauthorized'})
+   : undefined);
+  const forRoles=createStaffProtectedHooksFromPool({pool:staff.pool,issuer:staff.issuer,authenticate,
    getTrustedKeys:staff.getTrustedKeys,...(staff.verify?{verify:staff.verify}:{}),
    ...(staff.observe?{observe:staff.observe}:{})});
-  const oneGuard=staffGuard(forRoles);
+  const guard=staffGuard(forRoles);
+  const oneGuard=roles=>{
+   const check=guard(roles);
+   if(!mutationScope)return check;
+   return async(request,reply)=>{
+    await check(request,reply);
+    if(reply.sent||['GET','HEAD'].includes(request.method))return;
+    const scope=mutationScope.getStore(),identity=request.verifiedIdentity;
+    if(!scope||identity?.userId!==request.verifiedStaff?.userId)
+     return reply.code(403).send({error:'staff_recovery_access_denied'});
+    try{scope.proof=rootRecovery.issueMutationProof({actorId:identity.userId,binding:identity.userId,
+     credentialHash:request.verifiedRootCredential,deadlineMs:identity.expiresAt*1000,scope:'staff-operation'});}
+    catch{return reply.code(403).send({error:'staff_recovery_access_denied'});}
+   };
+  };
+  if(staff.directory){
+   staffDirectory=await createVerifiedStaffDirectoryFromPool({
+    pool:staff.directory.pool,role:staff.directory.expectedLogin,
+    issueCapability:staff.directory.issueCapability
+   });
+   registerStaffDirectoryHttpCandidate(app,{forRoles:oneGuard,directory:staffDirectory});
+  }
+  if(staff.revocation){
+   staffRevocation=await createVerifiedStaffLifecycleFromPool({
+    pool:staff.revocation.pool,role:staff.revocation.expectedLogin,
+    issueCapability:staff.revocation.issueCapability,revocationOnly:true,
+    issueRootMutationProof:rootRecovery?.issueMutationProof
+   });
+   registerStaffRevocationHttp(app,{forRoles:oneGuard,coordinator:staffRevocation});
+  }
+  rootRecovery?.staffRecoveryHttp?.register(app,{forRoles});
+  rootRecovery?.registerPublic(app);
+  identityLifecycle?.register(app,{forRoles});
+  staffPasskey?.register(app,{forRoles,...(rootRecovery?{rootSecurity:rootRecovery.security}:{}),
+   ...(identityLifecycle?{rootBootstrap:identityLifecycle.rootBootstrap}:{}),features:{
+   tableChange:true,waiterCalls:Boolean(waiterCalls),management:Boolean(management),
+   ...(floorPushService?{floorPush:true}:{}),
+   ownership:Boolean(management?.ownership),staffDirectory:Boolean(staffDirectory),
+   staffRevocation:Boolean(staffRevocation),...(rootRecovery?{rootSecurity:true}:{}),
+   ...(rootRecovery?.staffRecoveryHttp?{staffRecovery:true}:{}),
+   ...(identityLifecycle?{staffLifecycle:true,staffFirstAdmin:true}:{}),
+   ...(management?.tableChangeWindow?{tableChangeWindow:true}:{})
+  }});
   const h4Operations=createOrderOperationsCoordinator({withTransaction:h4Tx,
-   repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
+   repository:createOrderOperationsRepository({deliveryBoardCandidate:true,dispatchSnapshot:dispatchWithoutStripe}),
    issueTransitionCapability:h4.issueTransitionCapability,
    issueReadCapability:h4.issueReadCapability});
   let m3Tables,m3Catalog,m3Finance,m5Communications,ownershipGovernance;
   if(management){
    const tablesTx=createRoleScopedPostgresTransaction({pool:management.tablesPool,
     role:M3_TABLES_ROLE,allowedSql:new Set([READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,
-     OCCUPANCY_M3_TABLE_SQL])});
+     OCCUPANCY_M3_TABLE_SQL,...(management.tableChangeWindow?[TABLE_CHANGE_WINDOW_M3_SQL]:[])]),getStaffMutationProof});
    const catalogTx=createRoleScopedPostgresTransaction({pool:management.catalogPool,
-    role:M3_CATALOG_ROLE,allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL,READ_M3_FINANCE_SQL])});
+    role:M3_CATALOG_ROLE,allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL,READ_M3_FINANCE_SQL]),getStaffMutationProof});
    m3Tables=createM3TablesRepository({withTransaction:tablesTx,
     issueCapability:management.issueTablesCapability});
    m3Catalog=createM3CatalogRepository({withTransaction:catalogTx,
@@ -329,14 +434,15 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    if(management.ownership){
     const ownershipTx=createRoleScopedPostgresTransaction({
      pool:management.ownership.pool,role:OWNERSHIP_ROLE,
-     allowedSql:new Set([OWNERSHIP_SQL])});
+     allowedSql:new Set([OWNERSHIP_SQL,...(rootRecovery?[ROOT_MUTATION_PROOF_SQL]:[])])});
     ownershipGovernance=createOwnershipGovernanceRepository({
-     withTransaction:ownershipTx,issueCapability:management.ownership.issueCapability});
+     withTransaction:ownershipTx,issueCapability:management.ownership.issueCapability,
+     issueRootMutationProof:rootRecovery?.issueMutationProof});
    }
    if(management.communications){
     const adminCommsTx=createRoleScopedPostgresTransaction({
      pool:management.communications.adminPool,role:M5_COMMS_ADMIN_ROLE,
-     allowedSql:new Set([READ_M5_COMMS_ADMIN_SQL,MANAGE_M5_COMMS_SQL])});
+     allowedSql:new Set([READ_M5_COMMS_ADMIN_SQL,MANAGE_M5_COMMS_SQL]),getStaffMutationProof});
     const publicCommsTx=createRoleScopedPostgresTransaction({
      pool:management.communications.publicPool,role:M5_COMMS_PUBLIC_ROLE,
      allowedSql:new Set([READ_M5_COMMS_PUBLIC_SQL])});
@@ -362,7 +468,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   registerCustomerRegistrationCandidate(app,{allowedOrigin:customer.allowedOrigin,
    register:createRestrictedCustomerRegistration({withTransaction:registrationTx})});
   registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange:b3.tableChange,
-   tableChangeNotifier:tableNotifier,tableChangeObserveFailure:observeFailure});
+   tableChangeNotifier:tableNotifier,tableChangeObserveFailure:observeFailure,
+   canWriteOrders:()=>!dispatchWithoutStripe||operational});
   registerTableChangeStaffHttp(app,{service:b3.tableChange,forRoles:oneGuard});
   registerTableChangeStaffPendingHttp(app,{service:pending,forRoles:oneGuard});
   registerOrderOperationsHttp(app,{forRoles:oneGuard,operations:h4Operations,
@@ -374,13 +481,17 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    subscribeCommitted:h6Notifier.subscribe,heartbeatMs:eventHeartbeatMs});
   registerH6StaffEventStreamHttp(app,{forRoles:oneGuard,events:operationsRepository,
    issueCapability:h6.issueStaffCapability,subscribeCommitted:h6Notifier.subscribe,
-   heartbeatMs:eventHeartbeatMs});
+   heartbeatMs:eventHeartbeatMs,assertIdentity:staffPasskey?.assertIdentity});
   if(waiterCalls)registerWaiterCallHttp(app,{cookieAuth,forRoles:oneGuard,
    repository:createWaiterCallComposition({
     customerPool:waiterCalls.customerPool,staffPool:waiterCalls.staffPool,
-    issueStaffCapability:waiterCalls.issueStaffCapability})});
+    issueStaffCapability:waiterCalls.issueStaffCapability,getStaffMutationProof})});
+  floorPushService?.register(app,{forRoles:oneGuard});
+  registerPublishedCustomerFeatures(app,{tableChange:true,waiterCalls:Boolean(waiterCalls),
+   isAvailable:()=>operational});
   if(management)registerM3ManagementHttp(app,{forRoles:oneGuard,tables:m3Tables,
-   catalog:m3Catalog,finance:m3Finance,qr:management.qr,observeFailure});
+   catalog:m3Catalog,finance:m3Finance,qr:management.qr,
+   tableChangeWindow:management.tableChangeWindow,observeFailure});
   if(ownershipGovernance)registerOwnershipGovernanceHttp(app,{
    forRoles:oneGuard,repository:ownershipGovernance});
   if(m5Communications){
@@ -393,9 +504,13 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
 
   if(enableDeferredDispatch){
    scheduler=createH6DeferredDispatchScheduler({
-    listSchedulable:options=>provider.listSchedulable(options),
-    dispatchDue:({orderId})=>payments.captureOrDispatch({orderId,serverDue:true}),
-    subscribeCommitted:h6Notifier.subscribe,onFailure:observeFailure
+    listSchedulable:options=>provider.listSchedulable({...options,withoutStripe:dispatchWithoutStripe}),
+    dispatchDue:dispatchWithoutStripe?(input=>provider.requestDispatchWithoutStripe(input)):
+     (({orderId})=>payments.captureOrDispatch({orderId,serverDue:true})),
+    subscribeCommitted:h6Notifier.subscribe,onFailure:error=>{
+     if(dispatchWithoutStripe){dispatchSchedulerFailed=true;operational=false;reportDependencyFailure('database');}
+     observeFailure(error);
+    }
    });
    await scheduler.start();
   }
@@ -425,7 +540,10 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    return {status:'ready',service:management?'sabora-m3-candidate':'sabora-m2-candidate',mode:'opt-in'};
   });
   app.addHook('onClose',closeServices);
-  await app.ready();operational=!notificationDependencyLost;
+  await rootRecovery?.start();
+  await identityLifecycle?.start();
+  await app.ready();operational=!notificationDependencyLost&&!dispatchSchedulerFailed;
+  floorPushService?.start();
   let closePromise=null;
   return Object.freeze({app,economicService,mode:management?'opt-in-h3-h6-m3-candidate':'opt-in-h3-h6-m2-candidate',
    close(){if(!closePromise)closePromise=app.close();return closePromise;},

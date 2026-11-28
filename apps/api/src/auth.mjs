@@ -7,8 +7,10 @@ const decodeJson = (part) => {
   try { return JSON.parse(Buffer.from(part, 'base64url').toString('utf8')); }
   catch { throw new Error('invalid_token'); }
 };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function verifySupabaseAccessToken(token, { issuer, audience = 'authenticated', keys, now = () => Date.now() } = {}) {
+export function verifySupabaseAccessToken(token, { issuer, audience = 'authenticated', keys,
+  now = () => Date.now(), requirePasskey = false, requireEnrollmentSession = false } = {}) {
   if (typeof token !== 'string' || token.length > 16384) throw new Error('invalid_token');
   if (typeof issuer !== 'string' || !/^https:\/\/[^/]+\/auth\/v1$/.test(issuer)) throw new Error('invalid_verifier_config');
   if (!Array.isArray(keys) || keys.length === 0) throw new Error('invalid_verifier_config');
@@ -27,10 +29,24 @@ export function verifySupabaseAccessToken(token, { issuer, audience = 'authentic
   if (!valid) throw new Error('invalid_token');
   const seconds = Math.floor(now() / 1000);
   if (!payload || payload.iss !== issuer || payload.aud !== audience ||
-      typeof payload.sub !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.sub) ||
+      typeof payload.sub !== 'string' || !UUID.test(payload.sub) ||
       !Number.isSafeInteger(payload.exp) || payload.exp <= seconds ||
       !Number.isSafeInteger(payload.iat) || payload.iat > seconds ||
       (payload.nbf !== undefined && (!Number.isSafeInteger(payload.nbf) || payload.nbf > seconds)) ||
       payload.role !== 'authenticated') throw new Error('invalid_token');
+  if (requirePasskey) {
+    if (payload.is_anonymous !== false || !UUID.test(payload.session_id ?? '') ||
+        !Array.isArray(payload.amr) ||
+        !payload.amr.some(entry => entry?.method === 'passkey' &&
+          Number.isSafeInteger(entry.timestamp) && entry.timestamp > 0 && entry.timestamp <= seconds)) {
+      throw new Error('invalid_token');
+    }
+    return Object.freeze({ userId: payload.sub, sessionId: payload.session_id, expiresAt: payload.exp });
+  }
+  if (requireEnrollmentSession) {
+    if (payload.is_anonymous !== false || !UUID.test(payload.session_id ?? ''))
+      throw new Error('invalid_token');
+    return Object.freeze({userId:payload.sub,sessionId:payload.session_id,expiresAt:payload.exp});
+  }
   return Object.freeze({ userId: payload.sub });
 }

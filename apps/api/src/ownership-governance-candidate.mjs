@@ -2,6 +2,7 @@
 // No SQL table access from browser, ROOT does not become a routine writer.
 import {createHash,createHmac,randomUUID} from 'node:crypto';
 import {M2_RUNTIME_IDENTITY_SQL,M2_RUNTIME_FUNCTIONS_SQL} from './m2-runtime-capabilities.mjs';
+import {ROOT_MUTATION_PROOF_SQL} from './staff-root-recovery-candidate.mjs';
 
 export const OWNERSHIP_ROLE='sabora_ownership_runtime';
 export const OWNERSHIP_SQL='SELECT sabora.admin_ownership_action_candidate($1::jsonb,$2::text,$3::text) AS result';
@@ -104,13 +105,20 @@ const one=answer=>{
  return answer.rows[0].result;
 };
 
-export function createOwnershipGovernanceRepository({withTransaction,issueCapability,newId=randomUUID}={}){
+export function createOwnershipGovernanceRepository({withTransaction,issueCapability,issueRootMutationProof,newId=randomUUID}={}){
  if(typeof withTransaction!=='function'||typeof issueCapability!=='function'||
     typeof newId!=='function')throw error('invalid_ownership_repository');
- const invoke=(actor,action,requestId,body)=>{
+ const invoke=(actor,action,requestId,body,verified)=>{
   const cap=issueCapability({...actor,action:action==='read'?'ownership.read':'ownership.manage',
    requestId,body});
-  return withTransaction(query=>query(OWNERSHIP_SQL,[JSON.stringify(cap),action,body]).then(one));
+  return withTransaction(async query=>{
+   if(action!=='read'&&issueRootMutationProof){
+    const proof=issueRootMutationProof({actorId:actor.actorId,credentialHash:verified.verifiedRootCredential,
+     deadlineMs:Math.min(cap.expiresAtMs,verified.verifiedIdentity.expiresAt*1000),scope:'ownership',binding:requestId});
+    await query(ROOT_MUTATION_PROOF_SQL,[proof]);
+   }
+   return one(await query(OWNERSHIP_SQL,[JSON.stringify(cap),action,body]));
+  });
  };
  return Object.freeze({
   read(verified){
@@ -121,7 +129,7 @@ export function createOwnershipGovernanceRepository({withTransaction,issueCapabi
   transition(verified,input){
    const actor=verifiedActor(verified),valid=validateOwnershipAction(input);
    const {requestId,action,...payload}=valid;
-   return invoke(actor,action,requestId,JSON.stringify({action,...payload}));
+   return invoke(actor,action,requestId,JSON.stringify({action,...payload}),verified);
   }
  });
 }
@@ -133,7 +141,8 @@ function replyError(reply,failure){
  if(code==='22023'||code==='invalid_ownership_request')return reply.code(400).send({error:'invalid_ownership_request'});
  return reply.code(503).send({error:'ownership_unavailable'});
 }
-const verified=request=>({verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff});
+const verified=request=>({verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff,
+ verifiedRootCredential:request.verifiedRootCredential});
 
 export function registerOwnershipGovernanceHttp(app,{forRoles,repository}={}){
  if(typeof app?.get!=='function'||typeof app?.post!=='function'||

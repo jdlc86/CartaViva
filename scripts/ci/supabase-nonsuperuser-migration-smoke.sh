@@ -370,4 +370,97 @@ assert.equal(sql(login,"SELECT count(*) FROM sabora.staff_members WHERE user_id=
 console.log('sabora_s51_real_nonsuperuser_staff_runtime_preflight_verified');
 JS
 echo 'sabora_s51_nonsuperuser_atomic_ledger_verified'
+# S55 applies the candidate delta only to this disposable copy after the
+# exact genesis ledger and the restricted runtime fixtures were verified.
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ < docs/security/sql-candidates/h6_grouped_dispatch_without_stripe_pg17.sql
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc "
+ SELECT NOT pg_has_role(current_user,'sabora_h6_fn_owner','SET')
+ AND NOT has_schema_privilege('sabora_h6_fn_owner','sabora','CREATE')
+ AND count(*)=2 AND bool_and(p.prosecdef
+  AND pg_get_userbyid(p.proowner)='sabora_h6_fn_owner'
+  AND has_function_privilege('sabora_h6_provider_runtime',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('service_role',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('sabora_h6_customer_runtime',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE'))
+ FROM pg_proc p WHERE p.oid IN (
+  'sabora.list_h6_rounds_without_stripe_candidate(integer)'::regprocedure,
+  'sabora.request_h6_dispatch_without_stripe_candidate(uuid)'::regprocedure
+ )")" == t ]] || exit 1
+echo 'sabora_s55_dispatch_delta_nonsuperuser_verified'
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ < docs/security/sql-candidates/table_change_response_window_pg17.sql
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc "
+ SELECT NOT pg_has_role(current_user,'sabora_m3_management_fn_owner','SET')
+ AND NOT has_schema_privilege('sabora_m3_management_fn_owner','sabora','CREATE')
+ AND p.prosecdef AND pg_get_userbyid(p.proowner)='sabora_m3_management_fn_owner'
+ AND has_function_privilege('sabora_m3_tables_runtime',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('sabora_m3_catalog_runtime',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('service_role',p.oid,'EXECUTE')
+ AND NOT has_table_privilege('sabora_m3_tables_runtime','sabora.restaurant_settings','UPDATE')
+ AND NOT has_column_privilege('sabora_m3_tables_runtime','sabora.restaurant_settings','table_change_response_seconds','UPDATE')
+ FROM pg_proc p WHERE p.oid='sabora.table_change_window_m3_candidate(jsonb,integer,integer)'::regprocedure
+ ")" == t ]] || exit 1
+echo 'sabora_s55_table_change_window_delta_nonsuperuser_verified'
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ < docs/security/sql-candidates/h6_dispatch_board_snapshot_pg17.sql
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc "
+ SELECT NOT pg_has_role(current_user,'sabora_order_operations_fn_owner','SET')
+ AND NOT pg_has_role(current_user,'sabora_h6_fn_owner','SET')
+ AND NOT has_schema_privilege('sabora_order_operations_fn_owner','sabora','CREATE')
+ AND NOT has_schema_privilege('sabora_h6_fn_owner','sabora','CREATE')
+ AND p.prosecdef AND pg_get_userbyid(p.proowner)='sabora_order_operations_fn_owner'
+ AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']
+ AND has_function_privilege('sabora_b3_h4_transition_runtime',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('service_role',p.oid,'EXECUTE')
+ AND NOT has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE')
+ AND NOT has_column_privilege('sabora_b3_h4_transition_runtime','sabora.kitchen_dispatches','id','SELECT')
+ FROM pg_proc p WHERE p.oid=
+  'sabora.read_order_operations_dispatch_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+ ")" == t ]] || exit 1
+echo 'sabora_s55_dispatch_board_snapshot_nonsuperuser_verified'
+for identity_overlay in staff_root_bootstrap staff_first_admin_bootstrap \
+ staff_invitation_outbox_schema staff_invitation_custody staff_invitation_custody_restricted \
+ staff_invitation_dispatch_envelope staff_invitation_directory_outbox staff_invitation_worker staff_first_admin_durable \
+ staff_root_recovery; do
+  echo "sabora_identity_delta_installing:$identity_overlay"
+  docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+   < "docs/security/sql-candidates/${identity_overlay}_pg17.sql"
+done
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc "
+ WITH owners AS (SELECT oid,rolname,rolcanlogin,rolsuper,rolbypassrls FROM pg_catalog.pg_roles
+  WHERE rolname IN ('sabora_root_bootstrap_fn_owner','sabora_root_recovery_fn_owner',
+   'sabora_staff_lifecycle_fn_owner','sabora_staff_invitation_enqueue_fn_owner',
+   'sabora_staff_custody_fn_owner','sabora_staff_custody_reader_fn_owner','sabora_staff_enrollment_fn_owner',
+   'sabora_staff_identity_fn_owner','sabora_staff_directory_fn_owner','sabora_staff_invitation_dispatch_fn_owner'))
+ SELECT count(*)=10 AND bool_and(NOT (rolcanlogin OR rolsuper OR rolbypassrls)
+  AND NOT pg_has_role(current_user,oid,'SET') AND NOT has_schema_privilege(oid,'sabora','CREATE'))
+ AND has_function_privilege('sabora_root_bootstrap_fn_owner','extensions.hmac(bytea,bytea,text)','EXECUTE')
+ AND has_function_privilege('sabora_root_recovery_fn_owner','extensions.hmac(bytea,bytea,text)','EXECUTE')
+ AND has_function_privilege('sabora_staff_enrollment_fn_owner','extensions.hmac(bytea,bytea,text)','EXECUTE')
+ AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN owners o ON p.proowner=o.oid
+  WHERE p.pronamespace='sabora'::regnamespace AND p.prosecdef AND
+   (has_function_privilege('anon',p.oid,'EXECUTE') OR has_function_privilege('authenticated',p.oid,'EXECUTE')
+    OR has_function_privilege('service_role',p.oid,'EXECUTE')))
+ FROM owners
+ ")" == t ]] || exit 1
+echo 'sabora_s55_identity_delta_nonsuperuser_verified'
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ < docs/security/sql-candidates/floor_web_push_pg17.sql
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc "
+ SELECT count(*)=6 AND bool_and(p.prosecdef AND NOT pg_has_role(current_user,r.oid,'SET')
+  AND NOT has_schema_privilege(r.oid,'sabora','CREATE')
+  AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('service_role',p.oid,'EXECUTE'))
+ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_roles r ON r.oid=p.proowner
+ WHERE r.rolname='sabora_floor_push_fn_owner' AND p.pronamespace='sabora'::regnamespace
+ ")" == t ]] || exit 1
+echo 'sabora_s55_floor_push_nonsuperuser_verified'
 echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"

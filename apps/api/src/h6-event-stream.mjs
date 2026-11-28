@@ -86,7 +86,7 @@ export function registerH6CustomerEventStreamHttp(app,{cookieAuth,events,subscri
 }
 
 export function registerH6StaffEventStreamHttp(app,{forRoles,events,issueCapability,
- subscribeCommitted,heartbeatMs=15_000,newCorrelation=randomUUID}={}){
+ subscribeCommitted,heartbeatMs=15_000,newCorrelation=randomUUID,assertIdentity}={}){
  if(!app||typeof app.get!=='function'||typeof forRoles!=='function'||!events||
     typeof events.readStaffEvents!=='function'||typeof issueCapability!=='function'||
     typeof subscribeCommitted!=='function'||typeof newCorrelation!=='function'||
@@ -98,8 +98,12 @@ export function registerH6StaffEventStreamHttp(app,{forRoles,events,issueCapabil
   const actorId=request.verifiedIdentity?.userId,staffRole=request.verifiedStaff?.role;
   if(!UUID.test(actorId??''))return reply.code(403).send({error:'forbidden'});
   return openStream(request,reply,{heartbeatMs,subscribeCommitted,
-   load:afterCursor=>events.readStaffEvents({afterCursor,limit:100,capability:issueCapability({
-    actorId,staffRole,action:'read_events',targetId:actorId,correlationId:newCorrelation()})})});
+   load:async afterCursor=>{
+    if(assertIdentity&& (await assertIdentity(request))?.userId!==actorId)
+     throw Error('staff_session_unavailable');
+    return events.readStaffEvents({afterCursor,limit:100,capability:issueCapability({
+     actorId,staffRole,action:'read_events',targetId:actorId,correlationId:newCorrelation()})});
+   }});
  });
 }
 

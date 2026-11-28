@@ -9,11 +9,17 @@ const TOKEN = /^[A-Za-z0-9_-]{32,512}$/;
 const ALGORITHM = 'aes-256-gcm';
 const CONTEXT = 'sabora.staff-invitation-delivery.v1';
 
-function context({enrollmentId, inviteVersion, tokenHashHex, keyId}) {
+function context({enrollmentId, inviteVersion, tokenHashHex, keyId, recoveryIntentId}) {
   if (!UUID.test(enrollmentId ?? '') ||
       !Number.isSafeInteger(inviteVersion) || inviteVersion < 1 ||
       !HASH.test(tokenHashHex ?? '') || !KEY_ID.test(keyId ?? '')) throw Error('invalid_staff_delivery_envelope_context');
-  return Buffer.from([CONTEXT,enrollmentId.toLowerCase(),String(inviteVersion),tokenHashHex,keyId].join('\n'),'utf8');
+  // Preserve the existing invitation AAD; recovery has its own domain and intent.
+  if(recoveryIntentId!==undefined&&!UUID.test(recoveryIntentId??''))
+    throw Error('invalid_staff_delivery_envelope_context');
+  const fields=recoveryIntentId===undefined
+    ?[CONTEXT,enrollmentId.toLowerCase(),String(inviteVersion),tokenHashHex,keyId]
+    :['sabora.staff-recovery-delivery.v1',recoveryIntentId.toLowerCase(),enrollmentId.toLowerCase(),String(inviteVersion),tokenHashHex,keyId];
+  return Buffer.from(fields.join('\n'),'utf8');
 }
 function keyBytes(key) {
   if (!Buffer.isBuffer(key) || key.length !== 32) throw Error('invalid_staff_delivery_encryption_key');
@@ -31,10 +37,10 @@ function decode(value, size) {
   if (bytes.length !== size || bytes.toString('base64url') !== value) throw Error('invalid_staff_delivery_envelope');
   return bytes;
 }
-export function sealStaffInvitationToken({token, enrollmentId, inviteVersion, tokenHashHex, keyId, key, nonce = randomBytes(12)} = {}) {
+export function sealStaffInvitationToken({token, enrollmentId, inviteVersion, tokenHashHex, keyId, key, recoveryIntentId, nonce = randomBytes(12)} = {}) {
   if (typeof token !== 'string' || !TOKEN.test(token) || !KEY_ID.test(keyId ?? '') ||
       !Buffer.isBuffer(nonce) || nonce.length !== 12) throw Error('invalid_staff_delivery_encryption_input');
-  const aad=context({enrollmentId,inviteVersion,tokenHashHex,keyId});
+  const aad=context({enrollmentId,inviteVersion,tokenHashHex,keyId,recoveryIntentId});
   const digest=createHash('sha256').update(token,'utf8').digest();
   if (!timingSafeEqual(digest,Buffer.from(tokenHashHex,'hex'))) throw Error('staff_delivery_token_hash_mismatch');
   const cipher=createCipheriv(ALGORITHM,keyBytes(key),nonce);
@@ -45,7 +51,7 @@ export function sealStaffInvitationToken({token, enrollmentId, inviteVersion, to
     ciphertext:ciphertext.toString('base64url'), tag:cipher.getAuthTag().toString('base64url'),
   });
 }
-export function openStaffInvitationToken({envelope,enrollmentId,inviteVersion,tokenHashHex,key,keyId} = {}) {
+export function openStaffInvitationToken({envelope,enrollmentId,inviteVersion,tokenHashHex,key,keyId,recoveryIntentId} = {}) {
   if (!exact(envelope,['version','keyId','nonce','ciphertext','tag']) ||
       envelope.version !== 1 || !KEY_ID.test(envelope.keyId ?? '') ||
       typeof envelope.ciphertext !== 'string' || envelope.ciphertext.length > 684 ||
@@ -53,7 +59,7 @@ export function openStaffInvitationToken({envelope,enrollmentId,inviteVersion,to
       (keyId !== undefined && envelope.keyId !== keyId)) {
     throw Error('invalid_staff_delivery_envelope');
   }
-  const aad=context({enrollmentId,inviteVersion,tokenHashHex,keyId:envelope.keyId});
+  const aad=context({enrollmentId,inviteVersion,tokenHashHex,keyId:envelope.keyId,recoveryIntentId});
   const nonce=decode(envelope.nonce,12);
   const tag=decode(envelope.tag,16);
   const ciphertext=decode(envelope.ciphertext,Buffer.from(envelope.ciphertext,'base64url').length);

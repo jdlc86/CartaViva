@@ -26,6 +26,19 @@ const CAPABILITIES=Object.freeze({
  ])
 });
 const ROLES=Object.freeze(Object.keys(CAPABILITIES));
+const WITHOUT_STRIPE_DISPATCH=Object.freeze([
+ 'list_h6_rounds_without_stripe_candidate','request_h6_dispatch_without_stripe_candidate'
+]);
+const WITHOUT_STRIPE_SURFACE_SQL=`SELECT count(*)::int=2 AND bool_and(
+  p.prosecdef AND pg_get_userbyid(p.proowner)='sabora_h6_fn_owner'
+  AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']
+  AND NOT EXISTS (SELECT 1 FROM aclexplode(p.proacl) AS acl
+   WHERE acl.privilege_type='EXECUTE' AND acl.grantee NOT IN (p.proowner,role.oid))
+ ) AS sealed
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace CROSS JOIN pg_roles role
+ WHERE role.rolname='sabora_h6_provider_runtime' AND n.nspname='sabora' AND p.pronargs=1
+ AND ((p.proname='list_h6_rounds_without_stripe_candidate' AND p.proargtypes[0]='pg_catalog.int4'::regtype)
+   OR (p.proname='request_h6_dispatch_without_stripe_candidate' AND p.proargtypes[0]='pg_catalog.uuid'::regtype))`;
 
 export const H6_IDENTITY_PREFLIGHT_SQL=`SELECT current_user AS effective_role,session_user AS login_role,
  r.rolcanlogin AS can_login,r.rolinherit AS inherit_role,r.rolsuper AS superuser,
@@ -53,8 +66,9 @@ export const H6_FUNCTION_SURFACE_PREFLIGHT_SQL=`SELECT coalesce(array_agg(p.pron
 function rejected(stage){const error=Error(`invalid_h6_sql_capabilities:${stage}`);
  error.code='H6_SQL_CAPABILITIES_REJECTED';error.stage=stage;return error;}
 
-export async function assertH6RuntimeIdentity({pool,expectedLogin,capability}={}){
- if(!pool||typeof pool.connect!=='function'||!ROLE.test(expectedLogin??'')||!CAPABILITIES[capability])
+export async function assertH6RuntimeIdentity({pool,expectedLogin,capability,dispatchWithoutStripe=false}={}){
+ if(!pool||typeof pool.connect!=='function'||!ROLE.test(expectedLogin??'')||!CAPABILITIES[capability]||
+  typeof dispatchWithoutStripe!=='boolean'||(dispatchWithoutStripe&&capability!=='sabora_h6_provider_runtime'))
   throw rejected('input');
  let client,valid=false;
  try{
@@ -70,10 +84,14 @@ export async function assertH6RuntimeIdentity({pool,expectedLogin,capability}={}
    throw rejected('identity-policy');
   const functions=await client.query(H6_FUNCTION_SURFACE_PREFLIGHT_SQL,[capability]);
   const actual=functions?.rows?.length===1?functions.rows[0].names:null;
-  const expected=[...CAPABILITIES[capability]].sort();
+  const expected=[...CAPABILITIES[capability],...(dispatchWithoutStripe?WITHOUT_STRIPE_DISPATCH:[])].sort();
   const normalized=Array.isArray(actual)?[...actual].sort():null;
   if(!normalized||normalized.length!==expected.length||normalized.some((name,index)=>name!==expected[index]))
    throw rejected(`function-surface:${capability}`);
+  if(dispatchWithoutStripe){
+   const surface=await client.query(WITHOUT_STRIPE_SURFACE_SQL);
+   if(surface?.rows?.[0]?.sealed!==true)throw rejected('dispatch-without-stripe-surface');
+  }
   valid=true;return Object.freeze({validated:true,login:expectedLogin,capability});
  }catch(error){if(error?.code==='H6_SQL_CAPABILITIES_REJECTED')throw error;
   throw rejected(`query:${typeof error?.code==='string'?error.code:'unknown'}`);

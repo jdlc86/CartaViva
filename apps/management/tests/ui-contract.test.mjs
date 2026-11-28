@@ -32,7 +32,19 @@ test('all contracted management workspaces are represented without operational f
 test('management keeps network access inside the injected authenticated operations boundary', () => {
   const transport = readFileSync(new URL('../src/order-operations-authenticated-gateway.js', import.meta.url), 'utf8');
   const managementTransport = readFileSync(new URL('../src/m3-authenticated-management-gateway.js', import.meta.url), 'utf8');
+  const staffTransport = readFileSync(new URL('../src/staff-gateway-auth.js', import.meta.url), 'utf8');
   const qrRenderer = readFileSync(new URL('../src/components/TableQrOneTime.tsx', import.meta.url), 'utf8');
+  const enrollmentTransport = readFileSync(new URL('../src/staff-enrollment-gateway.ts', import.meta.url), 'utf8');
+  const enrollmentView = readFileSync(new URL('../src/views/StaffEnrollmentView.tsx', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
+  assert.match(enrollmentTransport, /fetchImpl/);
+  assert.match(enrollmentTransport, /credentials:'same-origin'/);
+  assert.match(enrollmentTransport, /redirect:'error'/);
+  assert.match(enrollmentTransport, /\/api\/v1\/staff\/enrollment/);
+  assert.doesNotMatch(enrollmentTransport, /\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\bEventSource\b/);
+  assert.match(enrollmentView, /gateway\.request\('accept'/);
+  assert.match(enrollmentView, /gateway\.request\('register'/);
+  assert.match(main, /gateway=\{createStaffEnrollmentGateway\(window\.fetch\.bind\(window\)\)\}/);
   const defaultPreview = sources.filter(({path}) => !path.endsWith('order-operations-authenticated-gateway.js') &&
     !path.endsWith('order-operations-gateway.js') &&
     !path.endsWith('m3-authenticated-management-gateway.js') && !path.endsWith('main.tsx'))
@@ -40,11 +52,12 @@ test('management keeps network access inside the injected authenticated operatio
   assert.doesNotMatch(defaultPreview, /\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\bEventSource\b/);
   assert.match(transport, /getAccessToken/);
   assert.match(transport, /fetchImpl/);
-  assert.match(transport, /credentials:\s*'omit'/);
+  assert.match(transport, /credentials:\s*auth\.credentials/);
   assert.match(transport, /revoke/);
   assert.match(managementTransport, /getAccessToken/);
   assert.match(managementTransport, /fetchImpl/);
-  assert.match(managementTransport, /credentials:'omit'/);
+  assert.match(managementTransport, /credentials:auth\.credentials/);
+  assert.match(staffTransport, /credentials: cookieSession \? 'same-origin' : 'omit'/);
   assert.match(managementTransport, /revoke/);
   assert.doesNotMatch(combined, /\blocalStorage\b|\bsessionStorage\b|document\.cookie/);
   assert.doesNotMatch(combined, /googleapis\.com|generativelanguage|aiplatform|AIza[0-9A-Za-z_-]+/i);
@@ -78,9 +91,22 @@ test('navigation is deep-linkable and read transports remain injected and discon
   const tables = readFileSync(new URL('../src/views/TablesView.tsx', import.meta.url), 'utf8');
   const catalog = readFileSync(new URL('../src/views/CatalogView.tsx', import.meta.url), 'utf8');
   assert.match(main, /href=\{toManagementHash\(section\.id\)\}/);
-  assert.match(main, /aria-current=\{area === section\.id \? 'page'/);
+  assert.match(main, /aria-current=\{activeArea === section\.id \? 'page'/);
   assert.match(main, /window\.addEventListener\('popstate'/);
-  assert.match(main, /renderManagement\(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway\)/);
+  assert.match(main, /renderManagement\(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut,staffRole,\s*staffDirectoryGateway,staffRevocationGateway,staffLifecycleGateway,staffFirstAdminGateway,rootSecurityGateway,\s*staffRecoveryAdminGateway,enableFloorPush&&staffRole==='waiter'\?sendStaff:undefined\)/);
+  assert.match(main, /enableFloorPush = false/);
+  assert.match(main, /enableStaffRecovery = false/);
+  assert.match(main, /enableStaffRecovery&&sendStaff&&ownershipGateway&&\['root','admin'\]\.includes\(staffRole\?\?''\)/);
+  assert.match(main, /recoveryAdminGateway=\{staffRole==='root'\|\|canRevokeStaff\?staffRecoveryAdminGateway:undefined\}/);
+  assert.match(main, /enableRootSecurity = false/);
+  assert.match(main, /enableRootSecurity&&staffRole==='root'&&sendStaff\s*\?createRootSecurityGateway\(\{send:sendStaff,emailProof:rootEmailProof\}\):undefined/);
+  assert.match(main, /rootSecurityGateway=\{staffRole==='root'\?rootSecurityGateway:undefined\}/);
+  assert.match(main, /enableStaffFirstAdmin = false/);
+  assert.match(main, /enableStaffFirstAdmin&&staffRole==='root'&&sendStaff&&ownershipGateway/);
+  assert.match(main, /enableStaffLifecycle = false/);
+  assert.match(main, /enableStaffLifecycle&&sendStaff&&staffDirectoryGateway&&ownershipGateway/);
+  assert.match(main, /lifecycleGateway=\{canRevokeStaff \? staffLifecycleGateway : undefined\}/);
+  assert.match(main, /directoryRequests\.abort\(\)/);
   assert.match(main, /enableOwnershipGovernance = false/);
   assert.match(main, /ownershipGateway\?\.revoke\(\)/);
   assert.match(main, /ownershipGateway=\{ownershipGateway\}/);

@@ -35,6 +35,20 @@ const WAITER_CALLS = Object.freeze([
  ['waiterCalls.customerPool','waiterCalls.expectedCustomerLogin'],
  ['waiterCalls.staffPool','waiterCalls.expectedStaffLogin']
 ]);
+const FLOOR_PUSH = Object.freeze([['floorPush.pool','floorPush.expectedLogin']]);
+const STAFF_DIRECTORY = Object.freeze([
+ ['staff.directory.pool','staff.directory.expectedLogin']
+]);
+const STAFF_REVOCATION = Object.freeze([
+ ['staff.revocation.pool','staff.revocation.expectedLogin']
+]);
+const ROOT_RECOVERY = Object.freeze([
+ ['staff.rootRecovery.control.pool','staff.rootRecovery.control.expectedLogin'],
+ ['staff.rootRecovery.worker.pool','staff.rootRecovery.worker.expectedLogin']
+]);
+const STAFF_IDENTITY_LIFECYCLE=Object.freeze(
+ ['bootstrap','firstAdmin','admin','enrollment','invitationDispatch'].map(name=>
+  ['staff.identityLifecycle.'+name+'.pool','staff.identityLifecycle.'+name+'.expectedLogin']));
 const LOGIN = /^[a-z][a-z0-9_]{0,62}$/;
 const invalid = () => Error('m2_restaurant_candidate_isolation_required');
 
@@ -42,14 +56,21 @@ const read = (object,path) =>
  path.split('.').reduce((value,key)=>value?.[key],object);
 
 export function describeM2RuntimeSqlSlots({
- management=true,ownership=false,communications=false,waiterCalls=false
+ management=true,ownership=false,communications=false,waiterCalls=false,staffDirectory=false,
+ staffRevocation=false,rootRecovery=false,staffIdentityLifecycle=false,floorPush=false
 }={}){
  if(typeof management!=='boolean'||typeof ownership!=='boolean'||
-    typeof communications!=='boolean'||typeof waiterCalls!=='boolean'||
+    typeof communications!=='boolean'||typeof waiterCalls!=='boolean'||typeof staffDirectory!=='boolean'||
+    typeof staffRevocation!=='boolean'||typeof rootRecovery!=='boolean'||(rootRecovery&&!ownership)||
+    typeof floorPush!=='boolean'||(floorPush&&!waiterCalls)||
+    typeof staffIdentityLifecycle!=='boolean'||(staffIdentityLifecycle&&(!rootRecovery||!staffDirectory||staffRevocation))||
+    (staffRevocation&&(!ownership||!staffDirectory))||
     (!management&&(ownership||communications)))throw invalid();
  const groups=[...CORE,...(management?MANAGEMENT:[]),
   ...(ownership?OWNERSHIP:[]),...(communications?COMMUNICATIONS:[]),
-  ...(waiterCalls?WAITER_CALLS:[])];
+  ...(waiterCalls?WAITER_CALLS:[]),...(floorPush?FLOOR_PUSH:[]),...(staffDirectory?STAFF_DIRECTORY:[]),
+  ...(staffRevocation?STAFF_REVOCATION:[]),...(rootRecovery?ROOT_RECOVERY:[]),
+  ...(staffIdentityLifecycle?STAFF_IDENTITY_LIFECYCLE:[])];
  return Object.freeze(groups.map(([poolPath,loginPath]) =>
   Object.freeze({poolPath,loginPath})));
 }
@@ -66,7 +87,9 @@ export function validateM2RuntimeSqlIdentities(options={}){
  const communications=management&&options.management.communications!=null;
  const waiterCalls=options.waiterCalls!=null;
  const requirements=describeM2RuntimeSqlSlots({
-  management,ownership,communications,waiterCalls
+  management,ownership,communications,waiterCalls,staffDirectory:options.staff?.directory!=null,
+  staffRevocation:options.staff?.revocation!=null,rootRecovery:options.staff?.rootRecovery!=null,
+  staffIdentityLifecycle:options.staff?.identityLifecycle!=null,floorPush:options.floorPush!=null
  });
  const entries=[];
  for(const spec of requirements){

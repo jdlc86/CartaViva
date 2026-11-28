@@ -1,5 +1,63 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S55 R2 · Identidad V2 y custodia.** El mismo Draft #92 incorpora el trabajador de invitaciones con acceso SQL mínimo, la selección offline del ciclo en V2 y el enlace de un solo uso de 60 minutos aprobado para ADMIN, camarero y cocina. La adenda S54 recoge la política y el informe identifica la evidencia de laboratorio y las validaciones que siguen pendientes. [Informe R2](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md#identidad-v2-y-vigencia-de-recuperación-aprobada).
+
+> **S55 R2 · Web Push de sala.** Aplicada la decisión de producto sobre Android y Windows con Chrome, PWA de iOS/iPadOS y recordatorios de llamada cada 30 segundos. El Draft #92 incorpora agenda PG17, acceso por camarero activo y dispositivo, sujeción al gateway TLS y avisos de recogida por versión. La ejecución integradora y el dictamen se registran por SHA. [Informe R2](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md#avisos-de-sala-y-web-push-aprobados).
+
+> **Continuación S55 R2 · NO-GO técnico y operativo.** Candidatos en el mismo Draft #92 para recuperación pública ROOT, protección transaccional de titularidad y ciclo de personal, alertas durables mediante la cola Resend y vibración local fuera de Comandas. Se conservan H1-C y el circuito de despacho ya probados. El dictamen y la evidencia por SHA están enlazados en el PR. [Informe R2](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md#continuación-de-r2--recuperación-root-y-avisos).
+
+> **S55 R2 · H1 integral / NO-GO técnico y operativo.** El Draft #92 incorpora la composición candidata del ciclo ordinario de identidad, la finalización por trabajador de expedientes con dos recibos durables, avisos autenticados fuera de Comandas y acuse de cocina reconstruido desde el tablero. Los ensayos existentes comprueban también la conservación del vencimiento de una solicitud abierta al cambiar el plazo. Permanecen pendientes la recuperación pública ROOT, evidencia de efectos Auth inciertos, fence transaccional y alertas durables, admisión V2 del bloque de identidad y entrega de dispositivo. AP-01 a AP-09 y Resend real NOT RUN. [Inventario y dictamen](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md#revisión-r2--cambios-y-alcance-del-cierre).
+
+> **S54-35 · H1-A.** Autoridad de recuperación de personal ligada a credencial vigente del ADMIN titular, incluidas autorizaciones antiguas y pasos diferidos. Harness integrado ampliado; CI pendiente. Sin montaje operativo. AP-01 a AP-09 aplazados; H1-A parcial.
+
+> **S54-34 · H1-A.** Cola de recuperación no ROOT conectada al trabajador candidato existente y AAD separado por propósito/intención. Ensayo PG17 ampliado con competencia de trabajadores y replay; CI pendiente. H1-A parcial, proveedor alojado aplazado y runtime aún cerrado.
+
+> **S54-33 · H6.** `259b2c3f` 6/7 PASS; B3 falla por navegación durante montaje segunda PWA, F12 observa solicitud pendiente. Candidato de estabilización de servidores Vite del ensayo sin cambios operativos ni aserciones reducidas; CI pendiente. Secreto temporal de Actions retirado según propietario; revocación Supabase no acreditada. Auth alojado aplazado S54-32.
+
+> **S54-32 · Decisión del propietario.** Ensayo aislado Auth alojado aplazado al primer despliegue real de prueba; AP-01 a AP-09 NOT RUN, H1-A parcial, uso real NO-GO. No bloquea por sí solo la preparación del candidato. Mantener #93 abierto para aceptación posterior; demás puertas V2 y autorizaciones intactas. [Decisión V2 §10](../architecture/SABORA_SIMPLIFIED_DEPLOYMENT_V2.md#10-decisión-s54--aplazamiento-del-ensayo-aislado-auth-al-primer-despliegue-de-prueba).
+
+> **S54-30/31 · Auth alojado (`62be3e98`, 7/7 CI ordinaria PASS; CV005+B2 omitido).** Corrección del ensayo manual de revocación, frescura de sesiones y limpieza. JWKS público RS256 y Chromium offline verificados. Aceptación del proveedor **NOT RUN / NO-GO**. Sigue pendiente una ejecución manual admitida. [Informe](../reviews/SABORA_S54_HOSTED_AUTH_PROVIDER_ACCEPTANCE_2026-11-27.md) · [Issue #93](https://github.com/jdlc86/CartaViva/issues/93).
+
+> **S54-29 · H1-A.** `93241200` 7/7 PASS; sonda Auth PASS; ensayo alojado administrativo NOT RUN. Encargo Codex documentado en `docs/assignments/CODEX_S54_HOSTED_AUTH_PROVIDER_ACCEPTANCE_2026-11-27.md`, seguimiento #93, sin autorización de activación.
+
+> **S54-28 · H1-A.** Ensayo manual Auth endurecido (entorno Chromium, reconciliación exacta, preflight vacío); pruebas focalizadas añadidas, ejecución alojada pendiente. CI ordinaria intacta; no se intenta sortear bloqueo de workflow privilegiado.
+
+> **S54-27 · CI H6.** Fallo 2B de `c992e1cd` localizado en lectura prematura de ACK de fixture SSH; publicación atómica corregida, CI pendiente. Auth proveedor inicial PASS; registro/recuperación real no ejecutados.
+
+> **S54-25 · H1-A.** Sonda real Auth/JWKS/opciones RP PASS en `25ac3ef0`; regresión CI de orden por job temporal corregida restaurando workflow. Ensayo real de registro/recuperación/revocación proveedor-only preparado, no ejecutado. Requiere custodia de clave admin; SQL/PWA/Resend pendientes.
+
+> **S54-22 · H1-A.** RESTAURANTE real observado read-only: PG17.11, cero Auth/miembros, sin overlays de recuperación. Reutilización gateway Auth y exchange invite/recovery candidato; ajustes panel, proveedor admin, prueba alojada y delta pendientes. CI anterior H6 rojo B3/F12, sin GO.
+
+> **S54-21 · H1-A.** `990306d2` 7/7 PASS. Candidato interno de preparación persistente y fence por huella, recibos ordenados de registro/revocación; proveedor real, fence de escrituras y PWA pendientes. CI nuevo SHA pendiente.
+
+> **S54-19 · H1-A.** `87277ea4` 7/7 PASS. Candidato de entrega cifrada, propósito recuperación, recibo de consumo asociado al UUID/versión/sesión, mismo transporte Resend. Sin registro ni ruta pública habilitados. CI pendiente.
+
+> **S54-17 · H1-A.** Autorización durable candidata de recuperación no ROOT, bloqueos de titularidad/ficha/membresías, UUID y versión inmutables, replay; sin correo, registro ni sesión habilitados. CI pendiente. H1-A parcial.
+
+> **S54-16 · H1-A.** `acd8ddbf` 7/7 PASS; clasificador firmado candidato distingue alta, reenvío, recuperación y alta incompleta desde PG17, permisos ROOT/ADMIN titular; prueba ampliada pendiente. Sin envío, registro de credenciales ni interfaz de recuperación habilitados. H1-A parcial.
+
+> **S54-12 · H1-A.** Candidato conserva plazo original de registro tras claim, libera solo operación caducada sin preparación y encola aviso de recuperación atómico sin secretos; prueba integrada ampliada, CI pendiente. Frontera Auth real sigue abierta. **H1-A parcial / NO-GO.**
+
+> **S54-11 · H1-A.** Frontera HTTP de laboratorio para factores ROOT y fases durables de vinculación/registro/revocación antes de completar; ensayo integrado ampliado, CI pendiente. Sin montaje público operativo ni adaptador Auth real. **H1-A parcial / NO-GO.**
+
+> **S54-10 · H1-A.** Candidato de segunda passkey desde Seguridad ROOT con ceremonia reciente, registro ligado a sesión/desafío y recibo, autorización SQL y auditoría; ensayo HTTP/PG17 ampliado con proveedor fixture. CI pendiente, recuperación pública y reconciliación Auth alojada abiertas. **H1-A parcial / NO-GO.**
+
+> **S54 · H1-A.** El Draft #92 incorpora verificación del correo ROOT desde gestión, control transaccional de credenciales ROOT y despacho candidato con LOGIN separado. Falta cerrar la recuperación pública del mismo ROOT, la reconciliación Auth, la entrega ordinaria, el delta V2 y la aceptación. **H1-A parcial. NO-GO técnico y operativo.** [Informe S54](../reviews/SABORA_S54_ROOT_RECOVERY_H1_A_REVIEW_2026-11-26.md).
+
+> **S52-31 · H1-A.** Candidato de verificación de destinatario y entrega durable ROOT (día 0, rotación, desafío, aviso de cambio), transporte Resend reutilizado y prueba PG17 ampliada. CI pendiente. Sin conexión al worker/PWA de alta ni Auth real; falta reconciliación y alertas. **H1-A parcial / NO-GO.**
+
+> **S52-29 · H1-A.** Seguridad ROOT en Configuración (estado, sustitución de código, reset con nueva passkey), candidato opt-in y ensayo PWA/PG17 ampliado; CI pendiente. Alta/cambio de correo, despacho rotatorio, recuperación de credenciales real y composición siguen abiertos. **H1-A parcial / NO-GO.**
+
+> **S52-27 · H1-A.** Candidato de admisión ROOT vinculada a credencial autorizada y sesión, con denegación durante recuperación pendiente y sustitución local de credenciales. Ensayo PG17/Fastify existente ampliado, CI pendiente. No acredita registro/revocación Auth real ni PWA de recuperación; composición y fence de mutación pendientes. **H1-A parcial / NO-GO.**
+
+> **S52-26 · H1-A.** Contrato ROOT S52-25 aprobado; kernel candidato de recuperación transaccional en #92 (factores, rotación, desafío, concesión y bloqueo durable). El ensayo genesis amplía PG17; CI pendiente. Faltan PWA, integración real Auth/Resend, reconciliación y revocación efectiva; no se monta la recuperación ni se aplican migraciones. **H1-A parcial / NO-GO.** [Continuidad](../handoffs/SESSION_52_HANDOFF_2026-11-25.md#s52-26--núcleo-transaccional-candidato-de-recuperación-root).
+
+> **S52 · H1-A.** El [Draft #92](https://github.com/jdlc86/CartaViva/pull/92) integra el directorio, la ficha propia y la revocación sobre passkeys con dos identidades SQL separadas. Incluye el transporte candidato Resend y mantiene las 103 migraciones. El alta inicial, enrolamiento, activación, suspensión, recuperación, despacho durable y la prueba de proveedores siguen pendientes. **H1-A parcial / NO-GO operativo.** [Informe S52](../reviews/SABORA_S52_H1_A_STAFF_IDENTITY_REVIEW_2026-11-25.md).
+
+> **H1 · Conexión funcional.** El [PR #92](https://github.com/jdlc86/CartaViva/pull/92) conecta la llamada y el cambio de mesa en cliente e implementa la entrada de gestión por passkey para personal activo. El propietario eligió Resend para las invitaciones. Se reaprovechan las 103 migraciones. Pendientes la prueba del Auth alojado, el alta y recuperación de personal, las brechas B–D del informe, H2 y la aceptación del propietario. **H1 parcial / NO-GO operativo.** [Informe H1](../reviews/SABORA_FINAL_CLOSURE_H1_FUNCTIONAL_CONNECTION_REVIEW_2026-11-25.md) · [Inventario único](https://github.com/jdlc86/CartaViva/blob/50fb9398c6813c32b4c2f8a98efff567d59eea0e/docs/tracking/SABORA_FINAL_DEPLOYMENT_CLOSURE_INVENTORY_2026-11-25.md).
+
+> **S51 · Primer despliegue ficticio.** Main base `da02d5d9` protegido y cuatro checks exactos SUCCESS. Plan V2 [#45502216753](https://github.com/jdlc86/CartaViva/actions/runs/45502216753) con verify SUCCESS y execute SKIPPED. Tres redes, TLS, 27 ficheros privados y recibo genesis observados en el ámbito Sabora. El candidato corrige la admisión previa al arranque, añade el receptor durable y empaqueta los launchers de producción en CI. **NO-GO operativo** hasta integración autorizada, acceso/alertas reales, egress, instalación V2, Environment y autorización del SHA final. [Informe de cierre y procedimiento](../reviews/SABORA_S51_FIRST_TEST_DEPLOYMENT_CLOSURE_2026-11-24.md).
+
 > **S51 · Cierre técnico.** En el [PR #87](https://github.com/jdlc86/CartaViva/pull/87) se cerraron los dos P1 posteriores a #85. La instalación V2 liga el resultado material de SQL al release y conserva un consumo durable de la excepción ficticia. El SHA `0d248989e9beb5b773a71eba25e076b55b0a1e5f` pasó los cinco checks, con PG17 no-superusuario 103/103 y negativas Docker/SSH antes de mutación. Aceptación visual y CV005+B2 opt-in SKIPPED. **GO MERGE CON CONDICIONES y NO-GO OPERATIVO.** Las operaciones posteriores a genesis se bloquean hasta acreditar recuperación ordinaria y compatibilidad con el SQL aplicado. Pendientes custodia, preflight real `verify-full`, exclusión DDL, SQL autorizado, controlador, alertas, aislamiento y aceptación. El PR permanece Draft. [Informe final](../reviews/SABORA_S51_CODEX_PR87_DBA_GENESIS_FINAL_REVIEW_2026-11-24.md).
 
 > **S51-12:** ensayo PG17 no-superusuario [#45382753849](https://github.com/jdlc86/CartaViva/actions/runs/45382753849) SUCCESS, 103/103 y ledger atómico en `5317e462`. Candidato posterior incorpora ejecutor genesis de una sesión y ensayo del mismo SQL con replay; **CI del nuevo SHA pendiente**, sin ejecución real. PR #87 Draft; preflight verify-full, canal credencial/aislamiento, autorización SQL, controlador y alertas reales pendientes; no Fleetia.

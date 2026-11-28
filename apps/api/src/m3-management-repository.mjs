@@ -6,6 +6,8 @@ export const MANAGE_M3_TABLE_SQL=
  `SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3) AS result`;
 export const OCCUPANCY_M3_TABLE_SQL=
  `SELECT sabora.transition_table_occupancy_m3_candidate($1::jsonb,$2) AS result`;
+export const TABLE_CHANGE_WINDOW_M3_SQL=
+ `SELECT sabora.table_change_window_m3_candidate($1::jsonb,$2::integer,$3::integer) AS result`;
 export const READ_M3_CATALOG_SQL=
  `SELECT sabora.read_admin_catalog_m3_candidate($1::jsonb) AS result`;
 export const READ_M3_FINANCE_SQL=
@@ -76,6 +78,18 @@ export function createM3TablesRepository({withTransaction,issueCapability,newId=
    const body=JSON.stringify({tableId,target,pauseUntil});
    const capability=signed(issueCapability,actor,'table.occupancy',requestId,body);
    return withTransaction(async query=>one(await query(OCCUPANCY_M3_TABLE_SQL,[capability,body])));
+  },
+  changeResponseWindow(verified,{requestId=newId(),expectedSeconds=null,seconds=null}={}){
+   const actor=identity(verified),reading=expectedSeconds===null&&seconds===null;
+   if(!['admin','root'].includes(actor.staffRole)||(!reading&&actor.staffRole!=='admin'))
+    throw Error('m3_management_forbidden');
+   if(!UUID.test(requestId??'')||(!reading&&![expectedSeconds,seconds].every(
+    value=>Number.isInteger(value)&&value>=1&&value<=600)))
+    throw Error('invalid_m3_table_change_window_request');
+   const body=`table-change-window:v1:${expectedSeconds??'-'}:${seconds??'-'}`;
+   const capability=signed(issueCapability,actor,reading?'tables.read':'table.update',requestId,body);
+   return withTransaction(async query=>one(await query(TABLE_CHANGE_WINDOW_M3_SQL,
+    [capability,expectedSeconds,seconds])));
   }
  });
 }

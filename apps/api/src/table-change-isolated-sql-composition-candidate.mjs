@@ -105,7 +105,7 @@ export function createIsolatedB3ConfirmationTransaction({confirmationPool}={}){
 
 
 export function createIsolatedTableChangeSqlCandidate({
- customerPool,operationsPool,hashSession,verifyStaff
+ customerPool,operationsPool,hashSession,verifyStaff,getStaffMutationProof
 }={}){
  if(!customerPool||!operationsPool||customerPool===operationsPool||
   typeof customerPool.connect!=='function'||typeof operationsPool.connect!=='function'||
@@ -119,7 +119,7 @@ export function createIsolatedTableChangeSqlCandidate({
    pool:customerPool,role:'sabora_f12_customer_runtime',allowedSql:new Set(F12_CUSTOMER_SQL)
   }),
   withStaffTransaction:createRoleScopedPostgresTransaction({
-   pool:operationsPool,role:'sabora_f12_operations_runtime',allowedSql:new Set(F12_OPERATIONS_SQL)
+   pool:operationsPool,role:'sabora_f12_operations_runtime',allowedSql:new Set(F12_OPERATIONS_SQL),getStaffMutationProof
   }),
   hashSession,verifyStaff
  });
@@ -130,14 +130,14 @@ export function createIsolatedTableChangeSqlCandidate({
 // Does not mount HTTP routes or alter any existing production pool.
 export async function createVerifiedIsolatedTableChangeSqlCandidate({
  customerPool,operationsPool,expectedCustomerLogin,expectedOperationsLogin,
- hashSession,verifyStaff
+ hashSession,verifyStaff,getStaffMutationProof
 }={}){
  if(typeof hashSession!=='function'||typeof verifyStaff!=='function')
   throw Error('invalid_f12_isolated_composition');
  await assertF12SqlCapabilities({customerPool,operationsPool,
   expectedCustomerLogin,expectedOperationsLogin});
  return createIsolatedTableChangeSqlCandidate({customerPool,operationsPool,
-  hashSession,verifyStaff});
+  hashSession,verifyStaff,getStaffMutationProof});
 }
 
 /**
@@ -149,7 +149,7 @@ export async function createVerifiedIsolatedTableChangeSqlCandidate({
 export async function createVerifiedTableChangeB3Candidate({
  customerPool,operationsPool,confirmationPool,h6ReadPool,
  expectedCustomerLogin,expectedOperationsLogin,expectedH6ReadLogin,
- hashSession,verifyStaff,expectedConfirmationLogin,
+ hashSession,verifyStaff,getStaffMutationProof,expectedConfirmationLogin,
  createConfirmationFlow
 }={}){
  if(!confirmationPool||confirmationPool===customerPool||
@@ -164,7 +164,7 @@ export async function createVerifiedTableChangeB3Candidate({
   throw Error('invalid_b3_isolated_composition');
  const tableChange=await createVerifiedIsolatedTableChangeSqlCandidate({
   customerPool,operationsPool,expectedCustomerLogin,expectedOperationsLogin,
-  hashSession,verifyStaff
+  hashSession,verifyStaff,getStaffMutationProof
  });
  // The confirmation preflight must validate the exact transfer-only EXECUTE
  // surface of its separate login. Do not substitute an H6 production preflight.
@@ -249,7 +249,7 @@ export const B3_CUSTOMER_FLOW_SQL=Object.freeze([
 export async function createVerifiedTableChangeB3CustomerFlowCandidate({
  customerPool,operationsPool,confirmationPool,h6ReadPool,flowPool,
  expectedCustomerLogin,expectedOperationsLogin,expectedConfirmationLogin,
- expectedH6ReadLogin,expectedFlowLogin,hashSession,verifyStaff,
+ expectedH6ReadLogin,expectedFlowLogin,hashSession,verifyStaff,getStaffMutationProof,
  secretKey,clock,newId
 }={}){
  const pools=[customerPool,operationsPool,confirmationPool,h6ReadPool,flowPool];
@@ -275,7 +275,7 @@ export async function createVerifiedTableChangeB3CustomerFlowCandidate({
  return createVerifiedTableChangeB3Candidate({
   customerPool,operationsPool,confirmationPool,h6ReadPool,
   expectedCustomerLogin,expectedOperationsLogin,expectedConfirmationLogin,
-  expectedH6ReadLogin,hashSession,verifyStaff,
+  expectedH6ReadLogin,hashSession,verifyStaff,getStaffMutationProof,
   createConfirmationFlow:createB3CustomerConfirmationFlowCandidate({
    withCustomerTransaction,secretKey,clock,newId
   })

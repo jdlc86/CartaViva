@@ -58,6 +58,34 @@ export function validateStaffLifecycleHttpInput(body) {
   return Object.freeze({action, adminRequired: ADMIN_ACTIONS.has(action), input: body});
 }
 
+export function registerStaffRevocationHttp(app,{forRoles,coordinator}){
+  app.post('/api/v1/staff/lifecycle',{preHandler:forRoles(['admin']),bodyLimit:4_096},
+    async (request,reply)=>{
+      reply.header('Cache-Control','no-store');
+      let input;
+      try {
+        const parsed=validateStaffLifecycleHttpInput(request.body);
+        if(parsed.action!=='revoke'||parsed.input.subjectUserId!==null)throw Error('invalid_revocation');
+        input=parsed.input;
+      } catch {
+        return reply.code(400).send({error:'invalid_staff_lifecycle_request'});
+      }
+      try {
+        const result=await coordinator.transition({
+          verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff,
+          verifiedRootCredential:request.verifiedRootCredential
+        },input);
+        return {enrollmentId:result.enrollmentId,state:result.currentState,repeated:result.repeated};
+      } catch(error) {
+        if(error?.code==='42501'||error?.message==='staff_lifecycle_admin_forbidden')
+          return reply.code(403).send({error:'forbidden'});
+        if(error?.code==='40001'||error?.code==='23505')
+          return reply.code(409).send({error:'staff_lifecycle_conflict'});
+        return reply.code(503).send({error:'staff_lifecycle_unavailable'});
+      }
+    });
+}
+
 // Candidate adapter: does not mount itself and never sends invitation secrets
 // to HTTP clients. Delivery is a trusted out-of-band dependency only.
 export function createStaffLifecycleHttpHandler({coordinator, deliverInvitation} = {}) {

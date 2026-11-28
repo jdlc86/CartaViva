@@ -17,7 +17,7 @@ const message=(code:string)=>code==='forbidden'?
 type Intent={action:OwnershipAction;proposalId:string|null;targetUserId:string|null;
  reason:string|null;requestId:string};
 
-export function OwnershipPanel({gateway,onOwnershipChanged}:{gateway?:OwnershipGovernanceGateway;onOwnershipChanged?:()=>void}){
+export function OwnershipPanel({gateway,onOwnershipChanged,revision=0}:{gateway?:OwnershipGovernanceGateway;onOwnershipChanged?:()=>void;revision?:number}){
  const [snapshot,setSnapshot]=useState<OwnershipProjection|null>(null);
  const [loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
  const [error,setError]=useState<string|null>(null),[notice,setNotice]=useState<string|null>(null);
@@ -42,7 +42,7 @@ export function OwnershipPanel({gateway,onOwnershipChanged}:{gateway?:OwnershipG
    setError('No se pudo comprobar la titularidad actual; no se permiten decisiones.');}}
   finally{if(id===generation.current)setLoading(false);}
  },[gateway]);
- useEffect(()=>{void refresh();return()=>{generation.current++;};},[refresh]);
+ useEffect(()=>{void refresh();return()=>{generation.current++;};},[refresh,revision]);
 
  const perform=async(action:OwnershipAction,proposalId:string|null=null)=>{
   if(!gateway||!snapshot||busy)return;

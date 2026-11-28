@@ -36,3 +36,182 @@ El antiguo `admin-write-gate.mjs` se retiró: su consulta separada no podía imp
 
 **No confundir:** implementación candidata y CI aislada **no** equivalen a identidad operativa aprovisionada, usuarios reales, despliegue, revisión externa ni autorización de fusionar o de aplicar migraciones. ROOT sigue **sin poder** ser titular ADMIN ni hacer escrituras administrativas ordinarias; nada en esta adenda inventa excepciones. [Preflight de integración S34](../reviews/SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md).
 
+## Adenda S52 — decisión de arranque inicial (26-11-2026)
+
+El propietario aprobó el flujo excepcional de inicialización: una autorización inicial de un solo uso vincula una identidad confirmada y passkey verificada a ROOT único y activo; su consumo y la creación de ROOT deben ser atómicos y auditables. No existe alta ordinaria de ROOT ni reutilización de la autorización tras consumo.
+
+Antes de existir el primer ADMIN titular, ROOT puede autorizar exclusivamente la incorporación excepcional del primer ADMIN, mediante el ciclo de invitación, aceptación, registro de passkey y activación, con revocación desde el primer registro durable. Una vez activo, ROOT le asigna la titularidad por el mecanismo de gobierno existente. La excepción queda inutilizada al completar el arranque. ROOT nunca se convierte en titular ni adquiere escritura administrativa ordinaria; no se alteran los permisos del ciclo posterior. La implementación debe impedir carreras, altas paralelas por la excepción, replay y activación sin credencial verificada; cualquier reanudación antes de finalizar conserva la auditoría y no permite reactivar un registro revocado.
+
+Esta decisión se incorpora como candidata en el PR #92 hasta integración autorizada. No autoriza crear usuarios, aplicar SQL, desplegar ni configurar proveedores. El primer incremento técnico de ROOT se mantiene en SQL desechable; las decisiones de retención/recuperación y extensión de V2 se resuelven separadamente.
+
+
+## Adenda S52 — recuperación excepcional de ROOT aprobada (26-11-2026)
+
+El propietario aprueba expresamente la combinación de una segunda passkey como
+respaldo ordinario y recuperación excepcional mediante **correo de seguridad
+independiente + código secreto de recuperación custodiado fuera de ese correo**.
+Esta decisión amplía el punto 4 de los invariantes, sin alterar el ROOT único,
+la titularidad ADMIN ni el arranque inicial de un solo uso. La recuperación
+conserva la identidad ROOT existente; no crea otro ROOT.
+
+### Requisitos aprobados
+
+- ROOT configura un correo de recuperación desde la PWA de gestión, tras
+  autenticarse y volver a verificar una passkey. El cambio de correo exige
+  verificación reciente, comprobación del nuevo destinatario y aviso al
+  correo anterior. ADMIN y otros roles no pueden consultar o cambiar estos
+  factores ni autorizar la recuperación de ROOT.
+- Desde Seguridad de ROOT, el servidor genera un código de recuperación
+  criptográficamente aleatorio de alta entropía, tras una nueva verificación
+  por passkey. Se muestra una única vez para guardarlo fuera del correo
+  (por ejemplo, impreso o en un gestor independiente). Solo se conserva
+  un verificador criptográfico, nunca el código en claro ni en emails,
+  logs, URLs, auditoría, copias de datos en claro o almacenamiento web.
+  El código permanece estable hasta sustitución expresa o uso exitoso.
+- Al configurar el correo (día 0) y cada N semanas se envía automáticamente
+  un enlace rotatorio al buzón de seguridad. N es configurable; no se ha
+  fijado un intervalo definitivo. Solo la generación vigente puede iniciar
+  el flujo; la sustitución controlada invalida la anterior. Un fallo de
+  envío no debe invalidar prematuramente la generación anterior dentro de
+  su vigencia ni renovar indefinidamente una autorización; debe alertarse.
+- El enlace periódico **no es una credencial de acceso**. Abrirlo, incluido
+  el escaneo automático de correo, no consume factores ni concede sesión.
+  Permite iniciar una recuperación y solicitar una comprobación reciente de
+  posesión del correo mediante desafío de corta duración. Son necesarios
+  dicha comprobación y el código independiente; ninguno basta por sí solo.
+- Solo tras validar ambos factores se concede una autorización restringida,
+  de corta duración y de un solo uso para registrar una nueva passkey de
+  la misma identidad ROOT; no otorga acceso operativo, no permite invitar
+  personal, reasignar titularidad ni eludir la verificación por passkey.
+  El éxito exige registro verificable y nueva autenticación por passkey.
+- Una recuperación exitosa invalida el código empleado, el enlace y las
+  autorizaciones de recuperación anteriores, revoca credenciales y sesiones
+  anteriores, emite un código nuevo para guardar una sola vez y notifica
+  la recuperación. Los mecanismos de revocación deben ser efectivos también
+  frente a sesiones y JWT aún no caducados. Ningún ADMIN adquiere autoridad
+  sobre ROOT. La segunda passkey previamente registrada es el mecanismo
+  ordinario, sin consumir este procedimiento excepcional.
+
+### Condiciones técnicas de aceptación, no decisiones operativas
+
+El diseño debe prevenir intentos concurrentes, replay, abuso de solicitudes,
+enumeración, fuga de secretos, autorización caducada tras locks, modificación
+del destinatario y bypass mediante Auth directo o sesión de correo.
+Auditoría durable sin secretos; límites de intentos y vigencias acotadas.
+Reutilizar el transporte durable de correo previsto para Sabora sin añadir
+infraestructura de despliegue. La frontera entre registro/revocación en Auth
+y la transacción SQL es distribuida: no asumir atomicidad de proveedor;
+ante respuesta incierta, impedir sesión operativa hasta reconciliación
+verificable, sin repetir acciones destructivas ni perder los factores por
+un GET o un registro fallido. No reabrir genesis ni alterar las 103
+migraciones originales.
+
+El intervalo N y las vigencias de recuperación se concretan en la adenda
+final de esta sección. El almacenamiento temporal y la retención del material
+de correo se resolverán en el diseño técnico sin añadir vías de recuperación.
+No existe bypass por correo solo ni procedimiento de emergencia alternativo
+ante la pérdida de todos los factores. La recuperación de roles no ROOT, la modalidad de generación y
+entrega de las invitaciones ordinarias y el delta V2 son decisiones separadas.
+
+La aprobación es de diseño para implementar en el PR #92. No acredita
+implementación, prueba alojada, aceptación visual, aprovisionamiento,
+modificación de usuarios, envío real, SQL operativo, integración en main
+ni despliegue. No afecta a Fleetia.
+
+
+### Adenda aprobada — protección contra fuerza bruta (26-11-2026)
+
+El propietario aprueba expresamente los siguientes requisitos para la
+recuperación excepcional de ROOT:
+
+- Código generado mediante CSPRNG con 128 bits de entropía, representado
+  en 26 caracteres Base32 canónicos (agrupación visual permitida).
+  No admitir PIN, código elegido por el usuario ni reducción de entropía.
+- Bloqueos progresivos por intentos fallidos acumulados: 3 intentos,
+  15 minutos; 5 intentos, 1 hora; 10 intentos, 24 horas. Nunca bloqueo
+  permanente automático.
+- Contador y plazo de bloqueo durables en PostgreSQL, vinculados al ROOT
+  existente, independientes de IP, navegador, sesión, desafío o generación
+  del enlace. No reiniciar por pedir otro enlace, rotar, cambiar IP,
+  reiniciar procesos o concurrencia. Comprobar y actualizar de forma
+  atómica; no extender el bloqueo por solicitudes rechazadas durante el
+  mismo. No registrar código, desafío ni verificadores en auditoría.
+- Bloqueo exclusivamente del flujo excepcional: las passkeys vigentes
+  siguen permitiendo autenticarse. Auditar los intentos y alertar sobre
+  abuso, sin revelar factores ni facilitar enumeración. No crear un
+  bypass por correo o ADMIN.
+
+La semántica del contador, su restablecimiento y los plazos se fijan en la
+adenda final. El control de solicitudes de desafíos y la agrupación de alertas
+son detalles técnicos de implementación, no nuevas vías de recuperación.
+No se reduce ninguna garantía del contrato anterior. La aceptación
+integrada debe cubrir los umbrales y sus vencimientos, concurrencia,
+persistencia, rotación y acceso ordinario durante bloqueo. Este acuerdo
+no autoriza operaciones reales ni acredita implementación.
+
+
+### Adenda final aprobada — contador, vigencias y cierre del diseño (26-11-2026)
+
+El propietario acepta los parámetros propuestos y pide no incrementar más
+la complejidad del mecanismo. Se cierra la decisión funcional de recuperación
+ROOT con las siguientes reglas:
+
+| Fallos acumulados admitidos | Bloqueo resultante |
+| --- | --- |
+| 1–2 | Ninguno |
+| 3 | 15 minutos |
+| 4 | Ninguno adicional |
+| 5 | 1 hora |
+| 6–9 | Ninguno adicional |
+| 10 y cada nuevo fallo posterior | 24 horas |
+
+Al vencer el bloqueo se admite un nuevo intento. El transcurso del tiempo
+no reinicia el contador. Después de diez fallos, cada nuevo fallo admitido
+produce otro bloqueo de 24 horas; no existe bloqueo permanente. Las
+solicitudes durante un bloqueo no incrementan el contador ni prolongan
+el plazo. La verificación de ambos factores, la admisión de intentos y
+las transiciones del contador deben impedir carreras entre solicitudes.
+
+El contador y el bloqueo solo se restablecen tras recuperación excepcional
+completada correctamente, o por una acción expresa del ROOT autenticado
+mediante una passkey vigente desde Seguridad de ROOT. Solicitar otro
+desafío, rotar el enlace, cambiar IP o reiniciar el servicio no restablece
+ninguno de los dos.
+
+| Elemento | Vigencia aprobada |
+| --- | --- |
+| Enlace periódico de recuperación | 28 días por defecto, intervalo configurable |
+| Desafío de verificación reciente del correo | 10 minutos |
+| Autorización restringida de registro de nueva passkey | 5 minutos, un solo uso |
+| Código secreto de recuperación de 128 bits | Hasta uso exitoso o sustitución expresa |
+
+Se acepta el riesgo residual de que quien controle el correo compita por
+el siguiente intento disponible tras un bloqueo; la segunda passkey de
+respaldo conserva el acceso ordinario. No se añaden factores, procedimientos
+de emergencia alternativos ni requisitos de infraestructura adicionales.
+La pérdida simultánea de todos los factores no dispone de un bypass
+automático. Se conserva la totalidad de las garantías ya aprobadas.
+
+La implementación debe verificar estos parámetros y sus límites en un
+recorrido integrado con persistencia real PG17, API y PWA, incluyendo
+replay, concurrencia, rotación, caducidades, bloqueo y restablecimiento,
+revocación efectiva de credenciales y sesiones anteriores y fallos
+inciertos de proveedor. La aceptación del diseño no equivale a validación
+de código, autorización de SQL operativo, aprovisionamiento de Auth,
+envío de correo real, merge o despliegue. Los detalles técnicos de
+custodia/retención y composición no se convierten en nuevos mecanismos.
+
+
+## Adenda S54 — recuperación de personal existente (26-11-2026)
+
+El propietario confirma que solo el ADMIN activo **titular** o ROOT pueden
+autorizar el reenvío de una invitación de recuperación para una identidad de
+personal existente no ROOT. Para recuperar a un ADMIN, el ADMIN autorizante
+debe ser otro usuario y titular vigente; si el titular pierde acceso, ROOT
+puede autorizar su recuperación. Ningún ADMIN no titular obtiene esa
+capacidad. La autorización de recuperación de ROOT sobre otros usuarios es
+una excepción específica, sin escritura ordinaria, sin alta nueva y sin
+alteración de titularidad. El servidor distingue alta de recuperación y
+conserva la identidad existente. Véase [contrato de ciclo de identidad](../security/SABORA_STAFF_IDENTITY_LIFECYCLE_V1.md#adenda-s54--recuperación-de-credenciales-de-personal-no-root-26-11-2026).
+No modifica las reglas de recuperación excepcional de ROOT. No constituye
+validación técnica ni autorización operativa.

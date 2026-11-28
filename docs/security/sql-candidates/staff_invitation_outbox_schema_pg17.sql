@@ -6,13 +6,17 @@ BEGIN;
 
 DO $role$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_catalog.pg_roles
-     WHERE rolname = 'sabora_staff_invitation_enqueue_fn_owner'
-  ) THEN
+  -- Roles are cluster-wide. Disposable suites may use this sealed owner in
+  -- another database, but it must have no pre-existing privileges here.
+  IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='sabora_staff_invitation_enqueue_fn_owner') THEN
     CREATE ROLE sabora_staff_invitation_enqueue_fn_owner
       NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS
       NOCREATEDB NOCREATEROLE NOREPLICATION;
+  ELSIF EXISTS(SELECT 1 FROM pg_catalog.pg_shdepend d
+    WHERE d.dbid=(SELECT oid FROM pg_catalog.pg_database WHERE datname=current_database())
+      AND d.refclassid='pg_catalog.pg_authid'::regclass
+      AND d.refobjid='sabora_staff_invitation_enqueue_fn_owner'::regrole) THEN
+    RAISE EXCEPTION 'staff_invitation_enqueue_owner_already_privileged' USING errcode='0P000';
   END IF;
 
   IF EXISTS (
@@ -31,14 +35,25 @@ BEGIN
       FROM pg_catalog.pg_auth_members membership
       JOIN pg_catalog.pg_roles granted ON granted.oid = membership.roleid
       JOIN pg_catalog.pg_roles member ON member.oid = membership.member
-     WHERE granted.rolname = 'sabora_staff_invitation_enqueue_fn_owner'
-        OR member.rolname = 'sabora_staff_invitation_enqueue_fn_owner'
+      JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
+     WHERE (granted.rolname = 'sabora_staff_invitation_enqueue_fn_owner'
+        OR member.rolname = 'sabora_staff_invitation_enqueue_fn_owner')
+       AND NOT (granted.rolname = 'sabora_staff_invitation_enqueue_fn_owner'
+        AND member.rolname=current_user::text AND grantor.rolsuper AND membership.admin_option
+        AND NOT membership.inherit_option AND NOT membership.set_option
+        AND member.rolcreaterole AND NOT member.rolsuper)
   ) THEN
     RAISE EXCEPTION 'unsafe_sabora_staff_invitation_enqueue_fn_owner_membership'
       USING errcode = '0P000';
   END IF;
 END;
 $role$;
+-- CV005 grants the installer only the ownership transfer within this transaction.
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_invitation_enqueue_fn_owner;
+GRANT sabora_staff_invitation_enqueue_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_lifecycle_fn_owner;
+GRANT sabora_staff_lifecycle_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
+GRANT sabora_staff_identity_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 
 CREATE TABLE sabora.staff_invitation_outbox (
   id uuid PRIMARY KEY,
@@ -106,13 +121,6 @@ ALTER TABLE sabora.staff_invitation_outbox ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sabora.staff_invitation_outbox FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON sabora.staff_invitation_outbox FROM PUBLIC;
 
-REVOKE ALL ON SCHEMA sabora FROM sabora_staff_invitation_enqueue_fn_owner;
-REVOKE ALL ON ALL TABLES IN SCHEMA sabora
-  FROM sabora_staff_invitation_enqueue_fn_owner;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA sabora
-  FROM sabora_staff_invitation_enqueue_fn_owner;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora
-  FROM sabora_staff_invitation_enqueue_fn_owner;
 GRANT USAGE ON SCHEMA sabora TO sabora_staff_invitation_enqueue_fn_owner;
 GRANT SELECT (id,enrollment_id,invite_version,invite_token_hash,state),
       INSERT (id,enrollment_id,invite_version,invite_token_hash),
@@ -264,4 +272,9 @@ COMMENT ON FUNCTION sabora.transition_staff_lifecycle_with_outbox_candidate(
   text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text
 ) IS 'Candidate atomic HMAC lifecycle transition and invitation outbox boundary; no runtime EXECUTE grant is provisioned.';
 
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_invitation_enqueue_fn_owner;
+REVOKE sabora_staff_invitation_enqueue_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_lifecycle_fn_owner;
+REVOKE sabora_staff_lifecycle_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
+REVOKE sabora_staff_identity_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 COMMIT;

@@ -2,11 +2,10 @@
 BEGIN;
 CREATE ROLE sabora_staff_custody_fn_owner NOLOGIN NOINHERIT NOSUPERUSER
   NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
-REVOKE ALL ON SCHEMA sabora FROM sabora_staff_custody_fn_owner;
-REVOKE ALL ON ALL TABLES IN SCHEMA sabora FROM sabora_staff_custody_fn_owner;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA sabora FROM sabora_staff_custody_fn_owner;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora FROM sabora_staff_custody_fn_owner;
 GRANT USAGE ON SCHEMA sabora TO sabora_staff_custody_fn_owner;
+-- CV005 grants the installer only the ownership transfer within this transaction.
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_custody_fn_owner;
+GRANT sabora_staff_custody_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 GRANT SELECT (id,enrollment_id,invite_version,invite_token_hash,state)
   ON sabora.staff_invitation_outbox TO sabora_staff_custody_fn_owner;
 GRANT INSERT (job_id,enrollment_id,invite_version,token_hash,envelope_version,
@@ -42,4 +41,6 @@ GRANT EXECUTE ON FUNCTION sabora.store_staff_invitation_custody_candidate(
   TO sabora_staff_custody_fn_owner;
 REVOKE ALL ON FUNCTION sabora.store_staff_invitation_custody_restricted_candidate(
   uuid,uuid,integer,text,text,text,text,text) FROM PUBLIC,anon,authenticated;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_custody_fn_owner;
+REVOKE sabora_staff_custody_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 COMMIT;

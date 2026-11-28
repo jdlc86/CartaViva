@@ -7,6 +7,7 @@ const source=readFileSync(new URL('../apps/api/src/m2-restaurant-candidate.mjs',
 test('M2 startup cannot overwrite an observed notifier loss with ready=true',()=>{
  assert.match(source,/notificationDependencyLost=true;operational=false/g);
  assert.equal((source.match(/notificationDependencyLost=true;operational=false/g)??[]).length,2);
- assert.match(source,/await app\.ready\(\);operational=!notificationDependencyLost;/);
+ assert.match(source,/dispatchSchedulerFailed=true;operational=false/);
+ assert.match(source,/await app\.ready\(\);operational=!notificationDependencyLost&&!dispatchSchedulerFailed;/);
  assert.doesNotMatch(source,/await app\.ready\(\);operational=true;/);
 });

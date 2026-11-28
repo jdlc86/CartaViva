@@ -163,3 +163,59 @@ activación/revocación continúan pasando.
 Evidencia local posterior: 14/14 casos de ciclo dentro de 87/87 casos del
 harness PostgreSQL 17 y 892/892 pruebas raíz. El cambio permanece candidato y
 no crea login, clave ni grant operativo.
+
+
+## Adenda S52 — recuperación ROOT (26-11-2026)
+
+Se ha aprobado el contrato normativo de recuperación excepcional de ROOT en
+[SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md](../architecture/SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md#adenda-s52--recuperación-excepcional-de-root-aprobada-26-11-2026):
+segunda passkey de respaldo y recuperación por correo de seguridad
+(desafío reciente, enlace periódico rotatorio) más código independiente
+mostrado una sola vez, sin acceso operativo hasta nueva passkey verificada.
+La recuperación conserva el ROOT existente y no utiliza el alta ordinaria
+de personal ni la concesión genesis. Esta referencia no aprueba un mecanismo
+equivalente para ADMIN, camarero o cocina, ni fija retención/intervalos.
+Pendiente implementación, integración, pruebas y autorizaciones operativas.
+
+
+## Adenda S54 — recuperación de credenciales de personal no ROOT (26-11-2026)
+
+Decisión expresa del propietario: reutilizar la invitación de personal para
+recuperar el acceso de una identidad existente mediante registro de una nueva
+passkey. Para un ADMIN, la recuperación puede ser autorizada por ROOT o por
+**otro ADMIN activo que sea el titular vigente**. Para camarero y cocina,
+únicamente ROOT o el ADMIN activo titular. Un ADMIN no titular no puede
+iniciar, reenviar ni autorizar una recuperación. ROOT queda excluido como
+objetivo de este mecanismo y conserva su recuperación especial.
+
+El servidor distingue de forma inequívoca el alta nueva del reenvío de una
+invitación pendiente y del registro de una nueva passkey para una identidad
+existente. Una recuperación conserva el UUID del usuario y no crea un nuevo
+miembro ni cambia su rol. El vínculo debe derivarse de registros durables de
+Sabora y verificarse en Auth, no de un UUID libre aportado por el navegador
+ni de una coincidencia de correo tomada como prueba suficiente de identidad.
+
+La capacidad de ROOT para autorizar recuperación de personal existente es una
+excepción acotada de seguridad, no una autorización de escritura
+administrativa ordinaria ni una reapertura del alta excepcional del primer
+ADMIN. La titularidad se verifica dentro de la transacción; la excepción no
+permite recuperar ROOT, crear otro usuario o alterar roles/titularidad.
+
+**Detalles de implementación propuestos, pendientes de ratificación si
+implican una decisión funcional adicional:** mantener suspendida una cuenta
+suspendida, rechazar recuperación de una cuenta revocada (conforme a la
+irrevocabilidad ya normativa), revocar credenciales anteriores y sesiones al
+completar, no conceder sesión operativa mediante el enlace, conservar
+historial e identificador del empleado. El enlace de recuperación debe
+vincularse al UUID existente y a un propósito distinto de alta; reenvíos
+invalidan la autorización anterior. No se acepta una recuperación autónoma
+por el correo sin autorización de ROOT o ADMIN titular.
+
+**Vigencia y custodia aprobadas por el propietario en S55 R2.** Cada enlace de recuperación de ADMIN, camarero o cocina tiene 60 minutos desde su autorización. Es de un solo uso. Emitir otro invalida inmediatamente el anterior y abrirlo no prolonga la vigencia. Tras caducar se requiere una nueva autorización de ROOT o del ADMIN titular competente.
+
+El material cifrado se conserva solo para entregar el enlace, dentro de esos 60 minutos. Se elimina al confirmar el envío, consumir el enlace, revocarlo, sustituirlo o caducar. La reserva durable de despacho puede eliminarlo antes del envío. Ante una respuesta de envío incierta, el trabajador elimina el material recuperable y conserva el expediente sin reenviar automáticamente. El historial de auditoría, los hashes y las evidencias no secretas se conservan por separado para trazabilidad y reconciliación. El borrado del sobre no libera bloqueos de seguridad. Los efectos Auth inciertos continúan sujetos a evidencia atribuible al mismo UUID y credencial.
+
+El mecanismo excepcional de ROOT y las invitaciones ordinarias se rigen por sus propias reglas. [Custodia y purga de entregas](SABORA_STAFF_INVITATION_DELIVERY_DECISION_GATE.md#custodia-de-recuperación-no-root).
+
+Decisión de diseño candidata para #92; no acredita implementación ni prueba,
+no autoriza operaciones sobre Auth/Resend reales, SQL, merge o despliegue.

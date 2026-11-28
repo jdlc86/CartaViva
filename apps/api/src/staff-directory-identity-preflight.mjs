@@ -1,3 +1,5 @@
+import {CV005_BOOTSTRAP_GRANT} from './order-operations-identity-preflight.mjs';
+
 const ROLE=/^[a-z][a-z0-9_]{0,62}$/;
 const ROUTINE='sabora.read_staff_directory_authorized_candidate(text,text,uuid,text,text,uuid,text,integer,integer,bigint,bigint,text)';
 
@@ -26,7 +28,8 @@ export async function preflightStaffDirectoryIdentity({pool,role}={}){
    has_schema_privilege(current_user,'sabora','USAGE') AS schema_usage,
    has_schema_privilege(current_user,'sabora','CREATE') AS schema_create,
    has_database_privilege(current_user,current_database(),'CREATE') AS database_create,
-   has_function_privilege(current_user,$1,'EXECUTE') AS directory_execute,
+   (has_function_privilege(current_user,$1,'EXECUTE')
+    AND NOT has_function_privilege(current_user,$1,'EXECUTE WITH GRANT OPTION')) AS directory_execute,
    (SELECT count(*)::integer FROM pg_catalog.pg_class resource
     JOIN pg_catalog.pg_namespace ns ON ns.oid=resource.relnamespace
     WHERE ns.nspname='sabora' AND resource.relkind IN('r','p','v','m','f') AND
@@ -35,9 +38,12 @@ export async function preflightStaffDirectoryIdentity({pool,role}={}){
       has_table_privilege(current_user,resource.oid,'UPDATE') OR
       has_table_privilege(current_user,resource.oid,'DELETE') OR
       has_table_privilege(current_user,resource.oid,'TRUNCATE') OR
+      has_table_privilege(current_user,resource.oid,'REFERENCES') OR
+      has_table_privilege(current_user,resource.oid,'TRIGGER') OR
       has_any_column_privilege(current_user,resource.oid,'SELECT') OR
       has_any_column_privilege(current_user,resource.oid,'INSERT') OR
-      has_any_column_privilege(current_user,resource.oid,'UPDATE'))) AS accessible_private_tables,
+      has_any_column_privilege(current_user,resource.oid,'UPDATE') OR
+      has_any_column_privilege(current_user,resource.oid,'REFERENCES'))) AS accessible_private_tables,
    (SELECT count(*)::integer FROM pg_catalog.pg_class resource
     JOIN pg_catalog.pg_namespace ns ON ns.oid=resource.relnamespace
     WHERE ns.nspname='sabora' AND resource.relkind='S' AND
@@ -46,8 +52,8 @@ export async function preflightStaffDirectoryIdentity({pool,role}={}){
       has_sequence_privilege(current_user,resource.oid,'UPDATE'))) AS accessible_private_sequences,
    (SELECT count(*)::integer FROM pg_catalog.pg_proc routine
     JOIN pg_catalog.pg_namespace ns ON ns.oid=routine.pronamespace
-    WHERE ns.nspname='sabora' AND routine.prosecdef AND
-     has_function_privilege(current_user,routine.oid,'EXECUTE')) AS accessible_definer_routines,
+    WHERE ns.nspname='sabora' AND
+     has_function_privilege(current_user,routine.oid,'EXECUTE')) AS accessible_private_routines,
    (SELECT routine.prosecdef FROM pg_catalog.pg_proc routine
     WHERE routine.oid=$1::regprocedure) AS directory_is_definer,
    (SELECT owner.rolname FROM pg_catalog.pg_proc routine
@@ -61,12 +67,13 @@ export async function preflightStaffDirectoryIdentity({pool,role}={}){
     WHERE owner.rolname='sabora_staff_directory_fn_owner') AS owner_is_sealed,
    (SELECT count(*)::integer FROM pg_catalog.pg_auth_members membership
     JOIN pg_catalog.pg_roles owner ON owner.oid=membership.roleid OR owner.oid=membership.member
-    WHERE owner.rolname='sabora_staff_directory_fn_owner') AS owner_memberships,
+    WHERE owner.rolname='sabora_staff_directory_fn_owner'
+      AND NOT (membership.roleid=owner.oid AND (${CV005_BOOTSTRAP_GRANT}))) AS owner_memberships,
    (SELECT resource.relrowsecurity AND resource.relforcerowsecurity
     FROM pg_catalog.pg_class resource JOIN pg_catalog.pg_namespace ns ON ns.oid=resource.relnamespace
     WHERE ns.nspname='sabora' AND resource.relname='staff_directory_contacts') AS contact_rls_forced,
    EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members membership
-    WHERE membership.member=role.oid) AS has_role_memberships
+    WHERE membership.member=role.oid OR membership.roleid=role.oid) AS has_role_memberships
    FROM pg_catalog.pg_roles role WHERE role.rolname=current_user`,[ROUTINE]);
   if(!Array.isArray(result?.rows)||result.rows.length!==1)
    throw Error('staff_directory_sql_identity_rejected');
@@ -76,7 +83,7 @@ export async function preflightStaffDirectoryIdentity({pool,role}={}){
      row.can_create_role!==false||row.can_create_db!==false||row.can_replicate!==false||
      row.schema_usage!==true||row.schema_create!==false||row.database_create!==false||
      row.directory_execute!==true||row.accessible_private_tables!==0||
-     row.accessible_private_sequences!==0||row.accessible_definer_routines!==1||
+     row.accessible_private_sequences!==0||row.accessible_private_routines!==1||
      row.directory_is_definer!==true||row.directory_owner!=='sabora_staff_directory_fn_owner'||
      row.search_path_locked!==true||row.owner_is_sealed!==true||row.owner_memberships!==0||
      row.contact_rls_forced!==true||row.has_role_memberships!==false)

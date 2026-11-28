@@ -6,14 +6,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OUTCOMES = new Set(['accepted', 'permanent_failure', 'unknown']);
 
 export async function recordStaffInvitationDeliveryOutcome({
-  withTransaction, repository, jobId, fence, outcome,
+  withTransaction, repository, jobId, fence, outcome, providerId=null,
 } = {}) {
   if (typeof withTransaction !== 'function' || !repository ||
       typeof repository.lockDispatchingDelivery !== 'function' ||
       typeof repository.finishDispatchingDelivery !== 'function' ||
       typeof jobId !== 'string' || !UUID.test(jobId) ||
       typeof fence !== 'string' || !UUID.test(fence) ||
-      !OUTCOMES.has(outcome)) {
+      !OUTCOMES.has(outcome) || (providerId!==null&&
+        (outcome!=='accepted'||typeof providerId!=='string'||!UUID.test(providerId)))) {
     throw Error('invalid_staff_delivery_outcome_config');
   }
   return withTransaction(async query => {
@@ -25,7 +26,7 @@ export async function recordStaffInvitationDeliveryOutcome({
     // not prove inbox delivery and never activates a staff enrollment.
     const nextState = outcome === 'accepted' ? 'delivered' : 'failed';
     const result = await repository.finishDispatchingDelivery(
-      query, jobId, fence, nextState, outcome,
+      query, jobId, fence, nextState, outcome,...(providerId===null?[]:[providerId]),
     );
     if (!result || result.finished !== true) {
       throw Error('staff_delivery_outcome_lost_race');

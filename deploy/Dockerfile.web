@@ -14,6 +14,7 @@ COPY packages/contracts ./packages/contracts
 ARG SABORA_RESTAURANT_CODE
 ENV VITE_SABORA_RESTAURANT_CODE=${SABORA_RESTAURANT_CODE}
 RUN node -e "if (!/^[A-Z0-9_-]{3,32}$/.test(process.env.VITE_SABORA_RESTAURANT_CODE??'')) process.exit(1)"
+ENV VITE_SABORA_OPERATIONAL_PWA=1
 RUN pnpm --filter @sabora/client build && SABORA_MANAGEMENT_BASE_PATH=/ pnpm --filter @sabora/management build
 
 FROM caddy:2.11.9-alpine

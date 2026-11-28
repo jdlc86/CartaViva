@@ -1,12 +1,15 @@
+import {ROOT_MUTATION_PROOF_SQL} from './staff-root-recovery-candidate.mjs';
+
 const ROLE=/^[a-z][a-z0-9_]{0,62}$/;
 
 // A connection login receives only SET membership in one dormant NOLOGIN
 // capability. The role is local to the transaction and cannot leak through a
 // reused pool connection. The caller can additionally pin every SQL statement.
-export function createRoleScopedPostgresTransaction({pool,role,allowedSql}={}){
+export function createRoleScopedPostgresTransaction({pool,role,allowedSql,getStaffMutationProof}={}){
  if(!pool||typeof pool.connect!=='function'||!ROLE.test(role??'')||
     !(allowedSql instanceof Set)||allowedSql.size===0||
-    [...allowedSql].some(sql=>typeof sql!=='string'||!sql.trim()))
+    [...allowedSql].some(sql=>typeof sql!=='string'||!sql.trim())||
+    (getStaffMutationProof!==undefined&&typeof getStaffMutationProof!=='function'))
   throw Error('invalid_role_scoped_transaction');
  const setRole=`SET LOCAL ROLE ${role}`;
  return async function withTransaction(callback){
@@ -18,6 +21,8 @@ export function createRoleScopedPostgresTransaction({pool,role,allowedSql}={}){
     throw Error('invalid_role_scoped_connection');
    await client.query('BEGIN');
    await client.query(setRole);
+   const proof=getStaffMutationProof?.();
+   if(proof)await client.query(ROOT_MUTATION_PROOF_SQL,[proof]);
    const query=(sql,parameters=[])=>{
     if(!allowedSql.has(sql)||!Array.isArray(parameters))
      throw Error('role_scoped_sql_not_allowed');

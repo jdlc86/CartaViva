@@ -1,14 +1,19 @@
 import {createOrderOperationsGateway, OrderOperationsGatewayError} from './order-operations-gateway.js';
 import {createTableChangeDecisionGateway} from './table-change-decision-gateway.js';
+import {createStaffGatewayAuth} from './staff-gateway-auth.js';
 
 // Explicit opt-in transport. The host authentication layer owns token
 // acquisition and renewal; never persist credentials in browser storage.
 export function createAuthenticatedOrderOperationsGateway({
-  getAccessToken, fetchImpl = globalThis.fetch, reconnectDelayMs, enableWaiterCalls=false,
+  getAccessToken, cookieSession, fetchImpl = globalThis.fetch, reconnectDelayMs, enableWaiterCalls=false,
 } = {}) {
-  if (typeof getAccessToken !== 'function' || typeof fetchImpl !== 'function') {
+  if (typeof fetchImpl !== 'function') {
     throw Error('invalid_order_operations_auth_transport');
   }
+  const auth = createStaffGatewayAuth({getAccessToken, cookieSession}, {
+    invalid: 'invalid_order_operations_auth_transport',
+    unavailable: () => Error('order_operations_auth_unavailable')
+  });
   const controller = new AbortController();
   const send = async (path, options = {}) => {
     if (controller.signal.aborted) throw Error('order_operations_auth_unavailable');
@@ -17,14 +22,8 @@ export function createAuthenticatedOrderOperationsGateway({
         /[\r\n]/.test(path)) {
       throw Error('invalid_order_operations_path');
     }
-    const token = await getAccessToken();
-    if (typeof token !== 'string' || token.length < 16 ||
-        token.length > 16384 || /[^A-Za-z0-9._~-]/.test(token)) {
-      throw Error('order_operations_auth_unavailable');
-    }
+    const headers = await auth.headers(options.headers);
     if (controller.signal.aborted) throw Error('order_operations_auth_unavailable');
-    const headers = new Headers(options.headers);
-    headers.set('Authorization', `Bearer ${token}`);
     const requestController = new AbortController();
     const abort = () => requestController.abort();
     controller.signal.addEventListener('abort', abort, {once: true});
@@ -33,7 +32,7 @@ export function createAuthenticatedOrderOperationsGateway({
     try {
       if (requestController.signal.aborted) throw Error('order_operations_auth_unavailable');
       return await fetchImpl(path, {
-        ...options, credentials: 'omit', redirect: 'error',
+        ...options, credentials: auth.credentials, redirect: 'error',
         cache: 'no-store', headers, signal: requestController.signal,
       });
     } catch (error) {

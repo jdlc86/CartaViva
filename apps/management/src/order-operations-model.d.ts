@@ -8,6 +8,7 @@ export type OrderLineItem = Readonly<{
   confirmedAt: string; grouping: 'first' | 'grouped' | 'late'; lineNumber: number;
   category: string; name: string; quantity: number;
   status: OrderLineStatus;
+  pendingDispatchId?: string | null;
   notification: null | Readonly<{id: string; createdAt: string; acknowledgedAt: string | null}>;
   pickup: PickupTask | null;
 }>;

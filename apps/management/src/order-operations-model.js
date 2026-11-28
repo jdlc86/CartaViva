@@ -79,7 +79,10 @@ export function normalizeOrderBoard(value) {
         !validCategory(item.category) ||
         typeof item.name !== 'string' || item.name.trim().length === 0 || item.name.length > 160 ||
         !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 20 ||
-        !STATUSES.has(item.status)) throw Error('invalid_order_board');
+        !STATUSES.has(item.status) ||
+        (Object.hasOwn(item,'pendingDispatchId') && item.pendingDispatchId !== null &&
+          (typeof item.pendingDispatchId !== 'string' || !UUID.test(item.pendingDispatchId) ||
+           item.status !== 'confirmed' || value.role === 'waiter'))) throw Error('invalid_order_board');
     seen.add(item.lineId);
     return Object.freeze({
       orderId: item.orderId,
@@ -93,6 +96,7 @@ export function normalizeOrderBoard(value) {
       name: item.name.trim(),
       quantity: item.quantity,
       status: item.status,
+      ...(Object.hasOwn(item,'pendingDispatchId') ? {pendingDispatchId:item.pendingDispatchId} : {}),
       notification: normalizeNotification(item.notification, item.status,
         value.version === 2 && item.status === 'picked_up' && item.pickup === null),
       pickup: value.version === 2 ? normalizePickup(item.pickup, item.status) : null,
