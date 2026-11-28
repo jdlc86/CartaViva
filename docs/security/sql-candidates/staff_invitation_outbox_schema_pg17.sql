@@ -31,8 +31,13 @@ BEGIN
       FROM pg_catalog.pg_auth_members membership
       JOIN pg_catalog.pg_roles granted ON granted.oid = membership.roleid
       JOIN pg_catalog.pg_roles member ON member.oid = membership.member
-     WHERE granted.rolname = 'sabora_staff_invitation_enqueue_fn_owner'
-        OR member.rolname = 'sabora_staff_invitation_enqueue_fn_owner'
+      JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
+     WHERE (granted.rolname = 'sabora_staff_invitation_enqueue_fn_owner'
+        OR member.rolname = 'sabora_staff_invitation_enqueue_fn_owner')
+       AND NOT (granted.rolname = 'sabora_staff_invitation_enqueue_fn_owner'
+        AND member.rolname=current_user::text AND grantor.rolsuper AND membership.admin_option
+        AND NOT membership.inherit_option AND NOT membership.set_option
+        AND member.rolcreaterole AND NOT member.rolsuper)
   ) THEN
     RAISE EXCEPTION 'unsafe_sabora_staff_invitation_enqueue_fn_owner_membership'
       USING errcode = '0P000';
