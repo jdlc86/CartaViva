@@ -72,7 +72,8 @@ export function registerStaffRevocationHttp(app,{forRoles,coordinator}){
       }
       try {
         const result=await coordinator.transition({
-          verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff
+          verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff,
+          verifiedRootCredential:request.verifiedRootCredential
         },input);
         return {enrollmentId:result.enrollmentId,state:result.currentState,repeated:result.repeated};
       } catch(error) {

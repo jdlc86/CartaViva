@@ -83,6 +83,8 @@ export function createStaffLifecycleCoordinator({
   if (typeof withTransaction !== 'function' ||
       !repository || typeof repository.transition !== 'function' ||
       typeof issueCapability !== 'function' ||
+      ((issueRootMutationProof !== undefined || setRootMutationProof !== undefined) &&
+       (typeof issueRootMutationProof !== 'function' || typeof setRootMutationProof !== 'function')) ||
       typeof revocationOnly !== 'boolean' || typeof firstAdminBootstrapOnly !== 'boolean' ||
       (revocationOnly && firstAdminBootstrapOnly) || (!revocationOnly && (
       typeof issueInvitationToken !== 'function' ||
@@ -214,11 +216,11 @@ export function createStaffLifecycleCoordinator({
       });
       const durable=repository.storesInvitationMaterial===true;
       const result = await withTransaction(async (query) => {
-        if (firstAdminBootstrapOnly && issueRootMutationProof) {
+        if (adminRequired && issueRootMutationProof) {
           const proof = issueRootMutationProof({
             actorId, credentialHash: context.verifiedRootCredential,
             deadlineMs: Math.min(capability.expiresAtMs, context.verifiedIdentity.expiresAt * 1000),
-            scope: 'first-admin', binding: correlationId,
+            scope: firstAdminBootstrapOnly ? 'first-admin' : 'staff-admin', binding: correlationId,
           });
           await setRootMutationProof(query, proof);
         }

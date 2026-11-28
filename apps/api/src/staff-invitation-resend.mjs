@@ -51,6 +51,11 @@ export function createStaffInvitationResendSender(config){
 export function createRootRecoveryResendSender(config){
  const send=createStaffResendTransport(config);
  return async ({jobId,recipient,purpose,token})=>{
+  if(purpose==='recovery_attention'){
+   if(token!==null)throw Error('invalid_root_recovery_delivery');
+   return send({jobId,recipient,kind:'root-recovery',subject:'Revisa una recuperación de acceso de Sabora',
+    text:'Una recuperación de acceso sigue pendiente de comprobación. El acceso afectado permanece bloqueado hasta confirmar el estado.'});
+  }
   if(purpose==='recovered'){
    if(token!==null)throw Error('invalid_root_recovery_delivery');
    return send({jobId,recipient,kind:'root-recovery',subject:'Recuperación ROOT completada en Sabora',

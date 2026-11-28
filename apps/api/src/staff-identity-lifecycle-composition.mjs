@@ -39,7 +39,7 @@ export async function createVerifiedStaffIdentityLifecycleCandidate({origin,issu
  const [first,normal]=await Promise.all([
   createVerifiedDurableFirstAdminCandidate({...firstAdmin,role:firstAdmin.expectedLogin,
    keyring,emailHashSecret,issueRootMutationProof}),
-  createVerifiedDurableStaffAdminCandidate({...admin,role:admin.expectedLogin,keyring,emailHashSecret}),
+  createVerifiedDurableStaffAdminCandidate({...admin,role:admin.expectedLogin,keyring,emailHashSecret,issueRootMutationProof}),
   verifyBootstrap(),verifyEnrollment(),invitationWorker.readiness()
  ]);
  return Object.freeze({

@@ -28,6 +28,7 @@ CREATE TABLE sabora.root_recovery_state_candidate(
  pending_ceremony_hash text CHECK(pending_ceremony_hash ~ '^[0-9a-f]{64}$'),
  pending_registration_receipt_hash text CHECK(pending_registration_receipt_hash ~ '^[0-9a-f]{64}$'),
  pending_revocation_receipt_hash text CHECK(pending_revocation_receipt_hash ~ '^[0-9a-f]{64}$'),
+ attention_mail_id uuid,
  primary_credential_hash text CHECK(primary_credential_hash ~ '^[0-9a-f]{64}$'),
  backup_credential_hash text CHECK(backup_credential_hash ~ '^[0-9a-f]{64}$'),
  retired_credential_hashes text[] NOT NULL DEFAULT ARRAY[]::text[],
@@ -230,6 +231,7 @@ BEGIN
     UPDATE sabora.root_recovery_state_candidate SET registration_pending=false,pending_operation_hash=NULL,
      pending_registration_deadline=NULL,
      pending_credential_hash=NULL,pending_ceremony_hash=NULL,pending_registration_receipt_hash=NULL,pending_revocation_receipt_hash=NULL,
+     attention_mail_id=NULL,
      retired_credential_hashes=array_remove(s.retired_credential_hashes||ARRAY[coalesce(s.primary_credential_hash,v_genesis_hash),s.backup_credential_hash],NULL),
      primary_credential_hash=p_b,backup_credential_hash=NULL,code_hash=p_c,failures=0,blocked_until=NULL,
      link_hash=NULL,link_expires_at=NULL,pending_link_hash=NULL,pending_link_expires_at=NULL,
@@ -377,24 +379,37 @@ $access$;
 ALTER FUNCTION sabora.root_recovery_access_candidate(text,uuid,text,bigint,bigint,text) OWNER TO sabora_root_recovery_fn_owner;
 REVOKE ALL ON FUNCTION sabora.root_recovery_access_candidate(text,uuid,text,bigint,bigint,text) FROM PUBLIC,anon,authenticated;
 
--- Every successful governance or first-ADMIN mutation writes its audit row
--- in the same transaction. A stale ROOT proof rolls back the whole mutation.
--- Governance locks precede this lock; recovery never takes governance locks.
+-- The audit insert is part of the business transaction. Take the same lock
+-- as recovery preparation after the normal governance and membership locks.
+-- A stale credential rolls back the business operation and its audit row.
 CREATE FUNCTION sabora.enforce_root_mutation_fence_candidate()
  RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp
 AS $fence$
 DECLARE proof jsonb; scope text; binding text; credential text; issued bigint; expires bigint;
  key_bytes bytea; key_expiry timestamptz; expected bytea; supplied bytea;
  mismatch integer:=0; i integer; genesis text; s sabora.root_recovery_state_candidate%ROWTYPE;
+ root_actor boolean; recovery record;
 BEGIN
  IF TG_TABLE_NAME='staff_lifecycle_audit' THEN
-  IF NEW.actor_kind<>'root' THEN RETURN NEW; END IF;
-  scope:='first-admin';
+  IF NEW.actor_kind NOT IN ('root','admin') THEN RETURN NEW; END IF;
+  root_actor:=NEW.actor_kind='root';
+  scope:=CASE WHEN root_actor THEN 'first-admin' ELSE 'staff-admin' END;
  ELSE
-  IF NOT EXISTS(SELECT 1 FROM sabora.staff_members m WHERE m.user_id=NEW.actor_user_id AND m.role='root') THEN
-   RETURN NEW;
-  END IF;
+  root_actor:=EXISTS(SELECT 1 FROM sabora.root_bootstrap_receipt r
+   WHERE r.singleton AND r.root_user_id=NEW.actor_user_id)
+   OR EXISTS(SELECT 1 FROM sabora.staff_members m WHERE m.user_id=NEW.actor_user_id AND m.role='root');
   scope:='ownership';
+ END IF;
+ PERFORM pg_advisory_xact_lock(17302101,52426);
+ IF NOT root_actor THEN
+  SELECT a.completed_at,a.credential_hash INTO recovery
+   FROM sabora.staff_recovery_registration_candidate a
+   JOIN sabora.staff_recovery_intent_candidate i ON i.request_id=a.intent_id
+   WHERE a.subject_user_id=NEW.actor_user_id ORDER BY i.version DESC LIMIT 1;
+  IF NOT FOUND THEN RETURN NEW; END IF;
+  IF recovery.completed_at IS NULL THEN
+   RAISE EXCEPTION 'staff_mutation_recovery_forbidden' USING ERRCODE='42501';
+  END IF;
  END IF;
  binding:=NEW.correlation_id::text;
  proof:=nullif(current_setting('sabora.root_mutation_proof',true),'')::jsonb;
@@ -416,11 +431,14 @@ BEGIN
  supplied:=decode(proof->>7,'hex');
  FOR i IN 0..31 LOOP mismatch:=mismatch | (get_byte(expected,i)#get_byte(supplied,i)); END LOOP;
  IF mismatch<>0 THEN RAISE EXCEPTION 'root_mutation_forbidden' USING ERRCODE='42501'; END IF;
- PERFORM pg_advisory_xact_lock(17302101,52426);
  IF expires<=floor(extract(epoch FROM clock_timestamp())*1000) OR key_expiry<=clock_timestamp()
   OR NOT EXISTS(SELECT 1 FROM sabora.root_recovery_keys_candidate k WHERE k.key_id=proof->>0
    AND k.purpose='control' AND k.hmac_key=key_bytes AND k.expires_at>clock_timestamp()) THEN
   RAISE EXCEPTION 'root_mutation_forbidden' USING ERRCODE='42501';
+ END IF;
+ IF NOT root_actor THEN
+  IF credential=recovery.credential_hash THEN RETURN NEW; END IF;
+  RAISE EXCEPTION 'staff_mutation_recovery_forbidden' USING ERRCODE='42501';
  END IF;
  SELECT r.credential_hash INTO genesis FROM sabora.root_bootstrap_receipt r
   WHERE r.singleton AND r.root_user_id=NEW.actor_user_id;
@@ -462,7 +480,7 @@ CREATE TABLE sabora.root_recovery_mail_pending_candidate(
 );
 CREATE TABLE sabora.root_recovery_mail_job_candidate(
  id uuid PRIMARY KEY,root_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id),
- purpose text NOT NULL CHECK(purpose IN ('verify','link','challenge','notice','recovered')),
+ purpose text NOT NULL CHECK(purpose IN ('verify','link','challenge','notice','recovered','recovery_attention')),
  email_hash text NOT NULL CHECK(email_hash ~ '^[0-9a-f]{64}$'),
  recipient_envelope text,
  token_hash text CHECK(token_hash ~ '^[0-9a-f]{64}$'),
@@ -472,9 +490,9 @@ CREATE TABLE sabora.root_recovery_mail_job_candidate(
  state text NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','dispatching','accepted','rejected','unknown','cancelled')),
  fence uuid,provider_id uuid,finished_at timestamptz,
  CHECK(dispatch_until<=expires_at),
- CHECK((purpose IN ('notice','recovered'))=(token_hash IS NULL)),
+ CHECK((purpose IN ('notice','recovered','recovery_attention'))=(token_hash IS NULL)),
  CHECK((state IN ('queued','dispatching'))=(recipient_envelope IS NOT NULL)),
- CHECK((state IN ('queued','dispatching') AND purpose NOT IN ('notice','recovered'))=(token_envelope IS NOT NULL)),
+ CHECK((state IN ('queued','dispatching') AND purpose NOT IN ('notice','recovered','recovery_attention'))=(token_envelope IS NOT NULL)),
  CHECK((state='accepted')=(provider_id IS NOT NULL)),
  CHECK((state IN ('dispatching','accepted','rejected','unknown'))=(fence IS NOT NULL))
 );
@@ -504,12 +522,13 @@ DECLARE v_key bytea;v_key_expiry timestamptz;v_now timestamptz;
  p sabora.root_recovery_mail_pending_candidate%ROWTYPE;
  j sabora.root_recovery_mail_job_candidate%ROWTYPE;
  v_fence uuid;v_provider uuid;v_until timestamptz;v_days integer;v_out jsonb;
+ v_alert record;v_queued integer:=0;
 BEGIN
  IF session_user::text IS DISTINCT FROM (CASE WHEN p_action IN ('stage','confirm','queue_challenge')
     THEN 'sabora_root_recovery_login' ELSE 'sabora_root_recovery_mail_login' END)
   OR p_actor IS NULL OR p_request IS NULL
   OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
-  OR p_action IS NULL OR p_action NOT IN ('stage','confirm','queue_link','queue_challenge','list','claim','finish','promote')
+  OR p_action IS NULL OR p_action NOT IN ('stage','confirm','queue_link','queue_challenge','queue_attention','list','claim','finish','promote')
   OR p_payload IS NULL OR octet_length(p_payload)>12000
   OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
   OR p_issued IS NULL OR p_expires IS NULL OR p_expires::numeric-p_issued::numeric NOT BETWEEN 1 AND 30000
@@ -642,6 +661,41 @@ BEGIN
     VALUES(v_job,p_actor,'challenge',c.email_hash,c.recipient_envelope,v->>'tokenHash',v->>'tokenEnvelope',v_until,v_until);
    v_result:='challenge_queued';
   END IF;
+ ELSIF p_action='queue_attention' THEN
+  IF c.root_user_id IS DISTINCT FROM p_actor OR c.email_hash IS DISTINCT FROM s.email_hash THEN
+   RETURN jsonb_build_object('outcome','attention_unavailable');
+  END IF;
+  -- Use the existing recovery deadline as the boundary for an unresolved
+  -- provider effect. The same lock protects receipt completion and the
+  -- reference to the one mail job reserved for each incident.
+  FOR v_alert IN
+   SELECT NULL::uuid AS intent_id WHERE s.registration_pending
+    AND s.pending_credential_hash IS NOT NULL AND s.pending_registration_deadline<=v_now
+    AND s.attention_mail_id IS NULL AND s.pending_revocation_receipt_hash IS NULL
+   UNION ALL
+   SELECT x.intent_id FROM (
+    SELECT a.intent_id FROM sabora.staff_recovery_registration_candidate a
+    JOIN sabora.staff_recovery_intent_candidate i ON i.request_id=a.intent_id
+    WHERE i.expires_at<=v_now AND a.completed_at IS NULL
+     AND a.revocation_receipt_hash IS NULL AND a.attention_mail_id IS NULL
+    ORDER BY i.expires_at,a.intent_id LIMIT 19
+   ) x
+  LOOP
+   v_job:=gen_random_uuid();
+   INSERT INTO sabora.root_recovery_mail_job_candidate
+    (id,root_user_id,purpose,email_hash,recipient_envelope,expires_at,dispatch_until)
+   VALUES(v_job,p_actor,'recovery_attention',c.email_hash,c.recipient_envelope,
+    v_now+interval '1 day',v_now+interval '1 hour');
+   IF v_alert.intent_id IS NULL THEN
+    UPDATE sabora.root_recovery_state_candidate SET attention_mail_id=v_job WHERE singleton;
+   ELSE
+    UPDATE sabora.staff_recovery_registration_candidate SET attention_mail_id=v_job WHERE intent_id=v_alert.intent_id;
+   END IF;
+   INSERT INTO sabora.root_recovery_audit_candidate(request_id,root_user_id,action,outcome,failures,mail_job_id)
+    VALUES(gen_random_uuid(),p_actor,'mail_queue_attention','queued',coalesce(s.failures,0),v_job);
+   v_queued:=v_queued+1;
+  END LOOP;
+  RETURN jsonb_build_object('outcome','attention_checked','queued',v_queued);
  ELSIF p_action='list' THEN
   RETURN jsonb_build_object('outcome','listed','jobs',coalesce((SELECT jsonb_agg(x.id) FROM
    (SELECT id FROM sabora.root_recovery_mail_job_candidate WHERE root_user_id=p_actor AND
@@ -651,7 +705,7 @@ BEGIN
   SELECT * INTO j FROM sabora.root_recovery_mail_job_candidate WHERE id=(v->>'jobId')::uuid AND root_user_id=p_actor;
   IF FOUND THEN
    IF p_action='claim' AND j.state='queued' THEN
-    IF j.dispatch_until>v_now AND (j.purpose IN ('notice','recovered') OR
+    IF j.dispatch_until>v_now AND (j.purpose IN ('notice','recovered','recovery_attention') OR
      (NOT coalesce(s.registration_pending,false) AND
      ((j.purpose='verify' AND p.proof_hash=j.token_hash AND p.email_hash=j.email_hash)
       OR (j.purpose='link' AND s.pending_link_hash=j.token_hash AND c.email_hash=j.email_hash)
@@ -1107,6 +1161,7 @@ CREATE TABLE sabora.staff_recovery_registration_candidate(
  previous_provider_ids uuid[] NOT NULL CHECK(cardinality(previous_provider_ids)<=1000 AND array_position(previous_provider_ids,NULL) IS NULL),
  replacement_provider_id uuid UNIQUE CHECK(replacement_provider_id IS NULL OR NOT (replacement_provider_id=ANY(previous_provider_ids))),
  registration_receipt_hash text UNIQUE CHECK(registration_receipt_hash ~ '^[0-9a-f]{64}$'),
+ attention_mail_id uuid,
  revocation_receipt_hash text UNIQUE CHECK(revocation_receipt_hash ~ '^[0-9a-f]{64}$'),
  prepared_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  completed_at timestamptz,
@@ -1120,7 +1175,7 @@ CREATE UNIQUE INDEX staff_recovery_one_pending_registration ON sabora.staff_reco
 ALTER TABLE sabora.staff_recovery_registration_candidate ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sabora.staff_recovery_registration_candidate FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON sabora.staff_recovery_registration_candidate FROM PUBLIC,anon,authenticated;
-GRANT SELECT,INSERT,UPDATE(registration_receipt_hash,replacement_provider_id,revocation_receipt_hash,completed_at)
+GRANT SELECT,INSERT,UPDATE(registration_receipt_hash,replacement_provider_id,revocation_receipt_hash,completed_at,attention_mail_id)
  ON sabora.staff_recovery_registration_candidate TO sabora_root_recovery_fn_owner;
 CREATE POLICY staff_recovery_registration_owner ON sabora.staff_recovery_registration_candidate
  TO sabora_root_recovery_fn_owner USING(true) WITH CHECK(true);

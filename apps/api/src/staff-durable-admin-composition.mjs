@@ -27,7 +27,7 @@ async function compose({pool,role,keyId,secret,emailHashSecret,keyring,issueRoot
  const hashInviteeEmail=createStaffInviteeEmailHasher({secret:emailHashSecret});
  const tx=createPostgresTransaction({pool});
  const allowed=new Set([DIRECTORY_OUTBOX_SQL,STAFF_INVITATION_CUSTODY_RESTRICTED_SQL]);
- if(first)allowed.add(ROOT_MUTATION_PROOF_SQL);
+ if(issueRootMutationProof)allowed.add(ROOT_MUTATION_PROOF_SQL);
  const withTransaction=work=>tx(query=>work((sql,args)=>{
   if(!allowed.has(sql))throw Error('staff_durable_admin_sql_not_allowed');
   return query(sql,args);
@@ -46,7 +46,7 @@ async function compose({pool,role,keyId,secret,emailHashSecret,keyring,issueRoot
  return Object.freeze({readiness,register(app,{forRoles}={}){
   return (first?registerDurableFirstAdminHttpCandidate:registerDurableStaffAdminHttpCandidate)(app,{forRoles,keyring,resolveSubject,readState,lifecycleConfig:{
    withTransaction,issueCapability,hashInviteeEmail,uuid:randomUUID,
-   ...(first?{issueRootMutationProof,setRootMutationProof:(query,proof)=>query(ROOT_MUTATION_PROOF_SQL,[proof])}:{}),
+   ...(issueRootMutationProof?{issueRootMutationProof,setRootMutationProof:(query,proof)=>query(ROOT_MUTATION_PROOF_SQL,[proof])}:{}),
    issueInvitationToken:()=>randomBytes(32).toString('base64url'),
    verifyCredentialRegistration:async()=>{throw Error('staff_admin_registration_forbidden');}
   }});

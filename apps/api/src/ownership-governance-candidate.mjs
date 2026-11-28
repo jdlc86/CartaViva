@@ -112,7 +112,7 @@ export function createOwnershipGovernanceRepository({withTransaction,issueCapabi
   const cap=issueCapability({...actor,action:action==='read'?'ownership.read':'ownership.manage',
    requestId,body});
   return withTransaction(async query=>{
-   if(actor.staffRole==='root'&&action!=='read'&&issueRootMutationProof){
+   if(action!=='read'&&issueRootMutationProof){
     const proof=issueRootMutationProof({actorId:actor.actorId,credentialHash:verified.verifiedRootCredential,
      deadlineMs:Math.min(cap.expiresAtMs,verified.verifiedIdentity.expiresAt*1000),scope:'ownership',binding:requestId});
     await query(ROOT_MUTATION_PROOF_SQL,[proof]);

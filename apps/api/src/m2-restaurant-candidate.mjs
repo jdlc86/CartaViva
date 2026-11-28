@@ -368,7 +368,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   if(staff.revocation){
    staffRevocation=await createVerifiedStaffLifecycleFromPool({
     pool:staff.revocation.pool,role:staff.revocation.expectedLogin,
-    issueCapability:staff.revocation.issueCapability,revocationOnly:true
+    issueCapability:staff.revocation.issueCapability,revocationOnly:true,
+    issueRootMutationProof:rootRecovery?.issueMutationProof
    });
    registerStaffRevocationHttp(app,{forRoles:oneGuard,coordinator:staffRevocation});
   }

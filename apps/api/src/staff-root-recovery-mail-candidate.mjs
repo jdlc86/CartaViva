@@ -91,6 +91,13 @@ export function createRootRecoveryMailCandidate({pool,keyId,signingSecret,hash,k
   const m=material(actor.toLowerCase(),'link');
   return command(actor,'queue_link',m);
  }
+ async function queueAttention(actor){
+  const result=await command(actor,'queue_attention');
+  if(result.outcome==='attention_unavailable')return null;
+  if(result.outcome!=='attention_checked'||!Number.isInteger(result.queued)||result.queued<0||result.queued>20)
+   throw Error('invalid_root_mail_attention');
+  return result.queued;
+ }
  async function queueChallenge(actor,link){
   if(!tokenValid(link))return {outcome:'denied'};
   const m=material(actor.toLowerCase(),'challenge');
@@ -110,12 +117,12 @@ export function createRootRecoveryMailCandidate({pool,keyId,signingSecret,hash,k
    const promotion=await promote(actor,jobId);
    return promotion.outcome==='link_confirmed'?{outcome:'accepted',promotion:promotion.outcome}:job;
   }
-  if(job.jobId!==jobId||!UUID.test(job.fence??'')||!['verify','link','challenge','notice','recovered'].includes(job.purpose))throw Error('invalid_root_mail_claim');
+  const notice=['notice','recovered','recovery_attention'].includes(job.purpose);
+  if(job.jobId!==jobId||!UUID.test(job.fence??'')||(!notice&&!['verify','link','challenge'].includes(job.purpose)))throw Error('invalid_root_mail_claim');
   let result='unknown',providerId=null;
   try{
    const recipient=normalizeStaffInviteeEmail(await open(actor,'recipient',job.emailHash,job.recipientEnvelope));
    if(!hashMatches(hash('email',recipient),job.emailHash))throw forbidden();
-   const notice=['notice','recovered'].includes(job.purpose);
    const token=notice?null:await open(actor,'token:'+job.purpose,jobId,job.tokenEnvelope);
    if(!notice&&(!tokenValid(token)||!hashMatches(hash(job.purpose==='verify'?'email-verification':job.purpose,token),job.tokenHash)))throw forbidden();
    const receipt=await send({jobId,recipient,purpose:job.purpose,token});
@@ -127,5 +134,5 @@ export function createRootRecoveryMailCandidate({pool,keyId,signingSecret,hash,k
   if(result==='accepted'&&job.purpose==='link')return {outcome:result,promotion:(await promote(actor,jobId)).outcome};
   return {outcome:result};
  }
- return Object.freeze(mode==='control'?{stage,confirm,queueChallenge}:{queueLink,list,dispatch,promote});
+ return Object.freeze(mode==='control'?{stage,confirm,queueChallenge}:{queueLink,queueAttention,list,dispatch,promote});
 }

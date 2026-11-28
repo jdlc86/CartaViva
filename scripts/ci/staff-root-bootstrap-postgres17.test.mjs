@@ -33,6 +33,7 @@ import {FIRST_ADMIN_BOOTSTRAP_LOGIN} from '../../apps/api/src/staff-lifecycle-co
 import {createStaffLifecycleRepository} from '../../apps/api/src/staff-lifecycle-repository.mjs';
 import {createOwnershipCapabilityIssuer,createOwnershipGovernanceRepository,registerOwnershipGovernanceHttp,assertOwnershipRuntimeIdentity,OWNERSHIP_ROLE,OWNERSHIP_SQL} from '../../apps/api/src/ownership-governance-candidate.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
+import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 
 const source=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!source||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
@@ -745,6 +746,29 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   // recovery work, even when a verified HTTP context was admitted earlier.
   const freshAdminAuthority=authority(otherId,'admin',staffNewHash);
   const retiredAdminAuthority=authority(otherId,'admin',staffOldHash);
+  const issueNormal=createStaffLifecycleDirectoryCapabilityIssuer({
+   keyId:normalKey,secret:normalSecret,databaseRole:normalLogin});
+  const ordinaryCorrelation=correlation();
+  const ordinaryCapability=issueNormal({actorId:otherId,action:'suspend',enrollmentId:queuedTarget.enrollmentId,
+   subjectUserId:queuedTarget.subjectId,requestedRole:null,inviteeEmailHashHex:null,inviteTokenHashHex:null,
+   credentialEvidenceHashHex:null,reason:'Comprobación de autoridad vigente',givenName:null,familyName:null,
+   inviteeEmail:null,correlationId:ordinaryCorrelation});
+  const ordinaryTx=createPostgresTransaction({pool:normalPool});
+  const runOrdinary=(credentialHash,rollback)=>ordinaryTx(async query=>{
+   const proof=rootKernel.issueMutationProof({actorId:otherId,credentialHash,scope:'staff-admin',
+    deadlineMs:ordinaryCapability.expiresAtMs,binding:ordinaryCorrelation});
+   await query(ROOT_MUTATION_PROOF_SQL,[proof]);
+   const result=await sqlRepo.transition((_sql,args)=>query(DIRECTORY_OUTBOX_SQL,args),ordinaryCapability);
+   assert.equal(result.currentState,'suspended');
+   throw rollback;
+  });
+  const rollback=Error('fixture_rollback_authorized_staff_mutation');
+  await assert.rejects(runOrdinary(staffOldHash,rollback),e=>e.code==='42501'&&e.message==='staff_mutation_recovery_forbidden');
+  assert.deepEqual((await admin.query('SELECT state FROM sabora.staff_members WHERE user_id=$1',
+   [queuedTarget.subjectId])).rows,[{state:'active'}]);
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_lifecycle_audit WHERE correlation_id=$1',
+   [ordinaryCorrelation])).rows[0].n,0);
+  await assert.rejects(runOrdinary(staffNewHash,rollback),e=>e===rollback);
   await assert.rejects(classify(retiredAdminAuthority,{enrollmentId:queuedTarget.enrollmentId}),e=>e.code==='42501');
   await assert.rejects(classify(authority(otherId,'admin',null),{enrollmentId:queuedTarget.enrollmentId}),e=>e.code==='42501');
   await assert.rejects(queueRecovery(retiredAdminAuthority,{enrollmentId:queuedTarget.enrollmentId,requestId:randomUUID()}),e=>e.code==='42501');
@@ -1212,6 +1236,18 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
    assert.equal((await run('prepare_registration',{a:grant,b:completion.b,c:fixtureEvidence('ceremony')})).outcome,'registration_prepared');
    await admin.query("UPDATE sabora.root_recovery_state_candidate SET pending_registration_deadline=clock_timestamp()-interval '1 second' WHERE singleton");
    assert.equal((await run('expire_unprepared')).outcome,'registration_pending');
+   assert.equal((await state()).statusCode,401);
+   const restartedMail=()=>createRootRecoveryMailCandidate({pool:mailPool,keyId:mailKey,signingSecret:mailSigning,hash,keyring,mode:'worker'});
+   const checks=await Promise.all([mail.queueAttention(rootId),restartedMail().queueAttention(rootId)]);
+   assert.equal(checks[0]+checks[1],1);
+   const warning=(await admin.query(`SELECT j.id,j.purpose,j.state,j.token_hash,j.token_envelope
+    FROM sabora.root_recovery_state_candidate s JOIN sabora.root_recovery_mail_job_candidate j ON j.id=s.attention_mail_id
+    WHERE s.singleton`)).rows;
+   assert.equal(warning.length,1);
+   assert.deepEqual({...warning[0],id:null},{id:null,purpose:'recovery_attention',state:'queued',token_hash:null,token_envelope:null});
+   assert.equal((await restartedMail().dispatch(rootId,warning[0].id,mailSender)).outcome,'accepted');
+   assert.equal(await mail.queueAttention(rootId),0);
+   assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.root_recovery_audit_candidate WHERE mail_job_id=$1 AND action='mail_queue_attention'",[warning[0].id])).rows[0].n,1);
    assert.equal((await state()).statusCode,401);
    assert.equal((await run('prepare_registration',{a:grant,b:hashRootCredentialId(Buffer.from('unbound').toString('base64url')),c:fixtureEvidence('other')})).outcome,'registration_pending');
    assert.equal((await run('record_revocation',{a:grant,b:completion.b,c:fixtureEvidence('early')})).outcome,'registration_pending');

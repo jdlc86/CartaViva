@@ -80,6 +80,7 @@ export async function createVerifiedRootRecoveryCandidate({control,worker,factor
   // Release only an expired operation that never reached the durable
   // pre-provider fence. Prepared/uncertain operations are never reopened.
   await kernel.command('expire_unprepared',actor);
+  await transport.queueAttention(actor);
   await transport.queueLink(actor);
   for(const jobId of await transport.list(actor)){
    if(closed)break;
