@@ -39,6 +39,11 @@ BEGIN
   END IF;
 END;
 $role$;
+-- CV005 grants the installer only the ownership transfer within this transaction.
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_invitation_enqueue_fn_owner;
+GRANT sabora_staff_invitation_enqueue_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_lifecycle_fn_owner;
+GRANT sabora_staff_lifecycle_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 
 CREATE TABLE sabora.staff_invitation_outbox (
   id uuid PRIMARY KEY,
@@ -264,4 +269,8 @@ COMMENT ON FUNCTION sabora.transition_staff_lifecycle_with_outbox_candidate(
   text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text
 ) IS 'Candidate atomic HMAC lifecycle transition and invitation outbox boundary; no runtime EXECUTE grant is provisioned.';
 
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_invitation_enqueue_fn_owner;
+REVOKE sabora_staff_invitation_enqueue_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_lifecycle_fn_owner;
+REVOKE sabora_staff_lifecycle_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 COMMIT;

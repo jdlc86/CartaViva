@@ -2,6 +2,13 @@
 -- and fenced envelope reader candidates. No operational LOGIN or runtime grant.
 -- The legacy wrapper remains available for its existing regression tests.
 BEGIN;
+-- CV005 grants the installer only the ownership transfer within this transaction.
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_invitation_enqueue_fn_owner;
+GRANT sabora_staff_invitation_enqueue_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_custody_reader_fn_owner;
+GRANT sabora_staff_custody_reader_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_lifecycle_fn_owner;
+GRANT sabora_staff_lifecycle_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER TABLE sabora.staff_invitation_outbox
  ADD COLUMN custody_required boolean NOT NULL DEFAULT false,
  ADD COLUMN provider_message_id uuid UNIQUE,
@@ -194,6 +201,8 @@ REVOKE ALL ON FUNCTION sabora.read_staff_invitation_directory_dispatch_candidate
 -- execution of any general transition routine.
 CREATE ROLE sabora_staff_enrollment_fn_owner NOLOGIN NOINHERIT NOSUPERUSER
  NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_enrollment_fn_owner;
+GRANT sabora_staff_enrollment_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 GRANT USAGE ON SCHEMA sabora,extensions TO sabora_staff_enrollment_fn_owner;
 GRANT EXECUTE ON FUNCTION extensions.hmac(bytea,bytea,text) TO sabora_staff_enrollment_fn_owner;
 GRANT SELECT(key_id,hmac_key,not_before,expires_at,disabled_at)
@@ -466,4 +475,12 @@ ALTER FUNCTION sabora.resolve_staff_admin_subject_candidate(text,uuid,uuid,text,
  OWNER TO sabora_staff_lifecycle_fn_owner;
 REVOKE ALL ON FUNCTION sabora.resolve_staff_admin_subject_candidate(text,uuid,uuid,text,text,bigint,bigint,text)
  FROM PUBLIC,anon,authenticated;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_invitation_enqueue_fn_owner;
+REVOKE sabora_staff_invitation_enqueue_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_custody_reader_fn_owner;
+REVOKE sabora_staff_custody_reader_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_lifecycle_fn_owner;
+REVOKE sabora_staff_lifecycle_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_enrollment_fn_owner;
+REVOKE sabora_staff_enrollment_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 COMMIT;

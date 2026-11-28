@@ -109,10 +109,13 @@ BEGIN
  RETURN true;
 END;
 $bootstrap$;
--- Candidate is installed only by disposable superuser. The production delta
--- must additionally implement and test CV005 DBA ownership transfer/cleanup.
+-- CV005 grants the installer only the ownership transfer within this transaction.
+GRANT CREATE ON SCHEMA sabora TO sabora_root_bootstrap_fn_owner;
+GRANT sabora_root_bootstrap_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.consume_root_bootstrap_candidate(uuid,uuid,uuid,text,bigint,bigint,text,text)
  OWNER TO sabora_root_bootstrap_fn_owner;
 REVOKE ALL ON FUNCTION sabora.consume_root_bootstrap_candidate(uuid,uuid,uuid,text,bigint,bigint,text,text)
  FROM PUBLIC,anon,authenticated;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_root_bootstrap_fn_owner;
+REVOKE sabora_root_bootstrap_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 COMMIT;

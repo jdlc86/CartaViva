@@ -3,6 +3,9 @@
 BEGIN;
 CREATE ROLE sabora_root_recovery_fn_owner NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS
  NOCREATEDB NOCREATEROLE NOREPLICATION;
+-- CV005 grants the installer only the ownership transfer within this transaction.
+GRANT CREATE ON SCHEMA sabora TO sabora_root_recovery_fn_owner;
+GRANT sabora_root_recovery_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 CREATE TABLE sabora.root_recovery_keys_candidate(
  key_id text PRIMARY KEY CHECK(key_id ~ '^[A-Za-z0-9_-]{8,64}$'),
  hmac_key bytea NOT NULL CHECK(octet_length(hmac_key)=32),
@@ -1335,4 +1338,6 @@ ALTER FUNCTION sabora.staff_recovery_registration_candidate(text,text,uuid,uuid,
 REVOKE ALL ON FUNCTION sabora.staff_recovery_registration_candidate(text,text,uuid,uuid,uuid,text,text,bigint,bigint,text)
  FROM PUBLIC,anon,authenticated;
 
+REVOKE CREATE ON SCHEMA sabora FROM sabora_root_recovery_fn_owner;
+REVOKE sabora_root_recovery_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 COMMIT;

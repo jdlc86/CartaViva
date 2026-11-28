@@ -7,6 +7,9 @@ REVOKE ALL ON SCHEMA sabora FROM sabora_staff_custody_reader_fn_owner;
 REVOKE ALL ON ALL TABLES IN SCHEMA sabora FROM sabora_staff_custody_reader_fn_owner;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora FROM sabora_staff_custody_reader_fn_owner;
 GRANT USAGE ON SCHEMA sabora TO sabora_staff_custody_reader_fn_owner;
+-- CV005 grants the installer only the ownership transfer within this transaction.
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_custody_reader_fn_owner;
+GRANT sabora_staff_custody_reader_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 GRANT SELECT (id,enrollment_id,invite_version,invite_token_hash,state,fence,
   dispatch_authorized_at) ON sabora.staff_invitation_outbox
   TO sabora_staff_custody_reader_fn_owner;
@@ -58,4 +61,6 @@ ALTER FUNCTION sabora.read_staff_invitation_dispatch_envelope_candidate(uuid,uui
   OWNER TO sabora_staff_custody_reader_fn_owner;
 REVOKE ALL ON FUNCTION sabora.read_staff_invitation_dispatch_envelope_candidate(uuid,uuid)
   FROM PUBLIC,anon,authenticated;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_custody_reader_fn_owner;
+REVOKE sabora_staff_custody_reader_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 COMMIT;

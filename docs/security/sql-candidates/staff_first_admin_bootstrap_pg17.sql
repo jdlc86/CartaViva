@@ -4,6 +4,9 @@
 -- identity/code/directory wrappers and owner. No LOGIN or runtime EXECUTE.
 -- Production promotion needs append-only CV005 DBA installation evidence.
 BEGIN;
+-- CV005 grants the installer only the ownership transfer within this transaction.
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_lifecycle_fn_owner;
+GRANT sabora_staff_lifecycle_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER TABLE sabora.staff_lifecycle_audit
  DROP CONSTRAINT staff_lifecycle_audit_actor_kind_check,
  ADD CONSTRAINT staff_lifecycle_audit_actor_kind_check
@@ -527,4 +530,6 @@ BEGIN
  END IF;
 END;
 $owner_check$;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_lifecycle_fn_owner;
+REVOKE sabora_staff_lifecycle_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 COMMIT;

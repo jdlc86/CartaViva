@@ -1,6 +1,9 @@
 -- Disposable PG17 only, AFTER root, first-admin and directory/outbox overlays.
 -- No LOGIN or runtime grant. Distinct audience; final mutation revalidates under lock.
 BEGIN;
+-- CV005 grants the installer only the ownership transfer within this transaction.
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_lifecycle_fn_owner;
+GRANT sabora_staff_lifecycle_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 CREATE FUNCTION sabora.resolve_staff_first_admin_subject_candidate(
  p_key_id text,p_actor uuid,p_enrollment uuid,p_action text,p_correlation text,
  p_issued bigint,p_expires bigint,p_signature text
@@ -109,4 +112,6 @@ END;
 $first_admin_state$;
 ALTER FUNCTION sabora.read_staff_first_admin_state_candidate(text,uuid,bigint,bigint,text) OWNER TO sabora_staff_lifecycle_fn_owner;
 REVOKE ALL ON FUNCTION sabora.read_staff_first_admin_state_candidate(text,uuid,bigint,bigint,text) FROM PUBLIC,anon,authenticated;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_lifecycle_fn_owner;
+REVOKE sabora_staff_lifecycle_fn_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
 COMMIT;

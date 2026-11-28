@@ -425,4 +425,26 @@ docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$da
   'sabora.read_order_operations_dispatch_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
  ")" == t ]] || exit 1
 echo 'sabora_s55_dispatch_board_snapshot_nonsuperuser_verified'
+for identity_overlay in staff_root_bootstrap staff_first_admin_bootstrap \
+ staff_invitation_outbox_schema staff_invitation_custody staff_invitation_custody_restricted \
+ staff_invitation_dispatch_envelope staff_invitation_directory_outbox staff_first_admin_durable \
+ staff_root_recovery; do
+  echo "sabora_identity_delta_installing:$identity_overlay"
+  docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+   < "docs/security/sql-candidates/${identity_overlay}_pg17.sql"
+done
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc "
+ WITH owners AS (SELECT oid,rolname,rolcanlogin,rolsuper,rolbypassrls FROM pg_catalog.pg_roles
+  WHERE rolname IN ('sabora_root_bootstrap_fn_owner','sabora_root_recovery_fn_owner',
+   'sabora_staff_lifecycle_fn_owner','sabora_staff_invitation_enqueue_fn_owner',
+   'sabora_staff_custody_fn_owner','sabora_staff_custody_reader_fn_owner','sabora_staff_enrollment_fn_owner'))
+ SELECT count(*)=7 AND bool_and(NOT (rolcanlogin OR rolsuper OR rolbypassrls)
+  AND NOT pg_has_role(current_user,oid,'SET') AND NOT has_schema_privilege(oid,'sabora','CREATE'))
+ AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN owners o ON p.proowner=o.oid
+  WHERE p.pronamespace='sabora'::regnamespace AND p.prosecdef AND
+   (has_function_privilege('anon',p.oid,'EXECUTE') OR has_function_privilege('authenticated',p.oid,'EXECUTE')
+    OR has_function_privilege('service_role',p.oid,'EXECUTE')))
+ FROM owners
+ ")" == t ]] || exit 1
+echo 'sabora_s55_identity_delta_nonsuperuser_verified'
 echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"
