@@ -12,6 +12,7 @@ import {
 } from '../apps/api/src/operational-activation-manifest.mjs';
 import {PILOT_ACTIVATION_REQUIREMENTS} from '../apps/api/src/pilot-activation-gate.mjs';
 import {createFloorPushSender} from '../apps/api/src/floor-web-push.mjs';
+import {firstTestRuntime} from '../scripts/ops/sabora-s51-first-test-runtime.mjs';
 
 const features=Object.freeze({ownership:true,communications:true,waiterCalls:true});
 
@@ -86,6 +87,69 @@ class FakePool{
  async connect(){return {release(){}};}
  async end(){this.closed++;}
 }
+
+test('V2 offline inventory selects the complete identity lifecycle with separate credentials and exact mail egress',async()=>{
+ const selected={...features,staffDirectory:true,staffIdentity:true};
+ const valueFor=new Map();
+ const key=(name)=>{const ref='identity_'+name;valueFor.set(ref,randomBytes(32).toString('base64url'));return ref;};
+ const refs=['emailHash','factor','enrollmentCookie','rootRecoveryCookie','rootRecoveryTicket','staffRecoveryCookie','staffRecoveryTicket'];
+ const makeRef=name=>key(name.replace(/[A-Z]/g,letter=>'_'+letter.toLowerCase()));
+ const identity={rootUserId:'af496fc8-9d11-40a5-b2bc-010ed472863e',
+  resend:{from:'security@sabora.es',connectPort:15444},
+  signers:Object.fromEntries(['firstAdmin','admin','enrollment','recoveryControl','recoveryWorker']
+   .map((name,index)=>[name,{keyId:'h1_identity_'+index,secretRef:makeRef(name)}])),
+  secrets:{...Object.fromEntries(refs.map(name=>[name,makeRef(name)])),
+   authAdmin:'supabase_auth_admin_key',rootAuthEmail:'sabora_root_auth_email',resendApiKey:'resend_api_key'},
+  custody:{activeKeyId:'sabora_identity_custody',keys:[{id:'sabora_identity_custody',state:'active',secretRef:key('custody')}]}
+ };
+ valueFor.set('supabase_auth_admin_key','sb_secret_'+randomBytes(28).toString('base64url'));
+ valueFor.set('resend_api_key','re_'+randomBytes(28).toString('base64url'));
+ valueFor.set('sabora_root_auth_email','security-root@sabora.es');
+ valueFor.set('staff_directory_hmac',randomBytes(32).toString('base64url'));
+ const manifest=fixtureManifest({stage:'production',selectedFeatures:selected,mutate:(value,contract)=>{
+  value.auth.staffPasskeyPublishableKey='sb_publishable_isolated_manifest_123456';
+  Object.assign(value.signing,{staffDirectorySecretRef:'staff_directory_hmac',staffDirectoryKeyId:'h1_staff_directory'});
+  value.staffIdentity=identity;
+  value.network.allowedTlsHosts.push('api.resend.com');
+  for(const slot of contract.slots.filter(item=>item.poolPath.startsWith('staff.identityLifecycle.')||item.poolPath.startsWith('staff.rootRecovery.')))
+   value.database.slots[slot.poolPath].login=slot.capabilityRole;
+ }});
+ for(const mutate of [
+  value=>{delete value.staffIdentity.custody;},
+  value=>{value.staffIdentity.secrets.emailHash=value.staffIdentity.signers.admin.secretRef;},
+  value=>{value.features.staffRevocation=true;},
+  value=>{value.database.slots['staff.rootRecovery.worker.pool'].login='sabora_untrusted_worker';},
+  value=>{value.staffIdentity.staffRecoveryTtlSeconds=600;}
+ ]){
+  const copy=structuredClone(manifest);mutate(copy);
+  assert.throws(()=>validateOperationalActivationManifest(copy));
+ }
+ const resolver=resolverFor(manifest);
+ const resources=await materializeOperationalM3Options({manifest,Pool:FakePool,resolveSecret:async ref=>valueFor.get(ref)??resolver(ref)});
+ assert.equal(resources.options.staff.passkey,undefined);
+ assert.equal(typeof resources.options.staff.rootRecovery.publicRecovery.providerForRoot,'function');
+ assert.equal(typeof resources.options.staff.identityLifecycle.invitationDispatch.createInvitationProof,'function');
+ const keyring=resources.options.staff.identityLifecycle.keyring;
+ assert.equal(keyring.active().key.length,32);
+ await resources.close();
+ assert.throws(()=>keyring.active(),/staff_keyring_closed/);
+ const evidence=Object.fromEntries(PILOT_ACTIVATION_REQUIREMENTS.filter(name=>
+  !['backupRestoreVerified','rollbackVerified','operationalBootstrapVerified','twoPwasValidated'].includes(name)).map(name=>[name,true]));
+ const floorPush={ports:{'fcm.googleapis.com':15445,'web.push.apple.com':15446},
+  publicKey:createECDH('prime256v1').generateKeys('base64url'),privateKeyRef:'floor_push_vapid',subject:'mailto:security@sabora.es'};
+ const plainInventory={schema:'sabora-runtime-provision-inventory/v1',project:'sabora',genesisFictitiousOnly:true,
+  validUntil:new Date(Date.now()+3600000).toISOString(),keyId:'inventory_ci_key',staffIdentity:identity,floorPush,
+  staffDirectorySigning:{keyId:'h1_staff_directory',secretRef:'staff_directory_hmac'},
+  tableChangeWindow:true,groupedDispatchWithoutStripe:true,
+  slots:describeOperationalSqlContract({...selected,floorPush:true}).slots.map((slot,index)=>({slot:slot.poolPath,role:slot.capabilityRole,
+   login:slot.capabilityRole.endsWith('_login')?slot.capabilityRole:'sabora_runtime_'+index,
+   passwordRef:'sql_password_'+String(index).padStart(2,'0')}))};
+ const generated=firstTestRuntime(plainInventory,'SABORA_CI',evidence,manifest.auth.staffPasskeyPublishableKey);
+ assert.deepEqual(generated.activation.floorPush,floorPush);
+ assert.equal(generated.activation.features.tableChangeWindow,true);
+ assert.equal(generated.activation.features.groupedDispatchWithoutStripe,true);
+ assert.equal(validateOperationalEgressBinding(generated.activation,generated.egress).targetCount,5);
+});
 
 test('floor Web Push binds both approved hosts to gateway TLS routes and treats redirects as failures',async()=>{
  const vapid=createECDH('prime256v1'),device=createECDH('prime256v1');

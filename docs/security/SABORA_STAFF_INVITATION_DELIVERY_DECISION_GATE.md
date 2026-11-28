@@ -1,5 +1,9 @@
 # Hito 2 — decisión pendiente: entrega durable de invitaciones del personal
 
+## Custodia de recuperación no ROOT
+
+Para la recuperación de una cuenta existente de ADMIN, camarero o cocina, la adenda S54 fija un solo uso y un máximo de 60 minutos desde la autorización. El sobre solo se conserva hasta que deje de ser necesario para entregar el enlace. Aceptación del envío, consumo, revocación, sustitución, caducidad y envío incierto eliminan el material recuperable. El trabajador reutiliza el mantenimiento acotado de la cola para las expiraciones. Los hashes, las evidencias y el historial durable continúan disponibles para reconciliar sin enviar otra vez ni liberar ningún bloqueo. [Adenda S54](SABORA_STAFF_IDENTITY_LIFECYCLE_V1.md#adenda-s54--recuperación-de-credenciales-de-personal-no-root-26-11-2026).
+
 Estado: **esquema candidato validado en PG17; gate operativo no aprobado ni
 activado**. Fecha: 2026-10-25.
 

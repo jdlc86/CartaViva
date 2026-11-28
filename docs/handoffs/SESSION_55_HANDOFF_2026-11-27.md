@@ -221,3 +221,7 @@ Partida verificada `ba9d97b2`, 8/8 controles aplicables PASS. El mismo Draft #92
 ## S55-20 — Avisos de sala aprobados e incorporados en R2
 
 El propietario aprobó los destinos Web Push de Chrome y Apple y los recordatorios de llamada de 30 segundos. RF, contrato consolidado y aislamiento V2 incorporan la decisión. El Draft #92 monta la opción `floorPush` con un delta PG17 posterior a genesis, la PWA de Gestión y acceso a dos hosts exactos mediante el gateway actual. Se amplían los ensayos CV-014 y F21. Las pruebas usan navegador y PostgreSQL desechables y un transporte simulado. [Informe](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md#avisos-de-sala-y-web-push-aprobados) · [Tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md).
+
+## S55-21 — Identidad V2 y política de custodia de recuperación
+
+La [adenda S54](../security/SABORA_STAFF_IDENTITY_LIFECYCLE_V1.md#adenda-s54--recuperación-de-credenciales-de-personal-no-root-26-11-2026) incorpora el enlace de un uso y 60 minutos aprobado para ADMIN, sala y cocina. El delta elimina el sobre al reservar, sustituir, revocar o purgar una caducidad y conserva evidencia no secreta. El manifiesto y el generador offline pueden seleccionar los circuitos de identidad y sus destinos exactos. La ejecución permanece en repositorio y CI. [Informe](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md#identidad-v2-y-vigencia-de-recuperación-aprobada) · [Tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md).

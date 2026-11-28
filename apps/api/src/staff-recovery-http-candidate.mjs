@@ -160,7 +160,7 @@ export function registerStaffRecoveryAdminHttpCandidate(app,{forRoles,classify,a
 }
 
 export function createStaffRecoveryHttpComposition({control,keyring,hashInviteeEmail,origin,
- issuer,getTrustedKeys,providerFor,ttlSeconds,httpSecret,ticketSecret}={}){
+ issuer,getTrustedKeys,providerFor,httpSecret,ticketSecret}={}){
  if(typeof providerFor!=='function'||typeof getTrustedKeys!=='function'||
   typeof issuer!=='string'||!(httpSecret instanceof Uint8Array)||httpSecret.byteLength!==32||
   !(ticketSecret instanceof Uint8Array)||ticketSecret.byteLength!==32||
@@ -168,7 +168,7 @@ export function createStaffRecoveryHttpComposition({control,keyring,hashInviteeE
  const delivery=createStaffRecoveryDeliveryCandidate({...control,keyring,hashInviteeEmail,
   issuer,getTrustedKeys,recoveryProviderFor:providerFor});
  const classify=createStaffInvitationClassificationCandidate({...control,hashInviteeEmail});
- const authorize=createStaffRecoveryIntentCandidate({...control,ttlSeconds,delivery});
+ const authorize=createStaffRecoveryIntentCandidate({...control,delivery});
  const registration=createStaffRecoveryRegistrationCandidate(control);
  const service=createStaffRecoveryServiceCandidate({delivery,registration,issuer,getTrustedKeys,
   managementOrigin:origin,ticketSecret});

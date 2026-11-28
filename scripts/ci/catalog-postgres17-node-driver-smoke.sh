@@ -119,6 +119,7 @@ fi
 docker exec -i -e PGPASSWORD=sabora_ci_ephemeral_only "$container" psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
 CREATE ROLE anon NOLOGIN;
 CREATE ROLE authenticated NOLOGIN;
+CREATE ROLE service_role NOLOGIN;
 SQL
 for migration in supabase/migrations/*.sql; do
  test -f "$migration"

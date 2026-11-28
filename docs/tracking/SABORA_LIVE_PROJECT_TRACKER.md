@@ -1,5 +1,7 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S55 R2 · Identidad V2 y custodia.** El mismo Draft #92 incorpora el trabajador de invitaciones con acceso SQL mínimo, la selección offline del ciclo en V2 y el enlace de un solo uso de 60 minutos aprobado para ADMIN, camarero y cocina. La adenda S54 recoge la política y el informe identifica la evidencia de laboratorio y las validaciones que siguen pendientes. [Informe R2](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md#identidad-v2-y-vigencia-de-recuperación-aprobada).
+
 > **S55 R2 · Web Push de sala.** Aplicada la decisión de producto sobre Android y Windows con Chrome, PWA de iOS/iPadOS y recordatorios de llamada cada 30 segundos. El Draft #92 incorpora agenda PG17, acceso por camarero activo y dispositivo, sujeción al gateway TLS y avisos de recogida por versión. La ejecución integradora y el dictamen se registran por SHA. [Informe R2](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md#avisos-de-sala-y-web-push-aprobados).
 
 > **Continuación S55 R2 · NO-GO técnico y operativo.** Candidatos en el mismo Draft #92 para recuperación pública ROOT, protección transaccional de titularidad y ciclo de personal, alertas durables mediante la cola Resend y vibración local fuera de Comandas. Se conservan H1-C y el circuito de despacho ya probados. El dictamen y la evidencia por SHA están enlazados en el PR. [Informe R2](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md#continuación-de-r2--recuperación-root-y-avisos).

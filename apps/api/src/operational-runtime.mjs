@@ -12,9 +12,10 @@ export async function startOperationalM3Runtime({options,listener,resources,
  let candidate=null,closePromise=null;
  const close=()=>{
   if(!closePromise)closePromise=(async()=>{
-   const results=await Promise.allSettled([candidate?.close(),resources?.close()]);
+   const [candidateResult]=await Promise.allSettled([candidate?.close()]);
+   const [resourceResult]=await Promise.allSettled([resources?.close()]);
    try{observability?.lifecycle('stopped_operational_candidate');}catch{}
-   if(results.some(result=>result.status==='rejected'))throw Error('operational_runtime_close_failed');
+   if([candidateResult,resourceResult].some(result=>result.status==='rejected'))throw Error('operational_runtime_close_failed');
   })();
   return closePromise;
  };

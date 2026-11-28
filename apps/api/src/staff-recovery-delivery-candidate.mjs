@@ -123,6 +123,7 @@ export function createStaffRecoveryDeliveryCandidate({pool,keyId,signingSecret,k
     const envelope=JSON.parse(job.envelope);
     const token=openStaffInvitationToken({envelope,enrollmentId:job.enrollmentId,inviteVersion:job.version,
      tokenHashHex:job.tokenHash,key:checkedKey(await keyring.resolveKey(envelope.keyId)),recoveryIntentId:intentId});
+    if(!Number.isSafeInteger(job.expiresAtMs)||job.expiresAtMs<=clock())throw forbidden();
     const result=await send({jobId:intentId,recipient,intentId,token});
     if(result?.outcome==='accepted'&&UUID.test(result.providerId??'')){outcome='accepted';providerId=result.providerId;}
     else if(result?.outcome==='permanent_failure')outcome='rejected';

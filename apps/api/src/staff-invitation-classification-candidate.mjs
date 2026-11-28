@@ -44,10 +44,10 @@ export function createStaffInvitationClassificationCandidate({pool,keyId,signing
 }
 
 // Internal authorization: no email, token, Auth call or operational session.
-// The caller selects a bounded duration explicitly; no default is approved.
-export function createStaffRecoveryIntentCandidate({pool,keyId,signingSecret,ttlSeconds,delivery,clock=Date.now}={}){
+const STAFF_RECOVERY_TTL_SECONDS=3600;
+export function createStaffRecoveryIntentCandidate({pool,keyId,signingSecret,delivery,clock=Date.now}={}){
  if(!/^[A-Za-z0-9_-]{8,64}$/.test(keyId??'')||!(signingSecret instanceof Uint8Array)||
-  signingSecret.byteLength!==32||!Number.isSafeInteger(ttlSeconds)||ttlSeconds<60||ttlSeconds>86400||
+  signingSecret.byteLength!==32||
   typeof clock!=='function'||(delivery!==undefined&&typeof delivery?.queue!=='function'))throw Error('invalid_staff_recovery_intent_config');
  const key=Buffer.from(signingSecret),tx=createPostgresTransaction({pool});
  return async(context,input)=>{
@@ -63,7 +63,7 @@ export function createStaffRecoveryIntentCandidate({pool,keyId,signingSecret,ttl
   const issued=clock(),expires=Math.min(issued+15000,identity.expiresAt*1000);
   if(!Number.isSafeInteger(issued)||!Number.isSafeInteger(expires)||expires<=issued)throw forbidden();
   const args=[keyId,identity.userId.toLowerCase(),credential,input.enrollmentId.toLowerCase(),
-   input.requestId.toLowerCase(),ttlSeconds,issued,expires];
+   input.requestId.toLowerCase(),STAFF_RECOVERY_TTL_SECONDS,issued,expires];
   const sig=createHmac('sha256',key).update(['sabora.staff-recovery-intent.v1',keyId,ROOT_RECOVERY_LOGIN,
    ...args.slice(1).map(x=>x===null?'-':String(x))].join('\n')).digest('hex');
   return tx(async q=>{

@@ -209,9 +209,13 @@ completar, no conceder sesión operativa mediante el enlace, conservar
 historial e identificador del empleado. El enlace de recuperación debe
 vincularse al UUID existente y a un propósito distinto de alta; reenvíos
 invalidan la autorización anterior. No se acepta una recuperación autónoma
-por el correo sin autorización de ROOT o ADMIN titular. La vigencia concreta,
-política de retención y tratamiento de efectos inciertos de Auth quedan por
-resolver dentro del diseño y pruebas de H1-A; no introducir bypass.
+por el correo sin autorización de ROOT o ADMIN titular.
+
+**Vigencia y custodia aprobadas por el propietario en S55 R2.** Cada enlace de recuperación de ADMIN, camarero o cocina tiene 60 minutos desde su autorización. Es de un solo uso. Emitir otro invalida inmediatamente el anterior y abrirlo no prolonga la vigencia. Tras caducar se requiere una nueva autorización de ROOT o del ADMIN titular competente.
+
+El material cifrado se conserva solo para entregar el enlace, dentro de esos 60 minutos. Se elimina al confirmar el envío, consumir el enlace, revocarlo, sustituirlo o caducar. La reserva durable de despacho puede eliminarlo antes del envío. Ante una respuesta de envío incierta, el trabajador elimina el material recuperable y conserva el expediente sin reenviar automáticamente. El historial de auditoría, los hashes y las evidencias no secretas se conservan por separado para trazabilidad y reconciliación. El borrado del sobre no libera bloqueos de seguridad. Los efectos Auth inciertos continúan sujetos a evidencia atribuible al mismo UUID y credencial.
+
+El mecanismo excepcional de ROOT y las invitaciones ordinarias se rigen por sus propias reglas. [Custodia y purga de entregas](SABORA_STAFF_INVITATION_DELIVERY_DECISION_GATE.md#custodia-de-recuperación-no-root).
 
 Decisión de diseño candidata para #92; no acredita implementación ni prueba,
 no autoriza operaciones sobre Auth/Resend reales, SQL, merge o despliegue.

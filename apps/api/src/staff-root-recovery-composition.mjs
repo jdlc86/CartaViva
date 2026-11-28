@@ -30,6 +30,7 @@ const TRIGGERS=[
  ['root_recovery_audit_candidate','root_recovery_audit_immutable',false],
  ['staff_recovery_intent_candidate','staff_recovery_intent_immutable',false],
  ['staff_recovery_intent_candidate','staff_recovery_intent_no_truncate',false],
+ ['staff_members','staff_recovery_envelope_revoke',false],
  ['root_recovery_audit_candidate','root_recovery_audit_no_truncate',false],
  ['admin_ownership_audit','root_recovery_ownership_fence',false],
  ['staff_lifecycle_audit','root_recovery_first_admin_fence',false],
@@ -105,8 +106,7 @@ export async function createVerifiedRootRecoveryCandidate({control,worker,factor
  }
  async function run(){
   // Failure of either queue must not prevent processing the other.
-  try{await runRoot();}catch{report();}
-  try{await runStaff();}catch{report('staff_recovery_mail_worker_unavailable');}
+  await Promise.all([runRoot().catch(()=>report()),runStaff().catch(()=>report('staff_recovery_mail_worker_unavailable'))]);
   if(!closed)try{
    for(const intentId of await registration('list_ready')){
     if(closed)break;

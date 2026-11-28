@@ -875,7 +875,7 @@ CREATE TABLE sabora.staff_recovery_intent_candidate(
  subject_role text NOT NULL CHECK(subject_role IN ('admin','waiter','kitchen')),
  subject_state text NOT NULL CHECK(subject_state IN ('active','suspended')),
  issued_at timestamptz NOT NULL,
- expires_at timestamptz NOT NULL CHECK(expires_at>issued_at),
+ expires_at timestamptz NOT NULL CHECK(expires_at=issued_at+interval '1 hour'),
  CHECK(actor_user_id<>subject_user_id),
  UNIQUE(enrollment_id,version)
 );
@@ -916,7 +916,7 @@ BEGIN
  IF session_user::text IS DISTINCT FROM 'sabora_root_recovery_login' OR p_actor IS NULL
  OR p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{8,64}$'
  OR p_credential IS NULL OR p_credential !~ '^[0-9a-f]{64}$'
- OR p_enrollment IS NULL OR p_request IS NULL OR p_seconds IS NULL OR p_seconds NOT BETWEEN 60 AND 86400
+ OR p_enrollment IS NULL OR p_request IS NULL OR p_seconds IS DISTINCT FROM 3600
  OR p_signature IS NULL OR p_signature !~ '^[0-9a-f]{64}$'
  OR p_issued IS NULL OR p_expires IS NULL OR p_expires::numeric-p_issued::numeric NOT BETWEEN 1 AND 15000
  OR p_issued::numeric>floor(extract(epoch FROM clock_timestamp())*1000)::numeric+5000
@@ -968,6 +968,11 @@ BEGIN
  VALUES(p_request,p_enrollment,e.auth_user_id,p_actor,v_version+1,p_credential,e.requested_role,e.state,v_now,
  v_now+make_interval(secs=>p_seconds))
  RETURNING * INTO prior;
+ -- Replacing the link destroys any older, still queued envelope in the
+ -- authorization transaction. Hashes and provider evidence are retained.
+ UPDATE sabora.staff_recovery_delivery_candidate d SET state='cancelled',envelope=NULL,updated_at=v_now
+ FROM sabora.staff_recovery_intent_candidate i WHERE i.request_id=d.intent_id
+  AND i.enrollment_id=p_enrollment AND i.version<prior.version AND d.state='queued';
  RETURN QUERY SELECT prior.request_id,prior.enrollment_id,prior.version,prior.expires_at,false;
 END;
 $intent$;
@@ -990,7 +995,7 @@ CREATE TABLE sabora.staff_recovery_delivery_candidate(
  consumed_session uuid UNIQUE,
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
- CHECK((state IN ('queued','dispatching'))=(envelope IS NOT NULL)),
+ CHECK((state='queued')=(envelope IS NOT NULL)),
  CHECK((state IN ('delivered','exchanging','consumed'))=(provider_id IS NOT NULL)),
  CHECK((state IN ('exchanging','consumed'))=(exchange_id IS NOT NULL)),
  CHECK((state='consumed')=(consumed_session IS NOT NULL)),
@@ -1006,6 +1011,23 @@ CREATE POLICY staff_recovery_delivery_owner ON sabora.staff_recovery_delivery_ca
 GRANT SELECT(enrollment_id,email) ON sabora.staff_directory_contacts TO sabora_root_recovery_fn_owner;
 CREATE POLICY staff_recovery_delivery_contact ON sabora.staff_directory_contacts FOR SELECT
  TO sabora_root_recovery_fn_owner USING(true);
+
+CREATE INDEX staff_recovery_delivery_queued_purge ON sabora.staff_recovery_delivery_candidate(intent_id)
+ WHERE state='queued';
+CREATE FUNCTION sabora.discard_revoked_staff_recovery_envelope_candidate() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $discard$
+BEGIN
+ UPDATE sabora.staff_recovery_delivery_candidate d SET state='cancelled',envelope=NULL,updated_at=clock_timestamp()
+ FROM sabora.staff_recovery_intent_candidate i WHERE i.request_id=d.intent_id AND d.state='queued'
+  AND (i.subject_user_id=OLD.user_id OR i.actor_user_id=OLD.user_id);
+ RETURN NULL;
+END;
+$discard$;
+ALTER FUNCTION sabora.discard_revoked_staff_recovery_envelope_candidate() OWNER TO sabora_root_recovery_fn_owner;
+REVOKE ALL ON FUNCTION sabora.discard_revoked_staff_recovery_envelope_candidate() FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER staff_recovery_envelope_revoke AFTER UPDATE OF state,role ON sabora.staff_members
+ FOR EACH ROW WHEN(OLD.role IS DISTINCT FROM NEW.role OR OLD.state IS DISTINCT FROM NEW.state)
+ EXECUTE FUNCTION sabora.discard_revoked_staff_recovery_envelope_candidate();
 
 CREATE FUNCTION sabora.staff_recovery_delivery_candidate(
  p_key_id text,p_action text,p_intent uuid,p_payload text,p_issued bigint,p_expires bigint,p_signature text
@@ -1039,10 +1061,19 @@ BEGIN
  IF jsonb_typeof(v) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
  IF p_action='list' THEN
   IF v<>'{}'::jsonb THEN RAISE EXCEPTION 'staff_recovery_delivery_forbidden' USING ERRCODE='42501'; END IF;
+  WITH expired AS (
+   SELECT x.intent_id FROM sabora.staff_recovery_delivery_candidate x
+   JOIN sabora.staff_recovery_intent_candidate a ON a.request_id=x.intent_id
+   WHERE x.state IN ('queued','dispatching') AND a.expires_at<=clock_timestamp()
+   ORDER BY a.expires_at,x.intent_id LIMIT 100 FOR UPDATE OF x SKIP LOCKED
+  )
+  UPDATE sabora.staff_recovery_delivery_candidate x SET
+   state=CASE WHEN x.state='queued' THEN 'cancelled' ELSE 'unknown' END,
+   envelope=NULL,updated_at=clock_timestamp() FROM expired WHERE expired.intent_id=x.intent_id;
   RETURN jsonb_build_object('outcome','listed','jobs',coalesce((SELECT jsonb_agg(q.intent_id)
    FROM (SELECT x.intent_id FROM sabora.staff_recovery_delivery_candidate x
    JOIN sabora.staff_recovery_intent_candidate a ON a.request_id=x.intent_id
-   WHERE x.state='queued' OR (x.state='dispatching' AND a.expires_at<=clock_timestamp())
+   WHERE x.state='queued' AND a.expires_at>clock_timestamp()
    ORDER BY x.created_at,x.intent_id LIMIT 20) q),'[]'::jsonb));
  END IF;
  SELECT * INTO i FROM sabora.staff_recovery_intent_candidate a WHERE a.request_id=p_intent;
@@ -1101,12 +1132,13 @@ BEGIN
   SELECT c.email INTO v_recipient FROM sabora.staff_directory_contacts c WHERE c.enrollment_id=i.enrollment_id;
   IF NOT FOUND THEN RETURN jsonb_build_object('outcome','denied'); END IF;
   v_fence:=gen_random_uuid();
-  UPDATE sabora.staff_recovery_delivery_candidate SET state='dispatching',fence=v_fence,updated_at=v_now WHERE intent_id=p_intent;
+  UPDATE sabora.staff_recovery_delivery_candidate SET state='dispatching',envelope=NULL,fence=v_fence,updated_at=v_now WHERE intent_id=p_intent;
   RETURN jsonb_build_object('outcome','claimed','fence',v_fence,'enrollmentId',i.enrollment_id,
     'version',i.version,'recipient',v_recipient,'emailHash',encode(e.invitee_email_hash,'hex'),
-    'tokenHash',d.token_hash,'envelope',d.envelope);
+    'tokenHash',d.token_hash,'envelope',d.envelope,'expiresAtMs',floor(extract(epoch FROM i.expires_at)*1000)::bigint);
  ELSIF p_action='finish' THEN
-  IF d.state IS DISTINCT FROM 'dispatching' OR d.fence::text IS DISTINCT FROM v->>'fence'
+  IF (d.state IS DISTINCT FROM 'dispatching' AND NOT coalesce(d.state='unknown' AND v->>'result'='accepted',false))
+   OR d.fence::text IS DISTINCT FROM v->>'fence'
    OR NOT coalesce(v->>'result' IN ('accepted','unknown','rejected'),false)
    OR ((v->>'result'='accepted')<>(v->>'providerId' IS NOT NULL))
    OR (SELECT count(*) FROM jsonb_object_keys(v))<>3 THEN RETURN jsonb_build_object('outcome','denied'); END IF;

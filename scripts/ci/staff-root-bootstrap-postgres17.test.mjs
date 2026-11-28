@@ -238,7 +238,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
  let recoveryProviderFor;
  createStaffRecoveryHttpComposition({control:recoveryConfig,keyring,hashInviteeEmail:hashEmail,
   origin,issuer,getTrustedKeys:async()=>[jwk],providerFor:scope=>recoveryProviderFor(scope),
-  ttlSeconds:600,httpSecret:randomBytes(32),ticketSecret:randomBytes(32)}).register(app,{forRoles});
+  httpSecret:randomBytes(32),ticketSecret:randomBytes(32)}).register(app,{forRoles});
  let preview,browser,recoveryWorker;
  const auth='/api/v1/staff/auth';
  const post=(path,body,cookie)=>app.inject({method:'POST',url:auth+path,payload:body,
@@ -486,7 +486,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   assert.equal(nonOwnerSession.statusCode,200,nonOwnerSession.body);
   const nonOwnerCookies=nonOwnerSession.headers['set-cookie'].filter(v=>v.startsWith('__Host-sabora-staff=')||v.startsWith('__Host-sabora-root-proof=')).map(v=>v.split(';')[0]).join('; ');
   assert.equal((await recoveryAdminRequest({action:'classify',email:current.email},{host:new URL(origin).host,origin,cookie:nonOwnerCookies,'x-sabora-staff-session':nonOwnerSession.json().sessionId})).statusCode,403);
-  const authorizeRecovery=createStaffRecoveryIntentCandidate({...recoveryConfig,ttlSeconds:600});
+  const authorizeRecovery=createStaffRecoveryIntentCandidate(recoveryConfig);
   const recoveryRequest={enrollmentId:id,requestId:randomUUID()};
   await assert.rejects(authorizeRecovery(adminAuthority,recoveryRequest),e=>e.code==='42501');
   await assert.rejects(authorizeRecovery(authority(nonOwner,'admin'),recoveryRequest),e=>e.code==='42501');
@@ -526,7 +526,7 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const recoveryDelivery=createStaffRecoveryDeliveryCandidate(recoveryDeliveryConfig);
   const recoveryDispatch=createStaffRecoveryDeliveryCandidate({pool:mailPool,keyId:mailKey,signingSecret:mailSigning,
    keyring,hashInviteeEmail:hashEmail,mode:'worker'});
-  const queueRecovery=createStaffRecoveryIntentCandidate({...recoveryConfig,ttlSeconds:600,delivery:recoveryDelivery});
+  const queueRecovery=createStaffRecoveryIntentCandidate({...recoveryConfig,delivery:recoveryDelivery});
   const staleRequest={enrollmentId:id,requestId:randomUUID()};
   await queueRecovery(rootAuthority,staleRequest);
   const authorizeFromPanel=async(page,email)=>{
@@ -548,6 +548,9 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   };
   const latestRequest=await authorizeFromPanel(rootPage,current.email);
   assert.equal(latestRequest.enrollmentId,id);
+  assert.deepEqual((await admin.query(`SELECT d.state,d.envelope,extract(epoch FROM i.expires_at-i.issued_at)::int AS ttl
+   FROM sabora.staff_recovery_delivery_candidate d JOIN sabora.staff_recovery_intent_candidate i ON i.request_id=d.intent_id
+   WHERE d.intent_id=$1`,[staleRequest.requestId])).rows,[{state:'cancelled',envelope:null,ttl:3600}]);
   const replayRecovery=await recoveryAdminRequest({action:'authorize',email:current.email,...latestRequest});
   assert.equal(replayRecovery.statusCode,200,replayRecovery.body);assert.equal(replayRecovery.json().repeated,true);
   assert.equal((await recoveryAdminRequest({action:'authorize',email:current.email,enrollmentId:ordinaryWaiter.json().enrollmentId,requestId:randomUUID()})).statusCode,403);
@@ -630,6 +633,27 @@ test('PG17 + Fastify + Chromium: ROOT and first ADMIN bootstrap, concurrency, re
   const kitchen=await ordinary(inviteBody('recovery-kitchen@demo.invalid','kitchen'),adminHeaders);
   assert.equal(kitchen.statusCode,201,kitchen.body);
   const consumedTarget=await activateForRecovery(kitchen.json().enrollmentId,'kitchen');
+  const expiredIntentId=randomUUID();
+  await admin.query(`WITH expired AS (
+    INSERT INTO sabora.staff_recovery_intent_candidate(request_id,enrollment_id,subject_user_id,actor_user_id,
+     version,authorizer_credential_hash,subject_role,subject_state,issued_at,expires_at)
+    VALUES($1,$2,$3,$4,1,$5,'waiter','active',statement_timestamp()-interval '3601 seconds',
+     statement_timestamp()-interval '1 second') RETURNING request_id
+   ) INSERT INTO sabora.staff_recovery_delivery_candidate(intent_id,token_hash,envelope)
+   SELECT request_id,$6,$7 FROM expired`,[expiredIntentId,queuedTarget.enrollmentId,queuedTarget.subjectId,rootId,
+    hashRootCredentialId(genesisCredential),randomBytes(32).toString('hex'),'expired-envelope-fixture'.repeat(4)]);
+  const deliveryState=async intentId=>(await admin.query(`SELECT state,envelope,token_hash IS NOT NULL AS has_hash
+   FROM sabora.staff_recovery_delivery_candidate WHERE intent_id=$1`,[intentId])).rows[0];
+  assert.ok(!(await recoveryDispatch.list()).includes(expiredIntentId));
+  assert.deepEqual(await deliveryState(expiredIntentId),{state:'cancelled',envelope:null,has_hash:true});
+  await assert.rejects(queueRecovery(rootAuthority,{enrollmentId:queuedTarget.enrollmentId,requestId:expiredIntentId}),e=>e.code==='40001');
+  const lostDelivery=await queueRecovery(rootAuthority,{enrollmentId:queuedTarget.enrollmentId,requestId:randomUUID()});
+  assert.equal((await recoveryDispatch.dispatch(lostDelivery.intentId,async()=>{
+   assert.deepEqual(await deliveryState(lostDelivery.intentId),{state:'dispatching',envelope:null,has_hash:true});
+   throw Error('fixture_staff_recovery_mail_lost');
+  })).outcome,'unknown');
+  assert.deepEqual(await deliveryState(lostDelivery.intentId),{state:'unknown',envelope:null,has_hash:true});
+  assert.ok(!(await recoveryDispatch.list()).includes(lostDelivery.intentId));
   const ambiguous=await ordinary(inviteBody('uncertain-invitation@demo.invalid','waiter'),adminHeaders);
   assert.equal(ambiguous.statusCode,201,ambiguous.body);
   await Promise.all([staffIdentity.wakeInvitations(),secondaryDispatch.tick()]);

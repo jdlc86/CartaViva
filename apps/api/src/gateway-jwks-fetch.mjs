@@ -11,13 +11,19 @@ function createAuthGatewayRequest({issuer,connectHost,connectPort,
  let base;
  try{base=new URL(issuer);}catch{throw fail();}
  if(base.protocol!=='https:'||base.pathname!=='/auth/v1'||base.search||base.hash||
-    !HOST.test(base.hostname)||typeof connectHost!=='string'||
+    !HOST.test(base.hostname))throw fail();
+ return createExactGatewayRequest({hostname:base.hostname,connectHost,connectPort,requestImpl,tlsConnect});
+}
+
+function createExactGatewayRequest({hostname,connectHost,connectPort,
+ requestImpl=https.request,tlsConnect=tls.connect}){
+ if(typeof connectHost!=='string'||
     !(HOST.test(connectHost)||INTERNAL.test(connectHost))||
     !Number.isSafeInteger(connectPort)||connectPort<1||connectPort>65535||
     typeof requestImpl!=='function'||typeof tlsConnect!=='function')throw fail();
  class ExactGatewayAgent extends https.Agent{
   createConnection(_options,callback){
-   return tlsConnect({host:connectHost,port:connectPort,servername:base.hostname,
+   return tlsConnect({host:connectHost,port:connectPort,servername:hostname,
     rejectUnauthorized:true,ALPNProtocols:['http/1.1'],minVersion:'TLSv1.2'},callback);
   }
  }
@@ -28,9 +34,9 @@ function createAuthGatewayRequest({issuer,connectHost,connectPort,
    const finish=()=>{if(!settled){settled=true;request?.destroy();reject(fail());}};
    let request;
    try{
-    request=requestImpl({protocol:'https:',hostname:base.hostname,port:443,
+    request=requestImpl({protocol:'https:',hostname,port:443,
      path,method,agent,signal,
-     headers:{...headers,accept:'application/json',host:base.hostname}},response=>{
+     headers:{...headers,accept:'application/json',host:hostname}},response=>{
       const chunks=[];let bytes=0;
       response.on('data',chunk=>{
        bytes+=chunk.length;if(bytes>65536){response.destroy();finish();return;}chunks.push(chunk);
@@ -39,16 +45,26 @@ function createAuthGatewayRequest({issuer,connectHost,connectPort,
       response.once('end',()=>{
        if(settled)return;settled=true;
        const body=Buffer.concat(chunks).toString('utf8');
-       resolve(Object.freeze({ok:response.statusCode===200,status:response.statusCode,
+       resolve(Object.freeze({ok:response.statusCode>=200&&response.statusCode<300,status:response.statusCode,
         headers:Object.freeze({get:name=>{
          const value=response.headers?.[String(name).toLowerCase()];
          return Array.isArray(value)?value.join(', '):value??null;
-        }}),text:async()=>body}));
+        }}),text:async()=>body,json:async()=>JSON.parse(body)}));
       });
     });
     request.once('error',finish);request.end(body);
    }catch{request?.destroy();finish();}
   });
+ };
+}
+
+export const STAFF_RESEND_HOST='api.resend.com';
+export function createGatewayStaffResendFetch(config){
+ const request=createExactGatewayRequest({...config,hostname:STAFF_RESEND_HOST});
+ return async function gatewayFetch(url,{method,redirect,headers,body,signal}={}){
+  if(url!=='https://'+STAFF_RESEND_HOST+'/emails'||method!=='POST'||redirect!=='error'||
+    typeof body!=='string'||body.length>8192)throw fail();
+  return request('/emails',{method,signal,body,headers:{...headers,'Content-Length':Buffer.byteLength(body)}});
  };
 }
 

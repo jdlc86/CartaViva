@@ -11,16 +11,25 @@ import {createOwnershipCapabilityIssuer} from './ownership-governance-candidate.
 import {createWaiterCallStaffIssuer} from './waiter-call-candidate.mjs';
 import {createFloorPushSender,FLOOR_PUSH_HOSTS} from './floor-web-push.mjs';
 import {hashCustomerSessionToken} from './customer-session.mjs';
-import {createGatewayJwksFetch,createGatewayPasskeyProvider,isStaffAuthPublishableKey} from './gateway-jwks-fetch.mjs';
+import {createGatewayJwksFetch,createGatewayPasskeyProvider,isStaffAuthPublishableKey,
+ createGatewayInvitationProvider,createGatewayRecoveryProvider,createGatewayStaffResendFetch,STAFF_RESEND_HOST}
+ from './gateway-jwks-fetch.mjs';
 import {createStaffPasskeySession} from './staff-passkey-session.mjs';
 import {createStaffDirectoryCapabilityIssuer} from './staff-directory-capability.mjs';
-import {createStaffLifecycleDirectoryCapabilityIssuer} from './staff-lifecycle-capability.mjs';
+import {createStaffLifecycleDirectoryCapabilityIssuer,createStaffInviteeEmailHasher,normalizeStaffInviteeEmail}
+ from './staff-lifecycle-capability.mjs';
+import {createStaffInvitationKeyringCandidate} from './staff-invitation-keyring-candidate.mjs';
+import {FIRST_ADMIN_BOOTSTRAP_LOGIN} from './staff-lifecycle-coordinator.mjs';
+import {STAFF_ENROLLMENT_LOGIN} from './staff-verified-enrollment-candidate.mjs';
+import {ROOT_RECOVERY_LOGIN} from './staff-root-recovery-candidate.mjs';
+import {ROOT_MAIL_LOGIN} from './staff-root-recovery-mail-candidate.mjs';
 import {validateSaboraEgressPolicy} from './sabora-egress-gateway.mjs';
 import {PILOT_ACTIVATION_REQUIREMENTS,assertFirstTestActivation} from './pilot-activation-gate.mjs';
 
 const LOGIN=/^[a-z][a-z0-9_]{2,62}$/;
 const REF=/^[a-z][a-z0-9_-]{2,63}$/;
 const KEY_ID=/^[A-Za-z0-9_-]{8,64}$/;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const RESTAURANT=/^[A-Z0-9_-]{3,32}$/;
 const HOST=/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const INTERNAL_HOST=/^[a-z][a-z0-9-]{0,62}$/;
@@ -32,6 +41,18 @@ const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&
  (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
 const exactKeys=(value,required,optional=[])=>plain(value)&&required.every(key=>Object.hasOwn(value,key))&&
  Reflect.ownKeys(value).every(key=>typeof key==='string'&&(required.includes(key)||optional.includes(key)));
+const IDENTITY_SIGNERS=['firstAdmin','admin','enrollment','recoveryControl','recoveryWorker'];
+const IDENTITY_REFS=['authAdmin','rootAuthEmail','resendApiKey','emailHash','factor','enrollmentCookie',
+ 'rootRecoveryCookie','rootRecoveryTicket','staffRecoveryCookie','staffRecoveryTicket'];
+const IDENTITY_LOGINS=Object.freeze({
+ 'staff.identityLifecycle.bootstrap.pool':'sabora_staff_root_bootstrap_login',
+ 'staff.identityLifecycle.firstAdmin.pool':FIRST_ADMIN_BOOTSTRAP_LOGIN,
+ 'staff.identityLifecycle.admin.pool':'sabora_staff_identity_admin_login',
+ 'staff.identityLifecycle.enrollment.pool':STAFF_ENROLLMENT_LOGIN,
+ 'staff.identityLifecycle.invitationDispatch.pool':'sabora_staff_invitation_dispatch_login',
+ 'staff.rootRecovery.control.pool':ROOT_RECOVERY_LOGIN,
+ 'staff.rootRecovery.worker.pool':ROOT_MAIL_LOGIN
+});
 
 const META=Object.freeze({
  'customer.catalogReaderPool':['sabora_catalog_reader','catalog_read'],
@@ -59,7 +80,8 @@ const META=Object.freeze({
  'management.communications.publicPool':['sabora_m5_comms_public_runtime','communications_public'],
  'waiterCalls.customerPool':['sabora_waiter_call_customer_runtime','waiter_call_customer'],
  'waiterCalls.staffPool':['sabora_waiter_call_staff_runtime','waiter_call_staff'],
- 'floorPush.pool':['sabora_floor_push_login','floor_push']
+ 'floorPush.pool':['sabora_floor_push_login','floor_push'],
+ ...Object.fromEntries(Object.entries(IDENTITY_LOGINS).map(([path,login])=>[path,[login,login.slice(7,-6)]]))
 });
 const NOTIFIERS=Object.freeze([
  Object.freeze({poolPath:'tableChange.notificationPool',credentialSlot:'tableChange.operationsPool',usage:'table_change_listen'}),
@@ -70,7 +92,8 @@ export function describeOperationalSqlContract(features={}){
  const normalized={management:true,ownership:features.ownership===true,
   communications:features.communications===true,waiterCalls:features.waiterCalls===true,
   staffDirectory:features.staffDirectory===true,staffRevocation:features.staffRevocation===true,
-  floorPush:features.floorPush===true};
+  floorPush:features.floorPush===true,rootRecovery:features.staffIdentity===true,
+  staffIdentityLifecycle:features.staffIdentity===true};
  const slots=describeM2RuntimeSqlSlots(normalized).map(item=>{
   const meta=META[item.poolPath];
   if(!meta)throw invalid();
@@ -96,6 +119,24 @@ function assertHttpsOrigin(value,{auth=false}={}){
  return url;
 }
 
+function staffIdentityReferences(identity){
+ if(!exactKeys(identity,['rootUserId','resend','signers','secrets','custody'])||!UUID.test(identity.rootUserId??'')||
+    !exactKeys(identity.resend,['from','connectPort'])||
+    !Number.isSafeInteger(identity.resend.connectPort)||identity.resend.connectPort<1024||identity.resend.connectPort>65535||
+    !exactKeys(identity.signers,IDENTITY_SIGNERS)||!exactKeys(identity.secrets,IDENTITY_REFS)||
+    !exactKeys(identity.custody,['activeKeyId','keys'])||!KEY_ID.test(identity.custody.activeKeyId??'')||
+    !Array.isArray(identity.custody.keys)||identity.custody.keys.length<1||identity.custody.keys.length>32)throw invalid();
+ try{if(normalizeStaffInviteeEmail(identity.resend.from)!==identity.resend.from)throw invalid();}catch{throw invalid();}
+ const signers=Object.values(identity.signers),keys=identity.custody.keys;
+ if(!signers.every(entry=>exactKeys(entry,['keyId','secretRef'])&&KEY_ID.test(entry.keyId??''))||
+    !keys.every(entry=>exactKeys(entry,['id','state','secretRef'])&&KEY_ID.test(entry.id??'')&&
+     ['active','decrypt_only','disabled'].includes(entry.state))||
+    keys.filter(key=>key.state==='active').length!==1||
+    !keys.some(key=>key.state==='active'&&key.id===identity.custody.activeKeyId))throw invalid();
+ return {refs:[...Object.values(identity.secrets),...signers.map(entry=>entry.secretRef),...keys.map(entry=>entry.secretRef)],
+  ids:[...signers.map(entry=>entry.keyId),...keys.map(entry=>entry.id)]};
+}
+
 function assertSlot(slot,gatewayHost,production){
  if(!exactKeys(slot,['login','serverName','port','database','mode','passwordRef','caRef'],
   ['connectHost','connectPort']))throw invalid();
@@ -115,7 +156,7 @@ function assertSlot(slot,gatewayHost,production){
 
 export function validateOperationalActivationManifest(manifest){
  if(!exactKeys(manifest,['schemaVersion','stage','restaurantCode','listener','origins','auth',
-  'features','network','database','signing','activationEvidence'],['activationScope','floorPush']))throw invalid();
+  'features','network','database','signing','activationEvidence'],['activationScope','floorPush','staffIdentity']))throw invalid();
  if(manifest.schemaVersion!==1||!['lab','production'].includes(manifest.stage)||
     !RESTAURANT.test(manifest.restaurantCode)||
     !exactKeys(manifest.listener,['host','port','exposure'])||
@@ -125,7 +166,7 @@ export function validateOperationalActivationManifest(manifest){
     (manifest.listener.host==='0.0.0.0'&&manifest.listener.exposure!=='container_private')||
     (manifest.listener.host==='127.0.0.1'&&manifest.listener.exposure!=='loopback'))throw invalid();
  if(!exactKeys(manifest.features,['ownership','communications','waiterCalls'],
-   ['staffDirectory','staffRevocation','groupedDispatchWithoutStripe','tableChangeWindow','floorPush'])||
+   ['staffDirectory','staffRevocation','groupedDispatchWithoutStripe','tableChangeWindow','floorPush','staffIdentity'])||
     Object.values(manifest.features).some(value=>typeof value!=='boolean'))throw invalid();
  if(!exactKeys(manifest.activationEvidence,PILOT_ACTIVATION_REQUIREMENTS)||
     Object.values(manifest.activationEvidence).some(value=>typeof value!=='boolean'))throw invalid();
@@ -167,6 +208,13 @@ export function validateOperationalActivationManifest(manifest){
      typeof floorPush.publicKey!=='string'||!/^[A-Za-z0-9_-]{87}$/.test(floorPush.publicKey)||
      !REF.test(floorPush.privateKeyRef??'')||!/^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/.test(floorPush.subject??''))throw invalid();
  }else if(Object.hasOwn(manifest,'floorPush'))throw invalid();
+ const staffIdentity=manifest.staffIdentity;
+ let identityReferences;
+ if(manifest.features.staffIdentity===true){
+  if(!production||!manifest.auth.staffPasskeyPublishableKey||!manifest.features.staffDirectory||
+     !manifest.features.ownership||manifest.features.staffRevocation)throw invalid();
+  identityReferences=staffIdentityReferences(staffIdentity);
+ }else if(Object.hasOwn(manifest,'staffIdentity'))throw invalid();
  if(typeof manifest.auth.connectHost!=='string'||
     !(HOST.test(manifest.auth.connectHost)||INTERNAL_HOST.test(manifest.auth.connectHost))||
     !Number.isSafeInteger(manifest.auth.connectPort)||manifest.auth.connectPort<1||
@@ -181,6 +229,7 @@ export function validateOperationalActivationManifest(manifest){
     required.some(path=>!Object.hasOwn(manifest.database.slots,path)))throw invalid();
  const slots={};
  for(const path of required)slots[path]=assertSlot(manifest.database.slots[path],gatewayHost,production);
+ if(staffIdentity&&Object.entries(IDENTITY_LOGINS).some(([path,login])=>slots[path].login!==login))throw invalid();
  // Reject a mismatched pooler tenant before reading credentials or opening sockets.
  for(const slot of Object.values(slots))sqlConnectionUser(slot,manifest);
  const logins=Object.values(slots).map(item=>item.login);
@@ -212,8 +261,14 @@ export function validateOperationalActivationManifest(manifest){
   throw invalid();
  if(floorPush&&[...signingValues,...passwordRefs,...Object.values(slots).map(slot=>slot.caRef)]
    .includes(floorPush.privateKeyRef))throw invalid();
+ if(identityReferences){
+  const blocked=new Set([...signingValues,...passwordRefs,...Object.values(slots).map(slot=>slot.caRef),floorPush?.privateKeyRef]);
+  const {refs,ids}=identityReferences;
+  if(refs.some(ref=>!REF.test(ref??'')||blocked.has(ref))||refs.length!==new Set(refs).size||
+     new Set([...keyIds,...ids]).size!==keyIds.length+ids.length)throw invalid();
+ }
  const requiredHosts=[...new Set([issuer.hostname,...Object.values(slots).map(item=>item.serverName),
-  ...(floorPush?FLOOR_PUSH_HOSTS:[])])].sort();
+  ...(floorPush?FLOOR_PUSH_HOSTS:[]),...(staffIdentity?[STAFF_RESEND_HOST]:[])])].sort();
  const allowed=[...manifest.network.allowedTlsHosts].sort();
  if(requiredHosts.length!==allowed.length||requiredHosts.some((host,index)=>host!==allowed[index])||
     allowed.some(host=>!HOST.test(host)||isIP(host)))throw invalid();
@@ -250,6 +305,8 @@ export function validateOperationalEgressBinding(manifest,policy){
  include(validated.manifest.auth.connectPort,issuer.hostname,443,'tls');
  if(validated.manifest.floorPush)for(const host of FLOOR_PUSH_HOSTS)
   include(validated.manifest.floorPush.ports[host],host,443,'tls');
+ if(validated.manifest.staffIdentity)
+  include(validated.manifest.staffIdentity.resend.connectPort,STAFF_RESEND_HOST,443,'tls');
  if(gateway.targets.length!==expected.size)throw invalid();
  for(const target of gateway.targets){
   const item=expected.get(target.listenPort);
@@ -286,6 +343,65 @@ function disabledPayments(){
  return Object.freeze({authorize:denied,capture:denied,release:denied,refund:denied,retrieve:denied});
 }
 
+async function materializeStaffIdentity({config,staff,readSecret,staffSigningValues,passkey}){
+ const identity=config.staffIdentity,origin=config.origins.management;
+ const readDistinct=async ref=>{
+  const value=await readSecret(ref);
+  if(isUnsafeProductionSecret(value)||staffSigningValues.has(value))throw secretFailure();
+  staffSigningValues.add(value);
+  return value;
+ };
+ const readKey=async ref=>{
+  const value=await readDistinct(ref);
+  const key=Buffer.from(value,'base64url');
+  if(key.length!==32||key.toString('base64url')!==value)throw secretFailure();
+  return key;
+ };
+ const signing=Object.fromEntries(await Promise.all(IDENTITY_SIGNERS.map(async name=>{
+  const {keyId,secretRef}=identity.signers[name];
+  return [name,{keyId,secret:await readKey(secretRef)}];
+ })));
+ const secret=name=>readKey(identity.secrets[name]);
+ const [authAdmin,rootAuthEmail,resendApiKey,emailHashSecret,factorSecret,enrollmentCookie,
+  rootRecoveryCookie,rootRecoveryTicket,staffRecoveryCookie,staffRecoveryTicket]=await Promise.all([
+  readDistinct(identity.secrets.authAdmin),readDistinct(identity.secrets.rootAuthEmail),readDistinct(identity.secrets.resendApiKey),
+  secret('emailHash'),secret('factor'),secret('enrollmentCookie'),secret('rootRecoveryCookie'),secret('rootRecoveryTicket'),
+  secret('staffRecoveryCookie'),secret('staffRecoveryTicket')
+ ]);
+ if(normalizeStaffInviteeEmail(rootAuthEmail)!==rootAuthEmail||!/^re_[A-Za-z0-9_-]{10,150}$/.test(resendApiKey))throw secretFailure();
+ const {activeKeyId,keys}=identity.custody;
+ const custody=await Promise.all(keys.map(async ({id,state,secretRef})=>({id,state,key:await readKey(secretRef)})));
+ const authConfig={...config.auth,managementOrigin:origin,secretKey:authAdmin,publishableKey:config.auth.staffPasskeyPublishableKey};
+ const invitation=createGatewayInvitationProvider(authConfig);
+ const providerFor=({subjectId,email})=>createGatewayRecoveryProvider({...authConfig,subjectId,email});
+ const resend={managementOrigin:origin,from:identity.resend.from,apiKey:resendApiKey,
+  fetchImpl:createGatewayStaffResendFetch({connectHost:config.network.egressGatewayHost,connectPort:identity.resend.connectPort})};
+ const keyring=createStaffInvitationKeyringCandidate({activeKeyId,keys:custody});
+ for(const entry of custody)entry.key.fill(0);
+ const lifecycle=staff.identityLifecycle,recovery=staff.rootRecovery;
+ for(const name of ['firstAdmin','admin','enrollment'])Object.assign(lifecycle[name],signing[name]);
+ Object.assign(lifecycle.enrollment,{cookieSecret:enrollmentCookie,provider:invitation.provider,
+  exchangeInvitation:invitation.exchangeInvitation});
+ Object.assign(lifecycle.invitationDispatch,{resend,createInvitationProof:invitation.createInvitationProof});
+ Object.assign(lifecycle,{keyring,emailHashSecret});
+ for(const [name,source] of [['control','recoveryControl'],['worker','recoveryWorker']]){
+  const {keyId,secret:signingSecret}=signing[source];
+  Object.assign(recovery[name],{keyId,signingSecret});
+ }
+ Object.assign(recovery,{factorSecret,keyring,resend,passkey,
+  hashInviteeEmail:createStaffInviteeEmailHasher({secret:emailHashSecret}),
+  async getRootUserId(){
+   const {rows}=await staff.pool.query("SELECT user_id FROM sabora.staff_members WHERE user_id=$1 AND role='root' AND state='active'",
+    [identity.rootUserId]);
+   return rows[0]?.user_id??null;
+  },
+  staffRecovery:{providerFor,httpSecret:staffRecoveryCookie,ticketSecret:staffRecoveryTicket},
+  publicRecovery:{providerForRoot:({subjectId})=>providerFor({subjectId,email:rootAuthEmail}),
+   httpSecret:rootRecoveryCookie,ticketSecret:rootRecoveryTicket}
+ });
+ return keyring;
+}
+
 export async function materializeOperationalM3Options({manifest,Pool,resolveSecret,
  fetchImpl,observability=null,observeFailure=()=>{}}={}){
  if(typeof Pool!=='function'||typeof resolveSecret!=='function'||
@@ -304,10 +420,11 @@ export async function materializeOperationalM3Options({manifest,Pool,resolveSecr
  const pools=[];
  const poolBySlot=new Map();
  const options={};
+ let identityKeyring;
  const close=(()=>{let promise=null;return ()=>{
-  if(!promise)promise=Promise.allSettled([...pools].reverse().map(pool=>pool.end())).then(results=>{
+  if(!promise){identityKeyring?.close();promise=Promise.allSettled([...pools].reverse().map(pool=>pool.end())).then(results=>{
    if(results.some(result=>result.status==='rejected'))throw Error('operational_pool_close_failed');
-  });
+  });}
   return promise;
  };})();
  try{
@@ -357,14 +474,16 @@ export async function materializeOperationalM3Options({manifest,Pool,resolveSecr
    connectHost:config.auth.connectHost,connectPort:config.auth.connectPort});
   options.staff.getTrustedKeys=createSupabaseJwksProvider({issuer:config.auth.issuer,
    fetchImpl:trustedFetch});
+  let passkey;
   if(config.auth.staffPasskeyPublishableKey){
-   options.staff.passkey=createStaffPasskeySession({
+   passkey={
     origin:config.origins.management,issuer:config.auth.issuer,
     getTrustedKeys:options.staff.getTrustedKeys,secret:capabilitySecret,
     provider:createGatewayPasskeyProvider({issuer:config.auth.issuer,
      connectHost:config.auth.connectHost,connectPort:config.auth.connectPort,
      publishableKey:config.auth.staffPasskeyPublishableKey})
-   });
+   };
+   if(!config.staffIdentity)options.staff.passkey=createStaffPasskeySession(passkey);
   }
   options.staff.requirePasskey=config.stage==='production';
   const staffSigningValues=new Set([capabilityValue,customerSecret,qrSecret]);
@@ -422,7 +541,9 @@ export async function materializeOperationalM3Options({manifest,Pool,resolveSecr
    options.floorPush.publicKey=publicKey;
    options.floorPush.send=createFloorPushSender({connectHost:config.network.egressGatewayHost,
     ports,vapid:{publicKey,privateKey,subject}});
+   staffSigningValues.add(privateKey);
   }
+  if(config.staffIdentity)identityKeyring=await materializeStaffIdentity({config,staff:options.staff,readSecret,staffSigningValues,passkey});
   options.dispatchWithoutStripe=config.features.groupedDispatchWithoutStripe===true;
   options.enableDeferredDispatch=options.dispatchWithoutStripe;
   options.requireTrustedKeysOnReadiness=true;

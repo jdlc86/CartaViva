@@ -6,6 +6,8 @@ import {fileURLToPath} from 'node:url';
 import {describeOperationalSqlContract,validateOperationalEgressBinding}
  from '../../apps/api/src/operational-activation-manifest.mjs';
 import {PILOT_ACTIVATION_REQUIREMENTS} from '../../apps/api/src/pilot-activation-gate.mjs';
+import {FLOOR_PUSH_HOSTS} from '../../apps/api/src/floor-web-push.mjs';
+import {STAFF_RESEND_HOST} from '../../apps/api/src/gateway-jwks-fetch.mjs';
 
 const project='byhvmumqivmunkmomhup';
 const issuerHost=project+'.supabase.co';
@@ -16,7 +18,11 @@ const productionEvidence=new Set(PILOT_ACTIVATION_REQUIREMENTS.filter(key=>
  !['backupRestoreVerified','rollbackVerified','operationalBootstrapVerified','twoPwasValidated'].includes(key)));
 
 export function firstTestRuntime(inventory,restaurantCode,evidence,staffPasskeyPublishableKey){
- const features={ownership:true,communications:true,waiterCalls:true};
+ const {staffIdentity,floorPush}=inventory??{};
+ const features={ownership:true,communications:true,waiterCalls:true,
+  ...(staffIdentity?{staffDirectory:true,staffIdentity:true}:{}),...(floorPush?{floorPush:true}:{}),
+  ...(inventory?.tableChangeWindow===true?{tableChangeWindow:true}:{}),
+  ...(inventory?.groupedDispatchWithoutStripe===true?{groupedDispatchWithoutStripe:true}:{})};
  const {slots,notifiers}=describeOperationalSqlContract(features);
  if(inventory?.schema!=='sabora-runtime-provision-inventory/v1'||inventory.project!=='sabora'||
   inventory.genesisFictitiousOnly!==true||!Array.isArray(inventory.slots)||inventory.slots.length!==slots.length||
@@ -25,10 +31,15 @@ export function firstTestRuntime(inventory,restaurantCode,evidence,staffPasskeyP
   ![...productionEvidence].every(key=>Object.hasOwn(evidence,key)&&evidence[key]===true))
   throw Error('first_test_runtime_inventory_or_evidence_invalid');
  const provided=new Map(inventory.slots.map(slot=>[slot.slot,slot]));
+ const passwordRefs=new Set(slots.map((_slot,index)=>'sql_password_'+String(index).padStart(2,'0')));
+ const directorySigning=inventory.staffDirectorySigning;
+ if(staffIdentity&&(!directorySigning||typeof directorySigning!=='object'||
+    Object.keys(directorySigning).length!==2||!Object.hasOwn(directorySigning,'keyId')||
+    !Object.hasOwn(directorySigning,'secretRef')))throw Error('first_test_staff_directory_signing_invalid');
  const database={
   slots:Object.fromEntries(slots.map(({poolPath,capabilityRole})=>{
    const item=provided.get(poolPath);
-   if(item?.role!==capabilityRole||!/^sql_password_(?:0[0-9]|1[0-9]|2[0-2])$/.test(item.passwordRef))
+   if(item?.role!==capabilityRole||!passwordRefs.has(item.passwordRef))
     throw Error('first_test_runtime_slot_mismatch');
    return [poolPath,{login:item.login,serverName:pooler,port:5432,database:'postgres',
     mode:'session_pooler',passwordRef:item.passwordRef,caRef:'trusted_ca',connectHost:gateway,connectPort:15432}];
@@ -40,9 +51,12 @@ export function firstTestRuntime(inventory,restaurantCode,evidence,staffPasskeyP
   listener:{host:'0.0.0.0',port:4100,exposure:'container_private'},origins,
   auth:{issuer:'https://'+issuerHost+'/auth/v1',connectHost:gateway,connectPort:14443,
    ...(staffPasskeyPublishableKey===undefined?{}:{staffPasskeyPublishableKey})},features,
-  network:{allowedTlsHosts:[pooler,issuerHost],egressGatewayHost:gateway},database,
+  ...(staffIdentity?{staffIdentity}:{}),...(floorPush?{floorPush}:{}),
+  network:{allowedTlsHosts:[pooler,issuerHost,...(staffIdentity?[STAFF_RESEND_HOST]:[]),
+   ...(floorPush?FLOOR_PUSH_HOSTS:[])],egressGatewayHost:gateway},database,
   signing:{keyId:inventory.keyId,capabilitySecretRef:'capability_hmac',
-   customerSecretRef:'customer_hmac',qrSecretRef:'qr_hmac'},
+   customerSecretRef:'customer_hmac',qrSecretRef:'qr_hmac',
+   ...(staffIdentity?{staffDirectoryKeyId:directorySigning.keyId,staffDirectorySecretRef:directorySigning.secretRef}:{})},
   activationScope:{mode:'deferred-first-test-activation',testDataOnly:true,
    realUsersAllowed:false,backupPerformed:false,restorePerformed:false},
   activationEvidence:{...evidence,backupRestoreVerified:false,rollbackVerified:false,
@@ -50,7 +64,9 @@ export function firstTestRuntime(inventory,restaurantCode,evidence,staffPasskeyP
  };
  const egress={schemaVersion:1,bindHost:'0.0.0.0',targets:[
   {id:'restaurant_sql',listenPort:15432,host:pooler,port:5432,protocol:'postgres_tls'},
-  {id:'restaurant_jwks',listenPort:14443,host:issuerHost,port:443,protocol:'tls'}
+  {id:'restaurant_jwks',listenPort:14443,host:issuerHost,port:443,protocol:'tls'},
+  ...(staffIdentity?[{id:'staff_resend',listenPort:staffIdentity.resend?.connectPort,host:STAFF_RESEND_HOST,port:443,protocol:'tls'}]:[]),
+  ...(floorPush?FLOOR_PUSH_HOSTS.map((host,index)=>({id:'floor_push_'+index,listenPort:floorPush.ports?.[host],host,port:443,protocol:'tls'})):[])
  ]};
  validateOperationalEgressBinding(activation,egress);
  const runtimeEnv={
