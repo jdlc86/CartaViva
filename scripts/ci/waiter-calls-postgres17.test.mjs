@@ -161,6 +161,10 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
   const call=(await getStaff(waiterB)).json().items[0];
   assert(call&&call.tableNumber===9911);
   const managementContext=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
+  await managementContext.addInitScript(()=>{
+   window.fixtureFloorVibrations=0;
+   Object.defineProperty(navigator,'vibrate',{value:()=>{window.fixtureFloorVibrations++;return true;}});
+  });
   const manager=await managementContext.newPage();
   await manager.setViewportSize({width:1200,height:900});
   await manager.goto(managementOrigin);
@@ -191,8 +195,25 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.waiter_call_events WHERE call_id=$1',[call.id])).rows[0].n,2);
   await client.getByRole('button',{name:'Consultar llamada'}).click();
   await client.getByText('Puedes avisar a sala',{exact:false}).waitFor({timeout:12000});
+  const emptySummary=manager.waitForResponse(r=>r.url().endsWith('/api/v1/operations/waiter-calls'));
+  const readySummary=manager.waitForResponse(r=>r.url().includes('/api/v1/operations/order-lines?status=ready'));
   await manager.getByRole('link',{name:/Resumen/}).click();
+  assert.equal((await emptySummary).status(),200);
+  await (await readySummary).finished();
+  await manager.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   assert.equal(await manager.getByRole('complementary',{name:'Avisos de sala'}).count(),0);
+  await managementContext.setOffline(true);
+  const followupId=randomUUID();
+  assert.equal((await customerPost(followupId)).statusCode,200);
+  await managementContext.setOffline(false);
+  await manager.getByRole('complementary',{name:'Avisos de sala'})
+   .getByText('Llamadas pendientes de atender: 1.').waitFor();
+  assert.equal(await manager.evaluate(()=>window.fixtureFloorVibrations),1);
+  const repeatedSummary=manager.waitForResponse(r=>r.url().endsWith('/api/v1/operations/waiter-calls'));
+  await manager.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+  assert.equal((await repeatedSummary).status(),200);
+  assert.equal(await manager.evaluate(()=>window.fixtureFloorVibrations),1);
+  assert.equal((await attend(waiterB,followupId)).statusCode,200);
   await manager.getByRole('button',{name:'Cerrar sesión'}).click();
   await manager.getByText('Sesión cerrada.').waitFor();
   await manager.reload();

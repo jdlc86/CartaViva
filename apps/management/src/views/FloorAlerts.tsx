@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react';
 import type {OrderOperationsGateway} from '../order-operations-gateway.js';
+const FLOOR_ALERT_VIBRATION_MS=180;
 
 export function FloorAlerts({gateway,onOpen}:{
  gateway:OrderOperationsGateway;onOpen:()=>void;
@@ -7,6 +8,7 @@ export function FloorAlerts({gateway,onOpen}:{
  const [summary,setSummary]=useState<{calls:number;ready:number;moreReady:boolean}|null>(null);
  useEffect(()=>{
   let active=true,revision=0;
+  let lastCalls:Set<string>|null=null,lastReady:Set<string>|null=null;
   const refresh=()=>{
    const request=++revision;
    void Promise.allSettled([
@@ -15,9 +17,17 @@ export function FloorAlerts({gateway,onOpen}:{
    ]).then(([calls,board])=>{
     if(!active||request!==revision)return;
     const projected=board.status==='fulfilled'&&board.value.role==='waiter'?board.value:null;
-    const callCount=calls.status==='fulfilled'?calls.value.length:0;
-    const ready=projected?.items.filter(line=>line.pickup?.state==='ready').length??0;
-    setSummary({calls:callCount,ready,moreReady:Boolean(projected?.nextCursor)});
+    const nextCalls=calls.status==='fulfilled'?calls.value.map(call=>call.id):null;
+    const nextReady=projected?.items.flatMap(line=>line.pickup?.state==='ready'
+      ? [line.pickup.taskId+':'+line.pickup.version] : [])??null;
+    const newCall=nextCalls?.some(id=>lastCalls!==null&&!lastCalls.has(id));
+    const newReady=nextReady?.some(id=>lastReady!==null&&!lastReady.has(id));
+    if(nextCalls)lastCalls=new Set(nextCalls);
+    if(nextReady)lastReady=new Set(nextReady);
+    setSummary({calls:nextCalls?.length??0,ready:nextReady?.length??0,moreReady:Boolean(projected?.nextCursor)});
+    if((newCall||newReady)&&typeof navigator.vibrate==='function'){
+     try{navigator.vibrate(FLOOR_ALERT_VIBRATION_MS);}catch{/* The browser may suppress haptics. */}
+    }
    });
   };
   const offline=()=>{revision++;setSummary(null);};
@@ -27,7 +37,10 @@ export function FloorAlerts({gateway,onOpen}:{
     if(event.type.startsWith('sabora.waiter_call.')||event.type.startsWith('sabora.pickup.'))refresh();
    },
    onResync:refresh,onReconnected:refresh,
-   onUnavailable:reason=>{if(reason==='access-revoked'||!navigator.onLine)offline();}
+   onUnavailable:reason=>{
+    if(reason==='access-revoked'){lastCalls=null;lastReady=null;}
+    if(reason==='access-revoked'||!navigator.onLine)offline();
+   }
   });
   refresh();
   window.addEventListener('online',refresh);

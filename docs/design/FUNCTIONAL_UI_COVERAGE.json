@@ -232,9 +232,14 @@
           "kind": "browser-management",
           "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
           "marker": "Llamadas pendientes de atender: 1."
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "fixtureFloorVibrations"
         }
       ],
-      "note": "H1-B/F07. S55 R2 añade el aviso en la PWA de gestión fuera de Comandas, reconciliado con la lista durable y retirado al atender. Pendientes recordatorios periódicos, entrega push/vibración de dispositivo y aceptación humana. Véase SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md."
+      "note": "H1-B/F07. S55 R2 añade el aviso fuera de Comandas, reconciliado con la lista durable y retirado al atender. La PWA abierta solicita vibración al detectar un aviso nuevo y deduplica la misma proyección. Pendientes recordatorios periódicos, Web Push con la PWA cerrada y aceptación humana. Véase SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md."
     },
     {
       "id": "H1-C-cambio-mesa",
