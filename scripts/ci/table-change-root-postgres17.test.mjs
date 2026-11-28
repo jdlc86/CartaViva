@@ -3015,6 +3015,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // explicitly forbids retired physical pickup. The kitchen actor is
   // verified by JWT, PostgreSQL staff membership and the H4 HMAC.
   const dispatchSnapshot=process.env.SABORA_CI_F21_FULL_WINDOW==='true';
+  const originalPickup=dispatchSnapshot?(await admin.query(`SELECT pg_get_functiondef(
+   'sabora.manage_pickup_task_h6_candidate(text,text,uuid,text,text,uuid,bigint,text,bigint,bigint,text)'::regprocedure) AS ddl`)).rows[0].ddl:null;
   if(dispatchSnapshot)await admin.query(await readFile(new URL(
    '../../docs/security/sql-candidates/h6_dispatch_board_snapshot_pg17.sql',import.meta.url),'utf8'));
   const h4KitchenTx=createRoleScopedPostgresTransaction({pool:pools[11],
@@ -7578,6 +7580,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       headers:{authorization:'Bearer '+floorJwt}});
      assert.equal(authorizedFloor.statusCode,200,authorizedFloor.body);
      assert.ok(authorizedFloor.json().items.some(item=>item.lineId===groupedLines[0].id&&item.pickup?.state==='ready'));
+     assert.deepEqual((await admin.query(`SELECT b.table_id=d.table_id AND b.session_id=d.session_id AS same_occupation,
+      b.visit_key<>d.visit_key AS separate_qr_authorization
+      FROM sabora.order_line_delivery_destinations d
+      JOIN sabora.customer_account_operational_bindings b ON b.account_id=d.account_id
+      WHERE d.order_line_id=$1`,[groupedLines[0].id])).rows,
+      [{same_occupation:true,separate_qr_authorization:true}]);
      floorContext=await browser.newContext({serviceWorkers:'block'});
      const floor=await floorContext.newPage();
      await floor.goto(managementOrigin+'#resumen');
@@ -7675,6 +7683,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      sabora.request_h6_dispatch_without_stripe_candidate(uuid),
      sabora.read_order_operations_dispatch_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text);
      REVOKE SELECT(id) ON sabora.kitchen_dispatches FROM sabora_order_operations_fn_owner`);
+    await admin.query(originalPickup);
    }
   }
   }finally{await http.close();}

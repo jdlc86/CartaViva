@@ -410,7 +410,9 @@ docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$da
  < docs/security/sql-candidates/h6_dispatch_board_snapshot_pg17.sql
 [[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc "
  SELECT NOT pg_has_role(current_user,'sabora_order_operations_fn_owner','SET')
+ AND NOT pg_has_role(current_user,'sabora_h6_fn_owner','SET')
  AND NOT has_schema_privilege('sabora_order_operations_fn_owner','sabora','CREATE')
+ AND NOT has_schema_privilege('sabora_h6_fn_owner','sabora','CREATE')
  AND p.prosecdef AND pg_get_userbyid(p.proowner)='sabora_order_operations_fn_owner'
  AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']
  AND has_function_privilege('sabora_b3_h4_transition_runtime',p.oid,'EXECUTE')

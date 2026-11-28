@@ -134,7 +134,7 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
   // separately covered by the existing H6 PG17/Chromium acceptance.
   const fixtureDir=await mkdtemp(join(process.env.RUNNER_TEMP,'sabora-operational-api-'));
   const createdLogins=[];
-  let apiRuntime=null,keyInserted=false;
+  let apiRuntime=null,keyInserted=false,originalPickup;
   const capabilityKey=randomBytes(24).toString('base64url'); // exact 32 byte HMAC
   const customerKey=randomBytes(32).toString('base64url');
   const qrKey=randomBytes(32).toString('base64url');
@@ -269,6 +269,8 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
    await assert.rejects(start);
    assert.equal(labDiagnostic,'m2_function_surface_missing',
     'the dispatch opt-in must require the authorized kitchen snapshot');
+   originalPickup=(await admin.query(`SELECT pg_get_functiondef(
+    'sabora.manage_pickup_task_h6_candidate(text,text,uuid,text,text,uuid,bigint,text,bigint,bigint,text)'::regprocedure) AS ddl`)).rows[0].ddl;
    await admin.query(await readFile(new URL(
     '../../docs/security/sql-candidates/h6_dispatch_board_snapshot_pg17.sql',import.meta.url),'utf8'));
    await assert.rejects(start);
@@ -362,6 +364,7 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
     REVOKE SELECT(singleton,table_change_response_seconds),UPDATE(table_change_response_seconds)
      ON sabora.restaurant_settings FROM sabora_m3_management_fn_owner;
     REVOKE SELECT(id) ON sabora.kitchen_dispatches FROM sabora_order_operations_fn_owner`);
+   if(originalPickup)await admin.query(originalPickup);
    if(keyInserted)
     await admin.query('DELETE FROM sabora.order_operation_signing_keys WHERE key_id=$1',
      [keyId]).catch(()=>{});
