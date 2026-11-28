@@ -195,6 +195,11 @@
           "surface": "management",
           "path": "apps/management/src/views/OrdersView.tsx",
           "marker": "Marcar atendida"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/views/FloorPushSettings.tsx",
+          "marker": "Activar avisos en este dispositivo"
         }
       ],
       "api": [
@@ -205,6 +210,10 @@
         {
           "path": "apps/api/src/published-customer-features.mjs",
           "marker": "/api/v1/customer/features"
+        },
+        {
+          "path": "apps/api/src/floor-web-push.mjs",
+          "marker": "createFloorPushComposition"
         }
       ],
       "evidence": [
@@ -237,9 +246,14 @@
           "kind": "browser-management",
           "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
           "marker": "fixtureFloorVibrations"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "ServiceWorker.deliverPushMessage"
         }
       ],
-      "note": "H1-B/F07. S55 R2 añade el aviso fuera de Comandas, reconciliado con la lista durable y retirado al atender. La PWA abierta solicita vibración al detectar un aviso nuevo y deduplica la misma proyección. Pendientes recordatorios periódicos, Web Push con la PWA cerrada y aceptación humana. Véase SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md."
+      "note": "H1-B/F07. Agenda durable de avisos de sala, entrega inmediata y cada 30 s, cese al atender, Web Push opt-in por dispositivo y vibración local cuando el dispositivo no está suscrito. El ensayo utiliza proveedores simulados. Véase SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md."
     },
     {
       "id": "H1-C-cambio-mesa",
@@ -271,14 +285,16 @@
       ],
       "api": [
         {"path": "apps/api/src/operational-activation-manifest.mjs", "marker": "groupedDispatchWithoutStripe"},
-        {"path": "apps/api/src/order-operations-repository.mjs", "marker": "pendingDispatchId"}
+        {"path": "apps/api/src/order-operations-repository.mjs", "marker": "pendingDispatchId"},
+        {"path": "apps/api/src/floor-web-push.mjs", "marker": "createFloorPushComposition"}
       ],
       "evidence": [
         {"kind": "postgres17", "path": "scripts/ci/table-change-root-postgres17.test.mjs", "marker": "two workers may not duplicate dispatch events"},
-        {"kind": "browser-management", "path": "scripts/ci/table-change-root-postgres17.test.mjs", "marker": "Confirmar recepción"}
+        {"kind": "browser-management", "path": "scripts/ci/table-change-root-postgres17.test.mjs", "marker": "Confirmar recepción"},
+        {"kind": "postgres17", "path": "scripts/ci/table-change-root-postgres17.test.mjs", "marker": "deliveredPickup"}
       ],
-      "blockers": ["Acreditar el circuito completo desde las PWA de cocina y sala, incluida entrega push/vibración y aceptación humana"],
-      "note": "F21 conserva el scheduler H6 y el vencimiento SQL. R2 añade el UUID de despacho pendiente al tablero autorizado de cocina/ADMIN, con delta candidato opt-in sin Stripe. Véase SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md."
+      "blockers": ["Acreditar el nuevo SHA del ensayo que incorpora la entrega Web Push y conservar la aceptación propietaria separada"],
+      "note": "F21 conserva el scheduler H6 y el vencimiento SQL. El tablero de cocina recupera el UUID de despacho en el resync y la agenda añade un aviso por versión lista para recoger o recuperada. Véase SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md."
     },
     {
       "id": "H1-identidad-personal",

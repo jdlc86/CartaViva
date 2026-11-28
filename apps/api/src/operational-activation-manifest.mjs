@@ -9,6 +9,7 @@ import {createH6StaffCapabilityIssuer} from './h6-staff-capability.mjs';
 import {createM3ManagementCapabilityIssuer} from './m3-management-capability.mjs';
 import {createOwnershipCapabilityIssuer} from './ownership-governance-candidate.mjs';
 import {createWaiterCallStaffIssuer} from './waiter-call-candidate.mjs';
+import {createFloorPushSender,FLOOR_PUSH_HOSTS} from './floor-web-push.mjs';
 import {hashCustomerSessionToken} from './customer-session.mjs';
 import {createGatewayJwksFetch,createGatewayPasskeyProvider,isStaffAuthPublishableKey} from './gateway-jwks-fetch.mjs';
 import {createStaffPasskeySession} from './staff-passkey-session.mjs';
@@ -57,7 +58,8 @@ const META=Object.freeze({
  'management.communications.adminPool':['sabora_m5_comms_admin_runtime','communications_admin'],
  'management.communications.publicPool':['sabora_m5_comms_public_runtime','communications_public'],
  'waiterCalls.customerPool':['sabora_waiter_call_customer_runtime','waiter_call_customer'],
- 'waiterCalls.staffPool':['sabora_waiter_call_staff_runtime','waiter_call_staff']
+ 'waiterCalls.staffPool':['sabora_waiter_call_staff_runtime','waiter_call_staff'],
+ 'floorPush.pool':['sabora_floor_push_login','floor_push']
 });
 const NOTIFIERS=Object.freeze([
  Object.freeze({poolPath:'tableChange.notificationPool',credentialSlot:'tableChange.operationsPool',usage:'table_change_listen'}),
@@ -67,7 +69,8 @@ const NOTIFIERS=Object.freeze([
 export function describeOperationalSqlContract(features={}){
  const normalized={management:true,ownership:features.ownership===true,
   communications:features.communications===true,waiterCalls:features.waiterCalls===true,
-  staffDirectory:features.staffDirectory===true,staffRevocation:features.staffRevocation===true};
+  staffDirectory:features.staffDirectory===true,staffRevocation:features.staffRevocation===true,
+  floorPush:features.floorPush===true};
  const slots=describeM2RuntimeSqlSlots(normalized).map(item=>{
   const meta=META[item.poolPath];
   if(!meta)throw invalid();
@@ -112,7 +115,7 @@ function assertSlot(slot,gatewayHost,production){
 
 export function validateOperationalActivationManifest(manifest){
  if(!exactKeys(manifest,['schemaVersion','stage','restaurantCode','listener','origins','auth',
-  'features','network','database','signing','activationEvidence'],['activationScope']))throw invalid();
+  'features','network','database','signing','activationEvidence'],['activationScope','floorPush']))throw invalid();
  if(manifest.schemaVersion!==1||!['lab','production'].includes(manifest.stage)||
     !RESTAURANT.test(manifest.restaurantCode)||
     !exactKeys(manifest.listener,['host','port','exposure'])||
@@ -122,7 +125,7 @@ export function validateOperationalActivationManifest(manifest){
     (manifest.listener.host==='0.0.0.0'&&manifest.listener.exposure!=='container_private')||
     (manifest.listener.host==='127.0.0.1'&&manifest.listener.exposure!=='loopback'))throw invalid();
  if(!exactKeys(manifest.features,['ownership','communications','waiterCalls'],
-   ['staffDirectory','staffRevocation','groupedDispatchWithoutStripe','tableChangeWindow'])||
+   ['staffDirectory','staffRevocation','groupedDispatchWithoutStripe','tableChangeWindow','floorPush'])||
     Object.values(manifest.features).some(value=>typeof value!=='boolean'))throw invalid();
  if(!exactKeys(manifest.activationEvidence,PILOT_ACTIVATION_REQUIREMENTS)||
     Object.values(manifest.activationEvidence).some(value=>typeof value!=='boolean'))throw invalid();
@@ -153,6 +156,17 @@ export function validateOperationalActivationManifest(manifest){
  const gatewayHost=manifest.network.egressGatewayHost;
  if((production&&(!INTERNAL_HOST.test(gatewayHost??'')||gatewayHost.includes('.')))||
     (!production&&gatewayHost!==null&&gatewayHost!==undefined&&!INTERNAL_HOST.test(gatewayHost)))throw invalid();
+ const floorPush=manifest.floorPush;
+ if(manifest.features.floorPush===true){
+  if(!production||!manifest.auth.staffPasskeyPublishableKey||!manifest.features.waiterCalls||
+     !exactKeys(floorPush,['ports','publicKey','privateKeyRef','subject'])||
+     !exactKeys(floorPush.ports,FLOOR_PUSH_HOSTS)||
+     FLOOR_PUSH_HOSTS.some(host=>!Number.isSafeInteger(floorPush.ports[host])||
+      floorPush.ports[host]<1024||floorPush.ports[host]>65535)||
+     new Set(Object.values(floorPush.ports)).size!==FLOOR_PUSH_HOSTS.length||
+     typeof floorPush.publicKey!=='string'||!/^[A-Za-z0-9_-]{87}$/.test(floorPush.publicKey)||
+     !REF.test(floorPush.privateKeyRef??'')||!/^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/.test(floorPush.subject??''))throw invalid();
+ }else if(Object.hasOwn(manifest,'floorPush'))throw invalid();
  if(typeof manifest.auth.connectHost!=='string'||
     !(HOST.test(manifest.auth.connectHost)||INTERNAL_HOST.test(manifest.auth.connectHost))||
     !Number.isSafeInteger(manifest.auth.connectPort)||manifest.auth.connectPort<1||
@@ -196,7 +210,10 @@ export function validateOperationalActivationManifest(manifest){
     !signingValues.every(value=>REF.test(value))||
     new Set([...signingValues,...passwordRefs]).size!==signingValues.length+passwordRefs.length)
   throw invalid();
- const requiredHosts=[issuer.hostname,...new Set(Object.values(slots).map(item=>item.serverName))].sort();
+ if(floorPush&&[...signingValues,...passwordRefs,...Object.values(slots).map(slot=>slot.caRef)]
+   .includes(floorPush.privateKeyRef))throw invalid();
+ const requiredHosts=[...new Set([issuer.hostname,...Object.values(slots).map(item=>item.serverName),
+  ...(floorPush?FLOOR_PUSH_HOSTS:[])])].sort();
  const allowed=[...manifest.network.allowedTlsHosts].sort();
  if(requiredHosts.length!==allowed.length||requiredHosts.some((host,index)=>host!==allowed[index])||
     allowed.some(host=>!HOST.test(host)||isIP(host)))throw invalid();
@@ -231,6 +248,8 @@ export function validateOperationalEgressBinding(manifest,policy){
  }
  const issuer=new URL(validated.manifest.auth.issuer);
  include(validated.manifest.auth.connectPort,issuer.hostname,443,'tls');
+ if(validated.manifest.floorPush)for(const host of FLOOR_PUSH_HOSTS)
+  include(validated.manifest.floorPush.ports[host],host,443,'tls');
  if(gateway.targets.length!==expected.size)throw invalid();
  for(const target of gateway.targets){
   const item=expected.get(target.listenPort);
@@ -395,6 +414,14 @@ export async function materializeOperationalM3Options({manifest,Pool,resolveSecr
    options.waiterCalls.issueStaffCapability=createWaiterCallStaffIssuer({
     keyId:config.signing.keyId,secret:capabilitySecret,
     databaseRole:login('waiterCalls.staffPool')});
+  }
+  if(config.floorPush){
+   const {ports,publicKey,privateKeyRef,subject}=config.floorPush;
+   const privateKey=await readSecret(privateKeyRef);
+   options.floorPush.origin=config.origins.management;
+   options.floorPush.publicKey=publicKey;
+   options.floorPush.send=createFloorPushSender({connectHost:config.network.egressGatewayHost,
+    ports,vapid:{publicKey,privateKey,subject}});
   }
   options.dispatchWithoutStripe=config.features.groupedDispatchWithoutStripe===true;
   options.enableDeferredDispatch=options.dispatchWithoutStripe;

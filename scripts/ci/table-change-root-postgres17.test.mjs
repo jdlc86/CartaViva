@@ -4,7 +4,7 @@ import {createRequire} from 'node:module';
 import {readFile} from 'node:fs/promises';
 import {dirname,resolve} from 'node:path';
 import {pathToFileURL as modulePathToFileURL} from 'node:url';
-import {createHash,randomBytes,randomUUID,createHmac,generateKeyPairSync,sign} from 'node:crypto';
+import {createHash,randomBytes,randomUUID,createHmac,createECDH,generateKeyPairSync,sign} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {F12_FUNCTION_SQL,assertF12SqlIdentity} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs';
@@ -38,6 +38,7 @@ import {registerH6StripeWebhookHttp} from '../../apps/api/src/h6-stripe-webhook-
 import {createH6StripeAdapter} from '../../apps/api/src/h6-stripe-adapter.mjs';
 import {createH6PaymentOrchestrator} from '../../apps/api/src/h6-payment-orchestrator.mjs';
 import {createH6DeferredDispatchScheduler} from '../../apps/api/src/h6-deferred-dispatch-scheduler.mjs';
+import {createFloorPushComposition,FLOOR_PUSH_ROUTINES} from '../../apps/api/src/floor-web-push.mjs';
 import {createPostgresH6OutboxNotifier,registerH6CustomerEventStreamHttp}
  from '../../apps/api/src/h6-event-stream.mjs';
 import {mountVerifiedTableChangeB3JwtHttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
@@ -7524,7 +7525,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
       proxy:{'/api':{target:'http://127.0.0.1:'+http.server.address().port,changeOrigin:false}}}
     });
-    let kitchenContext,floorContext;
+    let kitchenContext,floorContext,floorPushWorker;
     try{
      await managementVite.listen();
      kitchenContext=await browser.newContext({serviceWorkers:'block'});
@@ -7573,6 +7574,36 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal(prepared.status(),201,await prepared.text());
      assert.equal((await prepared.json()).currentStatus,'ready');
      const floorJwt=staffJwt(floorWaiterId);
+     const floorPushLogin='sabora_b3_floor_push_'+suffix;
+     await admin.query(`CREATE ROLE ${floorPushLogin} LOGIN NOINHERIT PASSWORD '${password}'`);
+     createdRoles.push(floorPushLogin);
+     await admin.query('GRANT USAGE ON SCHEMA sabora TO '+floorPushLogin);
+     await admin.query('GRANT EXECUTE ON FUNCTION '+FLOOR_PUSH_ROUTINES.join(',')+' TO '+floorPushLogin);
+     const pushUrl=new URL(url);pushUrl.username=floorPushLogin;pushUrl.password=password;
+     const pushPool=new Pool({connectionString:pushUrl.toString(),max:4,connectionTimeoutMillis:3000});
+     pools.push(pushPool);
+     const floorDevice='https://fcm.googleapis.com/fcm/send/fixture-f21-floor';
+     const publicKey=createECDH('prime256v1').generateKeys('base64url');
+     await pushPool.query("SELECT sabora.manage_floor_push_candidate($1,'enable',$2,$3,$4)",
+      [floorWaiterId,floorDevice,publicKey,randomBytes(16).toString('base64url')]);
+     const notifications=[];
+     floorPushWorker=createFloorPushComposition({pool:pushPool,expectedLogin:floorPushLogin,
+      origin:new URL(managementOrigin).origin,publicKey,send:async(device,payload)=>{
+       if(device.endpoint===floorDevice)notifications.push(payload);
+       return 'accepted';
+      }});
+     await floorPushWorker.readiness();
+     const {id:pickupId,version:pickupVersion}=(await admin.query('SELECT id,version FROM sabora.pickup_tasks WHERE order_line_id=$1',
+      [groupedLines[0].id])).rows[0];
+     const pickupPushTag=createHash('sha256').update('pickup:'+pickupId).digest('base64url').slice(0,32);
+     const deliveredPickup=()=>notifications.filter(payload=>payload.tag===pickupPushTag);
+     const drainPush=async count=>{
+      for(let turn=0;turn<32&&deliveredPickup().length<count;turn++)await floorPushWorker.tick();
+      assert.equal(deliveredPickup().length,count);
+     };
+     floorPushWorker.start();
+     await drainPush(1);
+     assert.deepEqual(deliveredPickup(),[{kind:'pickup',tag:pickupPushTag,occurrence:String(pickupVersion)}]);
      const readyBoard='/api/v1/operations/order-lines?status=ready&limit=100';
      assert.equal((await http.inject({method:'GET',url:readyBoard,
       headers:{authorization:'Bearer '+jwtWaiter}})).statusCode,403);
@@ -7606,7 +7637,19 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.deepEqual((await admin.query(`SELECT l.status,t.state,t.claimed_by
       FROM sabora.order_lines l JOIN sabora.pickup_tasks t ON t.order_line_id=l.id WHERE l.id=$1`,
       [groupedLines[0].id])).rows,[{status:'ready',state:'claimed',claimed_by:floorWaiterId}]);
+     await floorPushWorker.tick();
+     assert.equal(deliveredPickup().length,1);
+     await readyLine.getByRole('button',{name:'Cancelo'}).click();
+     await readyLine.getByText('Aviso activo para sala').waitFor();
+     await drainPush(2);
+     assert.equal(deliveredPickup()[1].occurrence,String(BigInt(pickupVersion)+2n));
+     await floorPushWorker.tick();
+     assert.equal(deliveredPickup().length,2);
+     // Preserve the original F21 final state for the remaining H6 assertions.
+     await readyLine.getByRole('button',{name:'Voy a recoger'}).click();
+     await readyLine.getByText(/En recogida/).waitFor();
     }finally{
+     await floorPushWorker?.close();
      await floorContext?.close();
      await kitchenContext?.close();
      await managementVite.close();

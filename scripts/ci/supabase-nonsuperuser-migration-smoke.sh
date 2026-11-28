@@ -451,4 +451,16 @@ done
  FROM owners
  ")" == t ]] || exit 1
 echo 'sabora_s55_identity_delta_nonsuperuser_verified'
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ < docs/security/sql-candidates/floor_web_push_pg17.sql
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc "
+ SELECT count(*)=6 AND bool_and(p.prosecdef AND NOT pg_has_role(current_user,r.oid,'SET')
+  AND NOT has_schema_privilege(r.oid,'sabora','CREATE')
+  AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
+  AND NOT has_function_privilege('service_role',p.oid,'EXECUTE'))
+ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_roles r ON r.oid=p.proowner
+ WHERE r.rolname='sabora_floor_push_fn_owner' AND p.pronamespace='sabora'::regnamespace
+ ")" == t ]] || exit 1
+echo 'sabora_s55_floor_push_nonsuperuser_verified'
 echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"

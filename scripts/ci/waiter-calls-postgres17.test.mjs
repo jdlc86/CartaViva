@@ -3,7 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {randomUUID,randomBytes,createHash} from 'node:crypto';
+import {randomUUID,randomBytes,createHash,createECDH} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {startPublishedClientPwa,startPublishedManagementPwa} from './published-client-pwa-fixture.mjs';
@@ -14,6 +15,7 @@ import {createCustomerCookieAuth,readCustomerCookie} from '../../apps/api/src/cu
 import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs';
 import {createCustomerSessionVerifier} from '../../apps/api/src/customer-session-verifier.mjs';
 import {registerPublishedCustomerFeatures} from '../../apps/api/src/published-customer-features.mjs';
+import {createFloorPushComposition,FLOOR_PUSH_ROUTINES} from '../../apps/api/src/floor-web-push.mjs';
 import {assertWaiterCallRuntimeIdentity,createWaiterCallStaffIssuer,
  createWaiterCallComposition,registerWaiterCallHttp,
  WAITER_CALL_CUSTOMER_ROLE,WAITER_CALL_STAFF_ROLE}
@@ -33,8 +35,8 @@ const {chromium}=await import(pathToFileURL(playwright).href);
 const admin=new Pool({connectionString:target,max:3,connectionTimeoutMillis:3000});
 test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table and durable attendance',
  {timeout:180_000},async()=>{
- const suffix=process.pid.toString(36),logins=['sabora_call_c_'+suffix,'sabora_call_s_'+suffix,'sabora_call_reader_'+suffix];
- const [loginC,loginS,loginR]=logins;
+ const suffix=process.pid.toString(36),logins=['sabora_call_c_'+suffix,'sabora_call_s_'+suffix,'sabora_call_reader_'+suffix,'sabora_call_push_'+suffix];
+ const [loginC,loginS,loginR,loginPush]=logins;
  const [customerId,otherId,waiterA,waiterB,kitchen]=Array.from({length:5},()=>randomUUID());
  const tableId=randomUUID(),visitKey='CV014'+randomBytes(12).toString('hex');
  const alphabet='23456789ABCDEFGHJKLMNPQRSTUVWXY';
@@ -47,8 +49,19 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
  const keyId='sabora_call_key_'+suffix,secret=randomBytes(32);
  const origin='https://127.0.0.1:4178',password='ci_call_'+randomBytes(12).toString('hex');
  const managementOrigin='https://localhost:4179';
+ const vapid=createECDH('prime256v1'),device=createECDH('prime256v1');
+ const publicKey=vapid.generateKeys('base64url'),p256dh=device.generateKeys('base64url'),auth=randomBytes(16).toString('base64url');
+ const chromeEndpoint='https://fcm.googleapis.com/fcm/send/fixture-waiter-a';
+ const safariEndpoint='https://web.push.apple.com/fixture-waiter-b';
+ const expiredEndpoint='https://fcm.googleapis.com/fcm/send/fixture-expired';
+ const deliveries=[];
+ const send=async(subscription,payload)=>{
+  deliveries.push({endpoint:subscription.endpoint,payload});
+  return subscription.endpoint===expiredEndpoint?'gone':'accepted';
+ };
  const pools=[];let api,browser,clientPreview,managementPreview;
  try{
+  await admin.query(await readFile(new URL('../../docs/security/sql-candidates/floor_web_push_pg17.sql',import.meta.url),'utf8'));
   await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'waiter','active'),($2,'waiter','active'),($3,'kitchen','active')",[waiterA,waiterB,kitchen]);
   await admin.query("INSERT INTO sabora.customer_profiles(id,public_id,alias) VALUES($1,$2,'Uno'),($3,$4,'Dos')",
    [customerId,customerPublicId,otherId,otherCustomerPublicId]);
@@ -65,6 +78,8 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
   await admin.query('GRANT '+WAITER_CALL_CUSTOMER_ROLE+' TO '+loginC+' WITH SET TRUE, INHERIT FALSE');
   await admin.query('GRANT '+WAITER_CALL_STAFF_ROLE+' TO '+loginS+' WITH SET TRUE, INHERIT FALSE');
   await admin.query('GRANT USAGE ON SCHEMA sabora TO '+loginR);
+  await admin.query('GRANT USAGE ON SCHEMA sabora TO '+loginPush);
+  await admin.query('GRANT EXECUTE ON FUNCTION '+FLOOR_PUSH_ROUTINES.join(',')+' TO '+loginPush);
   await admin.query('GRANT SELECT(user_id,role,state) ON sabora.staff_members TO '+loginR);
   await admin.query('CREATE POLICY ci_call_reader_'+suffix+' ON sabora.staff_members FOR SELECT TO '+loginR+' USING(true)');
   for(const login of logins){
@@ -76,6 +91,7 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
   assert((await assertWaiterCallRuntimeIdentity({pool:pools[1],expectedLogin:loginS,kind:'staff'})).validated);
   await assert.rejects(pools[0].query('SELECT * FROM sabora.waiter_calls'),/permission denied/);
   await assert.rejects(pools[1].query('SELECT * FROM sabora.waiter_call_events'),/permission denied/);
+  await assert.rejects(pools[3].query('SELECT * FROM sabora.floor_push_subscriptions'),/permission denied/);
   const repository=createWaiterCallComposition({customerPool:pools[0],staffPool:pools[1],
    issueStaffCapability:createWaiterCallStaffIssuer({keyId,secret,databaseRole:loginS})});
   const issuer='https://sabora-cv014-ci.test/auth/v1';
@@ -98,10 +114,15 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
   const cookieAuth=createCustomerCookieAuth({verifyCustomerSession:verify,
    revokeCustomerSession:async()=>false,allowedOrigin:origin});
   api=Fastify({logger:false,trustProxy:false});
+  const makePush=()=>createFloorPushComposition({pool:pools[3],expectedLogin:loginPush,origin:managementOrigin,publicKey,send});
+  const push=makePush(),restarted=makePush();
+  await push.readiness();
+  api.addHook('onClose',async()=>{await Promise.all([push.close(),restarted.close()]);});
   passkey.register(api,{forRoles:passkeyGuard,features:{
-   waiterCalls:true,tableChange:false,management:false,ownership:false
+   waiterCalls:true,tableChange:false,management:false,ownership:false,floorPush:true
   }});
   registerWaiterCallHttp(api,{cookieAuth,forRoles,repository});
+  push.register(api,{forRoles});
   api.get('/api/v1/customer/session',{preHandler:cookieAuth.authenticate},
    async req=>({authenticated:true,publicId:req.customerIdentity.publicId,
     alias:req.customerIdentity.alias,company:req.customerIdentity.company}));
@@ -126,6 +147,15 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
    url:'/api/v1/operations/waiter-calls/'+callId+'/attend',
    headers:{authorization:'Bearer '+jwt(id),'content-type':'application/json'},
    payload:{requestId}});
+  const deviceAction=(actor,action,endpoint,deviceOrigin=managementOrigin)=>api.inject({method:'POST',
+   url:'/api/v1/operations/floor-push',headers:{authorization:'Bearer '+jwt(actor),origin:deviceOrigin},
+   payload:{action,endpoint,p256dh,auth}});
+  assert.equal((await deviceAction(kitchen,'enable',safariEndpoint)).statusCode,403);
+  assert.equal((await deviceAction(waiterB,'enable',safariEndpoint,origin)).statusCode,403);
+  for(const endpoint of ['https://fcm.googleapis.com.attacker.invalid/fcm/send/demo',
+   'https://foo.push.apple.com/demo','https://fcm.googleapis.com:444/fcm/send/demo',
+   'https://fcm.googleapis.com/fcm/send/demo?next=external','https://web.push.apple.com@127.0.0.1/demo'])
+   assert.equal((await deviceAction(waiterB,'enable',endpoint)).statusCode,400);
   assert.equal((await customerGet()).json().state,'none');
   assert.equal((await api.inject({method:'GET',
    url:'/api/v1/customer/waiter-calls?tableId='+tableId})).statusCode,401);
@@ -160,11 +190,17 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
   await client.getByText('Camarero solicitado.',{exact:false}).waitFor({timeout:12000});
   const call=(await getStaff(waiterB)).json().items[0];
   assert(call&&call.tableNumber===9911);
-  const managementContext=await browser.newContext({serviceWorkers:'block',ignoreHTTPSErrors:true});
-  await managementContext.addInitScript(()=>{
+  const managementContext=await browser.newContext({ignoreHTTPSErrors:true});
+  await managementContext.grantPermissions(['notifications'],{origin:managementOrigin});
+  await managementContext.addInitScript(({endpoint,keys})=>{
    window.fixtureFloorVibrations=0;
    Object.defineProperty(navigator,'vibrate',{value:()=>{window.fixtureFloorVibrations++;return true;}});
-  });
+   const subscription={toJSON:()=>({endpoint,keys}),unsubscribe:async()=>{
+    window.localStorage.removeItem('ci-push-device');return true;
+   }};
+   PushManager.prototype.getSubscription=async()=>window.localStorage.getItem('ci-push-device')?subscription:null;
+   PushManager.prototype.subscribe=async()=>{window.localStorage.setItem('ci-push-device','active');return subscription;};
+  },{endpoint:chromeEndpoint,keys:{p256dh,auth}});
   const manager=await managementContext.newPage();
   await manager.setViewportSize({width:1200,height:900});
   await manager.goto(managementOrigin);
@@ -214,8 +250,61 @@ test('CV-014 PG17 + Fastify + Chromium passkey login, one waiter call per table 
   assert.equal((await repeatedSummary).status(),200);
   assert.equal(await manager.evaluate(()=>window.fixtureFloorVibrations),1);
   assert.equal((await attend(waiterB,followupId)).statusCode,200);
+  await manager.getByRole('button',{name:'Activar avisos en este dispositivo'}).click();
+  await manager.getByRole('status').filter({hasText:'Avisos activos en este dispositivo.'}).waitFor();
+  assert.equal((await deviceAction(waiterB,'enable',chromeEndpoint)).statusCode,409);
+  assert.equal((await deviceAction(waiterB,'enable',safariEndpoint)).statusCode,200);
+  assert.equal((await deviceAction(waiterB,'enable',expiredEndpoint)).statusCode,200);
+  const pushCall=randomUUID();
+  assert.equal((await customerPost(pushCall)).statusCode,200);
+  assert.equal((await customerPost(randomUUID(),otherToken)).json().id,pushCall);
+  const pushState=async()=> (await admin.query(`SELECT fence,round(extract(epoch FROM due_at-statement_timestamp()))::int AS seconds
+   FROM sabora.floor_push_schedule WHERE signal_id=$1`,[pushCall])).rows[0];
+  assert.ok((await pushState()).seconds<=0);
+  push.start();restarted.start();
+  await Promise.all([push.tick(),restarted.tick()]);
+  assert.deepEqual(deliveries.map(entry=>entry.endpoint).sort(),[chromeEndpoint,safariEndpoint,expiredEndpoint].sort());
+  const initialPayload=deliveries.find(entry=>entry.endpoint===chromeEndpoint).payload;
+  assert.equal(initialPayload.kind,'call');
+  const {seconds,fence}=await pushState();
+  assert.ok(seconds>=29&&seconds<=30);
+  assert.equal((await deviceAction(waiterB,'status',expiredEndpoint)).json().enabled,false);
+  await push.close();
+  await restarted.tick();
+  assert.equal(deliveries.length,3);
+  assert.equal((await pushState()).fence,fence);
+  await admin.query("UPDATE sabora.floor_push_schedule SET due_at=clock_timestamp()-interval '1 second' WHERE signal_id=$1",[pushCall]);
+  await restarted.tick();
+  assert.equal(deliveries.length,5);
+  assert.equal(deliveries.at(-1).payload.tag,initialPayload.tag);
+  assert.notEqual(deliveries.at(-1).payload.occurrence,initialPayload.occurrence);
+  const protocol=await managementContext.newCDPSession(manager);
+  const readyRegistration=new Promise(resolve=>protocol.on('ServiceWorker.workerRegistrationUpdated',({registrations})=>{
+   const current=registrations.find(item=>item.scopeURL===managementOrigin+'/'&&!item.isDeleted);
+   if(current)resolve(current.registrationId);
+  }));
+  await protocol.send('ServiceWorker.enable');
+  const registrationId=await readyRegistration;
+  await manager.goto('about:blank');
+  await protocol.send('ServiceWorker.deliverPushMessage',{origin:managementOrigin,registrationId,
+   data:JSON.stringify(initialPayload)});
+  await manager.goto(managementOrigin);
+  await manager.waitForFunction(async tag=>{
+   const worker=await navigator.serviceWorker.getRegistration();
+   return (await worker?.getNotifications({tag:'sabora-floor-'+tag}))?.some(item=>item.title==='Llamada pendiente');
+  },initialPayload.tag);
+  await protocol.detach();
+  await manager.getByRole('button',{name:'Ir a comandas'}).click();
+  await manager.getByRole('button',{name:'Sala'}).click();
+  await manager.getByRole('button',{name:'Marcar atendida'}).click();
+  await manager.getByText('No hay llamadas pendientes confirmadas.').waitFor();
+  assert.equal(await pushState(),undefined);
+  await restarted.tick();assert.equal(deliveries.length,5);
+  await admin.query("UPDATE sabora.staff_members SET state='suspended' WHERE user_id=$1",[waiterB]);
+  assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.floor_push_subscriptions WHERE staff_id=$1',[waiterB])).rows[0].n,0);
   await manager.getByRole('button',{name:'Cerrar sesión'}).click();
   await manager.getByText('Sesión cerrada.').waitFor();
+  assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.floor_push_subscriptions WHERE staff_id=$1',[waiterA])).rows[0].n,0);
   await manager.reload();
   await manager.getByRole('button',{name:'Entrar con passkey'}).waitFor();
   await managementContext.close();

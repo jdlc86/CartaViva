@@ -2,8 +2,8 @@ import {useEffect, useState} from 'react';
 import type {OrderOperationsGateway} from '../order-operations-gateway.js';
 const FLOOR_ALERT_VIBRATION_MS=180;
 
-export function FloorAlerts({gateway,onOpen}:{
- gateway:OrderOperationsGateway;onOpen:()=>void;
+export function FloorAlerts({gateway,onOpen,deviceAlerts=false}:{
+ gateway:OrderOperationsGateway;onOpen:()=>void;deviceAlerts?:boolean;
 }){
  const [summary,setSummary]=useState<{calls:number;ready:number;moreReady:boolean}|null>(null);
  useEffect(()=>{
@@ -25,7 +25,7 @@ export function FloorAlerts({gateway,onOpen}:{
     if(nextCalls)lastCalls=new Set(nextCalls);
     if(nextReady)lastReady=new Set(nextReady);
     setSummary({calls:nextCalls?.length??0,ready:nextReady?.length??0,moreReady:Boolean(projected?.nextCursor)});
-    if((newCall||newReady)&&typeof navigator.vibrate==='function'){
+    if(!deviceAlerts&&(newCall||newReady)&&typeof navigator.vibrate==='function'){
      try{navigator.vibrate(FLOOR_ALERT_VIBRATION_MS);}catch{/* The browser may suppress haptics. */}
     }
    });
@@ -52,7 +52,7 @@ export function FloorAlerts({gateway,onOpen}:{
    window.removeEventListener('offline',offline);
    document.removeEventListener('visibilitychange',visible);
   };
- },[gateway]);
+ },[gateway,deviceAlerts]);
  if(!summary||(summary.calls===0&&summary.ready===0&&!summary.moreReady))return null;
  return <aside className="connection-notice" aria-label="Avisos de sala">
   <p role="status">

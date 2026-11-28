@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import tls from 'node:tls';
+import {createECDH,randomBytes} from 'node:crypto';
+import {EventEmitter} from 'node:events';
+import {Readable} from 'node:stream';
 import {
   describeOperationalSqlContract,
   validateOperationalEgressBinding,
@@ -8,6 +11,7 @@ import {
   validateOperationalActivationManifest,
 } from '../apps/api/src/operational-activation-manifest.mjs';
 import {PILOT_ACTIVATION_REQUIREMENTS} from '../apps/api/src/pilot-activation-gate.mjs';
+import {createFloorPushSender} from '../apps/api/src/floor-web-push.mjs';
 
 const features=Object.freeze({ownership:true,communications:true,waiterCalls:true});
 
@@ -82,6 +86,62 @@ class FakePool{
  async connect(){return {release(){}};}
  async end(){this.closed++;}
 }
+
+test('floor Web Push binds both approved hosts to gateway TLS routes and treats redirects as failures',async()=>{
+ const vapid=createECDH('prime256v1'),device=createECDH('prime256v1');
+ const publicKey=vapid.generateKeys('base64url'),privateKey=Buffer.from(vapid.getPrivateKey().toString('hex').padStart(64,'0'),'hex').toString('base64url');
+ const p256dh=device.generateKeys('base64url'),auth=randomBytes(16).toString('base64url');
+ const ports={'fcm.googleapis.com':15445,'web.push.apple.com':15446};
+ const manifest=fixtureManifest({stage:'production',selectedFeatures:{...features,floorPush:true},mutate:value=>{
+  value.auth.staffPasskeyPublishableKey='sb_publishable_isolated_manifest_123456';
+  value.floorPush={ports,publicKey,privateKeyRef:'floor_push_vapid',subject:'mailto:security@sabora.es'};
+  value.network.allowedTlsHosts.push(...Object.keys(ports));
+ }});
+ const policy={schemaVersion:1,bindHost:'0.0.0.0',targets:[
+  {id:'restaurant_db',listenPort:15432,host:'db.project.supabase.co',port:5432,protocol:'postgres_tls'},
+  {id:'restaurant_auth',listenPort:15443,host:'project.supabase.co',port:443,protocol:'tls'},
+  {id:'floor_push_chrome',listenPort:15445,host:'fcm.googleapis.com',port:443,protocol:'tls'},
+  {id:'floor_push_apple',listenPort:15446,host:'web.push.apple.com',port:443,protocol:'tls'}
+ ]};
+ assert.equal(validateOperationalEgressBinding(manifest,policy).targetCount,4);
+ const resolver=resolverFor(manifest);
+ const resources=await materializeOperationalM3Options({manifest,Pool:FakePool,
+  resolveSecret:async ref=>ref==='floor_push_vapid'?privateKey:resolver(ref)});
+ try{assert.equal(typeof resources.options.floorPush.send,'function');}
+ finally{await resources.close();}
+ for(const mutate of [
+  value=>{value.targets.at(-1).host='other.push.apple.com';},
+  value=>{value.targets.at(-1).port=8443;},
+  value=>{value.targets.pop();}
+ ]){
+  const copy=structuredClone(policy);mutate(copy);
+  assert.throws(()=>validateOperationalEgressBinding(manifest,copy));
+ }
+ const calls=[],tunnels=[],codes=[307,410];
+ const send=createFloorPushSender({connectHost:'sabora-egress',ports,
+  vapid:{publicKey,privateKey,subject:manifest.floorPush.subject},
+  tlsConnect:options=>tunnels.push(options),request:(options,cb)=>{
+   calls.push(options);options.agent.createConnection({});
+   const req=new EventEmitter();
+   req.end=body=>{
+    assert.ok(Buffer.isBuffer(body)&&!body.includes('occurrence'));
+    const response=Readable.from([]);
+    response.statusCode=codes.shift();response.headers={location:'https://external.sabora.es/unrelated'};
+    cb(response);
+   };
+   return req;
+  }
+ });
+ const message={kind:'call',tag:'g'.repeat(32),occurrence:'fixture'};
+ assert.equal(await send({endpoint:'https://fcm.googleapis.com/fcm/send/fixture',p256dh,auth},message),'failed');
+ assert.equal(await send({endpoint:'https://web.push.apple.com/fixture',p256dh,auth},message),'gone');
+ assert.deepEqual(calls.map(item=>[item.hostname,item.port,item.method,item.headers.TTL]),[
+  ['fcm.googleapis.com',443,'POST',0],['web.push.apple.com',443,'POST',0]
+ ]);
+ assert.deepEqual(tunnels.map(item=>[item.host,item.port,item.servername,item.rejectUnauthorized]),[
+  ['sabora-egress',15445,'fcm.googleapis.com',true],['sabora-egress',15446,'web.push.apple.com',true]
+ ]);
+});
 
 function resolverFor(manifest,{unsafe=false}={}){
  const values=new Map([['database_ca',tls.rootCertificates[0]],

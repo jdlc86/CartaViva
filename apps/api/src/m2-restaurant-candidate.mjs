@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import {createFloorPushComposition} from './floor-web-push.mjs';
 import {performance} from 'node:perf_hooks';
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
 import {validateM2RuntimeSqlIdentities} from './m2-runtime-identity-inventory.mjs';
@@ -116,7 +117,7 @@ const staffGuard=forRoles=>roles=>{
 // Separate opt-in assembly. It owns Fastify/listeners/scheduler, but never
 // reads environment variables, creates LOGINs or imports server.mjs.
 export async function createM2RestaurantCandidate({customer,tableChange,staff,h4,h6,
- management=null,waiterCalls=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,
+ management=null,waiterCalls=null,floorPush=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,
  dispatchWithoutStripe=false,
  observeFailure=()=>{},observability=null,requireTrustedKeysOnReadiness=false}={}){
  const app=Fastify({logger:false,trustProxy:false});
@@ -128,12 +129,12 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   try{observability?.recordOperation({component:'database',
    operation:'check',outcome,durationMs:performance.now()-started});}catch{}
  };
- let tableNotifier,h6Notifier,scheduler,announcementStream,rootRecovery,identityLifecycle,closed=false,
+ let tableNotifier,h6Notifier,scheduler,announcementStream,rootRecovery,identityLifecycle,floorPushService,closed=false,
   operational=false,notificationDependencyLost=false,dispatchSchedulerFailed=false;
  const closeServices=async()=>{
   if(closed)return;closed=true;operational=false;
   await Promise.allSettled([scheduler?.close(),announcementStream?.close(),tableNotifier?.close(),
-   h6Notifier?.close(),rootRecovery?.close(),identityLifecycle?.close()]);
+   h6Notifier?.close(),rootRecovery?.close(),identityLifecycle?.close(),floorPushService?.close()]);
  };
  try{
   // Explicit diagnostics injection for the full H3-H6/M3 HTTP composition.
@@ -193,8 +194,13 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   // The canonical SQL slot inventory is validated before any query/HTTP route.
   // It has no environment access and reports only generic denial on conflict.
   validateM2RuntimeSqlIdentities({
-   customer,tableChange,staff,h4,h6,management,waiterCalls
+   customer,tableChange,staff,h4,h6,management,waiterCalls,floorPush
   });
+  if(floorPush){
+   if(!staff.passkey&&!staff.rootRecovery)throw Error('invalid_m2_restaurant_candidate');
+   floorPushService=createFloorPushComposition({...floorPush,observeFailure});
+   await floorPushService.readiness();
+  }
 
   let staffPasskey=staff.passkey;
   if(staff.rootRecovery){
@@ -256,6 +262,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    await preflightOrderTransitionStaffIdentity({pool:staff.pool,role:staff.expectedLogin});
    if(rootRecovery)await rootRecovery.readiness();
    if(identityLifecycle)await identityLifecycle.readiness();
+   if(floorPushService)await floorPushService.readiness();
    if(staffDirectory)await preflightStaffDirectoryIdentity({
     pool:staff.directory.pool,role:staff.directory.expectedLogin
    });
@@ -381,6 +388,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   staffPasskey?.register(app,{forRoles,...(rootRecovery?{rootSecurity:rootRecovery.security}:{}),
    ...(identityLifecycle?{rootBootstrap:identityLifecycle.rootBootstrap}:{}),features:{
    tableChange:true,waiterCalls:Boolean(waiterCalls),management:Boolean(management),
+   ...(floorPushService?{floorPush:true}:{}),
    ownership:Boolean(management?.ownership),staffDirectory:Boolean(staffDirectory),
    staffRevocation:Boolean(staffRevocation),...(rootRecovery?{rootSecurity:true}:{}),
    ...(rootRecovery?.staffRecoveryHttp?{staffRecovery:true}:{}),
@@ -460,6 +468,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    repository:createWaiterCallComposition({
     customerPool:waiterCalls.customerPool,staffPool:waiterCalls.staffPool,
     issueStaffCapability:waiterCalls.issueStaffCapability})});
+  floorPushService?.register(app,{forRoles:oneGuard});
   registerPublishedCustomerFeatures(app,{tableChange:true,waiterCalls:Boolean(waiterCalls),
    isAvailable:()=>operational});
   if(management)registerM3ManagementHttp(app,{forRoles:oneGuard,tables:m3Tables,
@@ -516,6 +525,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   await rootRecovery?.start();
   await identityLifecycle?.start();
   await app.ready();operational=!notificationDependencyLost&&!dispatchSchedulerFailed;
+  floorPushService?.start();
   let closePromise=null;
   return Object.freeze({app,economicService,mode:management?'opt-in-h3-h6-m3-candidate':'opt-in-h3-h6-m2-candidate',
    close(){if(!closePromise)closePromise=app.close();return closePromise;},

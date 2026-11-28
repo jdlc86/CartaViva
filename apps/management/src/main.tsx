@@ -22,6 +22,8 @@ import {FinanceDashboardView} from './views/FinanceDashboardView';
 import {createRootSecurityGateway,readRootEmailVerification,type RootSecurityGateway} from './staff-root-security-gateway';
 import {ConfigurationView} from './views/ConfigurationView';
 import {FloorAlerts} from './views/FloorAlerts';
+import {FloorPushSettings} from './views/FloorPushSettings';
+import {clearFloorPushForSignOut} from './floor-push';
 import {TablesView} from './views/TablesView';
 import type {TableChangeQueueGateway} from './views/TableChangeRequestsPanel';
 import {TeamView} from './views/TeamView';
@@ -63,6 +65,7 @@ export function ManagementApp({
   staffLifecycleGateway,
   staffFirstAdminGateway,
   staffRecoveryAdminGateway,
+  floorPush,
   rootSecurityGateway,
   financeGateway,
   ownershipGateway,
@@ -80,6 +83,7 @@ export function ManagementApp({
   staffLifecycleGateway?: StaffLifecycleGateway;
   staffFirstAdminGateway?: StaffFirstAdminGateway;
   staffRecoveryAdminGateway?:StaffRecoveryAdminGateway;
+  floorPush?:typeof fetch;
   rootSecurityGateway?:RootSecurityGateway;
   financeGateway?: M3AuthenticatedManagementGateway;
   ownershipGateway?: OwnershipGovernanceGateway;
@@ -92,6 +96,7 @@ export function ManagementApp({
   const [canWriteAdmin,setCanWriteAdmin]=useState(false);
   const [canRevokeStaff,setCanRevokeStaff]=useState(false);
   const [ownershipRevision,setOwnershipRevision]=useState(0);
+  const [deviceAlerts,setDeviceAlerts]=useState(false);
   // Effective permissions come from a signed PG17 read, never the JWT role.
   // Refresh on navigation, foreground and explicit governance decisions.
   useEffect(()=>{
@@ -218,8 +223,9 @@ export function ManagementApp({
         {onSignOut && <button type="button" className="button" onClick={onSignOut}>Cerrar sesión</button>}
       </header>
 
+      {floorPush&&<FloorPushSettings send={floorPush} onChange={setDeviceAlerts}/>}
       {staffRole==='waiter'&&operationsGateway&&activeArea!=='comandas'?
-        <FloorAlerts gateway={operationsGateway} onOpen={()=>selectArea('comandas')}/>:null}
+        <FloorAlerts gateway={operationsGateway} deviceAlerts={deviceAlerts} onOpen={()=>selectArea('comandas')}/>:null}
       <div className="management-layout">
         <aside className="management-sidebar">
           <div className="sidebar-heading">
@@ -304,6 +310,7 @@ function renderManagement(
   staffFirstAdminGateway?:StaffFirstAdminGateway,
   rootSecurityGateway?:RootSecurityGateway,
   staffRecoveryAdminGateway?:StaffRecoveryAdminGateway,
+  floorPush?:typeof fetch,
 ) {
   if (managementRoot && managementElement !== element) {
     throw Error('management_root_already_mounted');
@@ -334,7 +341,8 @@ function renderManagement(
       catalogManagementGateway={managementGateway} financeGateway={managementGateway}
       ownershipGateway={ownershipGateway} staffRole={staffRole} onSignOut={onSignOut}
       staffDirectoryGateway={staffDirectoryGateway} staffRevocationGateway={staffRevocationGateway}
-      staffLifecycleGateway={staffLifecycleGateway} staffFirstAdminGateway={staffFirstAdminGateway} rootSecurityGateway={rootSecurityGateway} staffRecoveryAdminGateway={staffRecoveryAdminGateway}/></React.StrictMode>,
+      staffLifecycleGateway={staffLifecycleGateway} staffFirstAdminGateway={staffFirstAdminGateway} rootSecurityGateway={rootSecurityGateway} staffRecoveryAdminGateway={staffRecoveryAdminGateway}
+      floorPush={floorPush}/></React.StrictMode>,
   ));
 }
 
@@ -348,6 +356,7 @@ export function mountAuthenticatedManagementApp({
   enableM3Management = false,
   enableTableChangeWindow = false,
   enableWaiterCalls = false,
+  enableFloorPush = false,
   enableOwnershipGovernance = false,
   enableStaffDirectory = false,
   enableStaffRevocation = false,
@@ -380,6 +389,7 @@ export function mountAuthenticatedManagementApp({
   rootEmailProof?:string|null;
   /** Only after waiter-call SQL identity preflight succeeds. */
   enableWaiterCalls?:boolean;
+  enableFloorPush?:boolean;
 }) {
   if (!(element instanceof HTMLElement)) {
     throw Error('invalid_management_bootstrap');
@@ -436,7 +446,8 @@ export function mountAuthenticatedManagementApp({
        decideTableChange: operationsGateway.decideTableChange}
     : undefined;
   renderManagement(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway,onSignOut,staffRole,
-    staffDirectoryGateway,staffRevocationGateway,staffLifecycleGateway,staffFirstAdminGateway,rootSecurityGateway,staffRecoveryAdminGateway);
+    staffDirectoryGateway,staffRevocationGateway,staffLifecycleGateway,staffFirstAdminGateway,rootSecurityGateway,
+    staffRecoveryAdminGateway,enableFloorPush&&staffRole==='waiter'?sendStaff:undefined);
   let disposed = false;
   return () => {
     if (disposed) return;
@@ -479,6 +490,7 @@ function startStaffLogin(element: HTMLElement, rootEmailProof: string|null) {
     dispose = undefined;
   };
   const connect = (session: StaffSession) => {
+    const floorPush=session.features.floorPush===true&&session.role==='waiter';
     const expire = () => {
       if (dispose !== current) return;
       disconnect();
@@ -487,7 +499,8 @@ function startStaffLogin(element: HTMLElement, rootEmailProof: string|null) {
     const signOut = () => {
       disconnect();
       screen('Cerrando la sesión.');
-      void endStaffSession(session).then(() => offerPasskey('Sesión cerrada.')).catch(error => {
+      const clearDevice=floorPush?clearFloorPushForSignOut(createStaffSessionFetch(session,()=>{})):Promise.resolve();
+      void clearDevice.then(()=>endStaffSession(session)).then(() => offerPasskey('Sesión cerrada.')).catch(error => {
         if (error instanceof StaffAuthenticationError && error.status === 409) {
           offerPasskey('La sesión cambió en otra pestaña.');
           return;
@@ -499,6 +512,7 @@ function startStaffLogin(element: HTMLElement, rootEmailProof: string|null) {
       staffRole: session.role, fetchImpl: createStaffSessionFetch(session, expire), onSignOut: signOut,
       enableTableChangeQueue: session.features.tableChange && ['admin', 'waiter'].includes(session.role),
       enableWaiterCalls: session.features.waiterCalls && session.role === 'waiter',
+      enableFloorPush:floorPush,
       enableM3Management: session.features.management && session.role !== 'kitchen',
       enableTableChangeWindow: session.features.tableChangeWindow===true && ['root','admin'].includes(session.role),
       enableOwnershipGovernance: session.features.ownership && ['root', 'admin'].includes(session.role),

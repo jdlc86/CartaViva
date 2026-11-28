@@ -6,11 +6,18 @@ BEGIN;
 
 DO $role$
 BEGIN
-  -- The outbox tables and owner are introduced atomically. An existing
-  -- principal could already have grants outside the installation boundary.
-  CREATE ROLE sabora_staff_invitation_enqueue_fn_owner
-    NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS
-    NOCREATEDB NOCREATEROLE NOREPLICATION;
+  -- Roles are cluster-wide. Disposable suites may use this sealed owner in
+  -- another database, but it must have no pre-existing privileges here.
+  IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='sabora_staff_invitation_enqueue_fn_owner') THEN
+    CREATE ROLE sabora_staff_invitation_enqueue_fn_owner
+      NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS
+      NOCREATEDB NOCREATEROLE NOREPLICATION;
+  ELSIF EXISTS(SELECT 1 FROM pg_catalog.pg_shdepend d
+    WHERE d.dbid=(SELECT oid FROM pg_catalog.pg_database WHERE datname=current_database())
+      AND d.refclassid='pg_catalog.pg_authid'::regclass
+      AND d.refobjid='sabora_staff_invitation_enqueue_fn_owner'::regrole) THEN
+    RAISE EXCEPTION 'staff_invitation_enqueue_owner_already_privileged' USING errcode='0P000';
+  END IF;
 
   IF EXISTS (
     SELECT 1 FROM pg_catalog.pg_roles role

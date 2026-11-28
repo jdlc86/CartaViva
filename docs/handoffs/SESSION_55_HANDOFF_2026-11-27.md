@@ -217,3 +217,7 @@ Se extienden las baterías de ROOT, sala, cambio de mesa, F21 y TLS. El árbol d
 ## S55-19 — Continuación de R2
 
 Partida verificada `ba9d97b2`, 8/8 controles aplicables PASS. El mismo Draft #92 incluye ceremonia pública ROOT con sesión de alcance restringido, comprobación transaccional de titularidad y personal, alerta durable en la cola de seguridad ROOT y vibración local al aparecer un nuevo aviso de sala. Los recorridos actualizados y sus límites figuran en el [informe](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md#continuación-de-r2--recuperación-root-y-avisos) y el [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Sin operación sobre VPS, Supabase o Resend reales ni Fleetia.
+
+## S55-20 — Avisos de sala aprobados e incorporados en R2
+
+El propietario aprobó los destinos Web Push de Chrome y Apple y los recordatorios de llamada de 30 segundos. RF, contrato consolidado y aislamiento V2 incorporan la decisión. El Draft #92 monta la opción `floorPush` con un delta PG17 posterior a genesis, la PWA de Gestión y acceso a dos hosts exactos mediante el gateway actual. Se amplían los ensayos CV-014 y F21. Las pruebas usan navegador y PostgreSQL desechables y un transporte simulado. [Informe](../reviews/SABORA_S55_H1_INTEGRATED_CLOSURE_2026-11-27.md#avisos-de-sala-y-web-push-aprobados) · [Tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md).
